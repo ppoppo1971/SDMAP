@@ -27,11 +27,14 @@ var longPressDuration = 400;
 var pendingLoadFile = null; // 좌표계 선택 완료 시 로드할 단일 DXF 파일
 var pendingLoadFolderFiles = null; // 좌표계 선택 완료 시 로드할 폴더 파일들
 
-// 가로등 자동 입력용 상태
+// 가로등/측구 자동 입력용 상태
 var pendingStreetlightItem = null;
 var pendingStreetlightDxfCoords = null;
 var pendingStreetlightLatLng = null;
+var pendingFacilityType = null; // '가로등' 또는 '측구'
 var lastStreetlightSpec = { type1: '기본', type2: '강관', type3: '1', type1Etc: '', type2Etc: '', type3Etc: '' };
+var lastSidegutterSpec = { type: '화강암', maxH: '', minH: '', width: '', typeEtc: '' };
+
 
 
 
@@ -1497,7 +1500,8 @@ function loadMetadataAndDisplay(dxfFile) {
         blob: p.blob, memo: p.memo || '', fileName: p.fileName || '',
         createdAt: p.createdAt, updatedAt: p.updatedAt,
         numTextId: p.numTextId,
-        specTextId: p.specTextId
+        specTextId: p.specTextId,
+        facilityType: p.facilityType
       });
     });
     drawPhotoMarkers();
@@ -1605,7 +1609,7 @@ function drawTextMarkers() {
 
     var self = this;
     this.textsArr.forEach(function (t) {
-      if (t.layer === '사진번호' || t.layer === '가로등_T') return;
+      if (t.layer === '사진번호' || t.layer === '가로등_T' || t.layer === '측구_T') return;
       var pos = dxfToLatLng(t.x, t.y);
       if (!pos) return;
       var span = document.createElement('span');
@@ -1999,8 +2003,10 @@ function showPhotoModal(photoId) {
   img.style.display = 'block';
   img.src = '';
 
-  // 가로등 전용 입력 필드 초기화
+  // 가로등/측구 전용 입력 필드 초기화
   var slFields = document.getElementById('photo-modal-streetlight-fields');
+  var sgFields = document.getElementById('photo-modal-sidegutter-fields');
+  
   var stNumInput = document.getElementById('photo-modal-num');
   var stType1 = document.getElementById('photo-modal-type-1');
   var stType2 = document.getElementById('photo-modal-type-2');
@@ -2008,47 +2014,83 @@ function showPhotoModal(photoId) {
   var stType1Etc = document.getElementById('photo-modal-type-1-etc');
   var stType2Etc = document.getElementById('photo-modal-type-2-etc');
   var stType3Etc = document.getElementById('photo-modal-type-3-etc');
+
+  var sgNumInput = document.getElementById('photo-modal-sg-num');
+  var sgType = document.getElementById('photo-modal-sg-type');
+  var sgTypeEtc = document.getElementById('photo-modal-sg-type-etc');
+  var sgMaxH = document.getElementById('photo-modal-sg-max-h');
+  var sgMinH = document.getElementById('photo-modal-sg-min-h');
+  var sgWidth = document.getElementById('photo-modal-sg-width');
   
   if (slFields) slFields.style.display = 'none';
+  if (sgFields) sgFields.style.display = 'none';
   if (stType1Etc) stType1Etc.style.display = 'none';
   if (stType2Etc) stType2Etc.style.display = 'none';
   if (stType3Etc) stType3Etc.style.display = 'none';
+  if (sgTypeEtc) sgTypeEtc.style.display = 'none';
 
   if (p.numTextId || p.specTextId) {
-    if (slFields) slFields.style.display = 'flex';
     var numTextObj = texts.filter(function (t) { return t.id === p.numTextId; })[0];
     var specTextObj = texts.filter(function (t) { return t.id === p.specTextId; })[0];
     
-    if (stNumInput) stNumInput.value = numTextObj ? numTextObj.text : '';
-    
-    if (specTextObj && specTextObj.text) {
-      var parts = specTextObj.text.split('/');
-      var t1 = parts[0] || '기본';
-      var t2 = parts[1] || '강관';
-      var t3 = parts[2] || '1';
+    // 측구 정보 폼 매핑
+    if (p.facilityType === '측구') {
+      if (sgFields) sgFields.style.display = 'flex';
+      if (sgNumInput) sgNumInput.value = numTextObj ? numTextObj.text : '';
       
-      if (stType1) {
-        if (['기본', '2등형'].includes(t1)) {
-          stType1.value = t1;
-        } else {
-          stType1.value = '기타';
-          if (stType1Etc) { stType1Etc.style.display = 'block'; stType1Etc.value = t1; }
+      if (specTextObj && specTextObj.text) {
+        var parts = specTextObj.text.split('/');
+        var tType = parts[0] || '화강암';
+        var tMax = parts[1] || '';
+        var tMin = parts[2] || '';
+        var tWidth = parts[3] || '';
+        
+        if (sgType) {
+          if (['화강암'].includes(tType)) {
+            sgType.value = tType;
+          } else {
+            sgType.value = '기타';
+            if (sgTypeEtc) { sgTypeEtc.style.display = 'block'; sgTypeEtc.value = tType; }
+          }
         }
+        if (sgMaxH) sgMaxH.value = tMax;
+        if (sgMinH) sgMinH.value = tMin;
+        if (sgWidth) sgWidth.value = tWidth;
       }
-      if (stType2) {
-        if (['강관', '강판'].includes(t2)) {
-          stType2.value = t2;
-        } else {
-          stType2.value = '기타';
-          if (stType2Etc) { stType2Etc.style.display = 'block'; stType2Etc.value = t2; }
+    } else {
+      // 가로등 정보 폼 매핑
+      if (slFields) slFields.style.display = 'flex';
+      if (stNumInput) stNumInput.value = numTextObj ? numTextObj.text : '';
+      
+      if (specTextObj && specTextObj.text) {
+        var parts = specTextObj.text.split('/');
+        var t1 = parts[0] || '기본';
+        var t2 = parts[1] || '강관';
+        var t3 = parts[2] || '1';
+        
+        if (stType1) {
+          if (['기본', '2등형'].includes(t1)) {
+            stType1.value = t1;
+          } else {
+            stType1.value = '기타';
+            if (stType1Etc) { stType1Etc.style.display = 'block'; stType1Etc.value = t1; }
+          }
         }
-      }
-      if (stType3) {
-        if (['1', '2', '3', '4'].includes(t3)) {
-          stType3.value = t3;
-        } else {
-          stType3.value = '기타';
-          if (stType3Etc) { stType3Etc.style.display = 'block'; stType3Etc.value = t3; }
+        if (stType2) {
+          if (['강관', '강판'].includes(t2)) {
+            stType2.value = t2;
+          } else {
+            stType2.value = '기타';
+            if (stType2Etc) { stType2Etc.style.display = 'block'; stType2Etc.value = t2; }
+          }
+        }
+        if (stType3) {
+          if (['1', '2', '3', '4'].includes(t3)) {
+            stType3.value = t3;
+          } else {
+            stType3.value = '기타';
+            if (stType3Etc) { stType3Etc.style.display = 'block'; stType3Etc.value = t3; }
+          }
         }
       }
     }
@@ -2128,6 +2170,7 @@ function bindPhotoModal() {
   handleEtcSelect(document.getElementById('photo-modal-type-1'), document.getElementById('photo-modal-type-1-etc'));
   handleEtcSelect(document.getElementById('photo-modal-type-2'), document.getElementById('photo-modal-type-2-etc'));
   handleEtcSelect(document.getElementById('photo-modal-type-3'), document.getElementById('photo-modal-type-3-etc'));
+  handleEtcSelect(document.getElementById('photo-modal-sg-type'), document.getElementById('photo-modal-sg-type-etc'));
 
   if (closeBtn) closeBtn.addEventListener('click', hidePhotoModal);
   if (saveBtn) saveBtn.addEventListener('click', function () {
@@ -2141,19 +2184,38 @@ function bindPhotoModal() {
     }));
 
     if (p.numTextId || p.specTextId) {
-      var stNumInput = document.getElementById('photo-modal-num');
-      var stType1 = document.getElementById('photo-modal-type-1');
-      var stType2 = document.getElementById('photo-modal-type-2');
-      var stType3 = document.getElementById('photo-modal-type-3');
-      var stType1Etc = document.getElementById('photo-modal-type-1-etc');
-      var stType2Etc = document.getElementById('photo-modal-type-2-etc');
-      var stType3Etc = document.getElementById('photo-modal-type-3-etc');
+      var newNum = '';
+      var newSpec = '';
       
-      var newNum = stNumInput ? stNumInput.value.trim() : '';
-      var val1 = (stType1 && stType1.value === '기타' && stType1Etc) ? stType1Etc.value.trim() : (stType1 ? stType1.value : '');
-      var val2 = (stType2 && stType2.value === '기타' && stType2Etc) ? stType2Etc.value.trim() : (stType2 ? stType2.value : '');
-      var val3 = (stType3 && stType3.value === '기타' && stType3Etc) ? stType3Etc.value.trim() : (stType3 ? stType3.value : '');
-      var newSpec = val1 + '/' + val2 + '/' + val3;
+      if (p.facilityType === '측구') {
+        var sgNumInput = document.getElementById('photo-modal-sg-num');
+        var sgType = document.getElementById('photo-modal-sg-type');
+        var sgTypeEtc = document.getElementById('photo-modal-sg-type-etc');
+        var sgMaxH = document.getElementById('photo-modal-sg-max-h');
+        var sgMinH = document.getElementById('photo-modal-sg-min-h');
+        var sgWidth = document.getElementById('photo-modal-sg-width');
+        
+        newNum = sgNumInput ? sgNumInput.value.trim() : '';
+        var tVal = (sgType && sgType.value === '기타' && sgTypeEtc) ? sgTypeEtc.value.trim() : (sgType ? sgType.value : '');
+        var maxHVal = sgMaxH ? sgMaxH.value.trim() : '';
+        var minHVal = sgMinH ? sgMinH.value.trim() : '';
+        var wVal = sgWidth ? sgWidth.value.trim() : '';
+        newSpec = tVal + '/' + maxHVal + '/' + minHVal + '/' + wVal;
+      } else {
+        var stNumInput = document.getElementById('photo-modal-num');
+        var stType1 = document.getElementById('photo-modal-type-1');
+        var stType2 = document.getElementById('photo-modal-type-2');
+        var stType3 = document.getElementById('photo-modal-type-3');
+        var stType1Etc = document.getElementById('photo-modal-type-1-etc');
+        var stType2Etc = document.getElementById('photo-modal-type-2-etc');
+        var stType3Etc = document.getElementById('photo-modal-type-3-etc');
+        
+        newNum = stNumInput ? stNumInput.value.trim() : '';
+        var val1 = (stType1 && stType1.value === '기타' && stType1Etc) ? stType1Etc.value.trim() : (stType1 ? stType1.value : '');
+        var val2 = (stType2 && stType2.value === '기타' && stType2Etc) ? stType2Etc.value.trim() : (stType2 ? stType2.value : '');
+        var val3 = (stType3 && stType3.value === '기타' && stType3Etc) ? stType3Etc.value.trim() : (stType3 ? stType3.value : '');
+        newSpec = val1 + '/' + val2 + '/' + val3;
+      }
 
       if (p.numTextId) {
         var numObj = texts.filter(function (x) { return x.id === p.numTextId; })[0];
@@ -2269,7 +2331,17 @@ if (typeof DxfParser === 'undefined' && typeof window !== 'undefined') {
   window.DxfParser = window.dxfParser || null;
 }
 
-// --- 가로등 자동 입력용 스마트 바텀 시트 흐름 구현 ---
+// --- 가로등/측구 자동 입력용 스마트 바텀 시트 흐름 구현 ---
+
+function detectFacilityType(name, layer) {
+  var n = String(name || '').toLowerCase();
+  var l = String(layer || '').toLowerCase();
+  var gutterKeywords = ['측구', 'u형', 'l형', '배수', '플룸', 'gutter', 'drain'];
+  var isGutter = gutterKeywords.some(function (k) {
+    return n.indexOf(k) >= 0 || l.indexOf(k) >= 0;
+  });
+  return isGutter ? '측구' : '가로등';
+}
 
 function findNearbyFacilities(latLng, maxDistM) {
   if (!map || !map.data) return [];
@@ -2331,7 +2403,7 @@ function showStreetlightBottomSheet(list, dxfCoords, latLng) {
   if (!sheet || !content) return;
 
   if (title) title.textContent = '📍 시설물 선택 (반경 2m 이내)';
-  content.innerHTML = '<p style="font-size:13px; color:#666; margin:0 0 10px 0;">사진을 추가할 가로등 시설물을 선택하세요.</p>';
+  content.innerHTML = '<p style="font-size:13px; color:#666; margin:0 0 10px 0;">사진을 추가할 시설물을 선택하세요.</p>';
 
   list.forEach(function (item) {
     var div = document.createElement('div');
@@ -2357,12 +2429,14 @@ function hideStreetlightBottomSheet() {
   pendingStreetlightItem = null;
   pendingStreetlightDxfCoords = null;
   pendingStreetlightLatLng = null;
+  pendingFacilityType = null;
 }
 
 function triggerStreetlightCamera(item, dxfCoords, latLng) {
   pendingStreetlightItem = item;
   pendingStreetlightDxfCoords = dxfCoords;
   pendingStreetlightLatLng = latLng;
+  pendingFacilityType = detectFacilityType(item.name, item.layer);
 
   var cameraInput = document.getElementById('camera-input');
   if (cameraInput) {
@@ -2375,17 +2449,16 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
   var title = document.getElementById('bottom-sheet-title');
   if (!content) return;
 
-  if (title) title.textContent = '📐 가로등 제원 입력';
+  var typeText = pendingFacilityType === '측구' ? '측구' : '가로등';
+  if (title) title.textContent = '📐 ' + typeText + ' 제원 입력';
   content.innerHTML = '';
 
-  // 사진 미리보기 이미지 생성
   var img = document.createElement('img');
   img.className = 'form-preview-img';
   var objectUrl = URL.createObjectURL(fileBlob);
   img.src = objectUrl;
   content.appendChild(img);
 
-  // 사진 일련번호 연동 (마지막 번호 +1 가져오기)
   var nextPhotoNum = '';
   if (typeof localStorage !== 'undefined') {
     var lastNumStr = localStorage.getItem('dmap:lastPhotoNumber');
@@ -2396,105 +2469,177 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
     }
   }
 
-  // 폼 마크업
-  var html = 
-    '<div class="form-group">' +
-    '  <label>🔢 사진 번호 (직접 입력/수정 가능)</label>' +
-    '  <input type="text" id="st-form-num" value="' + nextPhotoNum + '" placeholder="예: 100">' +
-    '</div>' +
-    '<div class="form-group">' +
-    '  <label>📐 제원: 기본</label>' +
-    '  <select id="st-form-type-1">' +
-    '    <option value="기본">기본</option>' +
-    '    <option value="2등형">2등형</option>' +
-    '    <option value="기타">기타</option>' +
-    '  </select>' +
-    '  <input type="text" id="st-form-type-1-etc" style="display:none; margin-top:5px;" placeholder="직접 입력">' +
-    '</div>' +
-    '<div class="form-group">' +
-    '  <label>🛠️ 제원: 강관</label>' +
-    '  <select id="st-form-type-2">' +
-    '    <option value="강관">강관</option>' +
-    '    <option value="강판">강판</option>' +
-    '    <option value="기타">기타</option>' +
-    '  </select>' +
-    '  <input type="text" id="st-form-type-2-etc" style="display:none; margin-top:5px;" placeholder="직접 입력">' +
-    '</div>' +
-    '<div class="form-group">' +
-    '  <label>🔢 제원: 수량/높이</label>' +
-    '  <select id="st-form-type-3">' +
-    '    <option value="1">1</option>' +
-    '    <option value="2">2</option>' +
-    '    <option value="3">3</option>' +
-    '    <option value="4">4</option>' +
-    '    <option value="기타">기타</option>' +
-    '  </select>' +
-    '  <input type="text" id="st-form-type-3-etc" style="display:none; margin-top:5px;" placeholder="직접 입력">' +
-    '</div>' +
-    '<button type="button" class="btn" id="st-form-submit" style="background:#34C759; margin-top:10px; width:100%; padding:12px; font-weight:bold;">제원 저장</button>';
+  var html = '';
+  if (pendingFacilityType === '측구') {
+    // 측구 폼 마크업 (석축 드롭다운 + iOS 숫자패드 지원 최대/최소높이, 폭)
+    html = 
+      '<div class="form-group">' +
+      '  <label>🔢 사진 번호 (직접 입력/수정 가능)</label>' +
+      '  <input type="text" id="sg-form-num" value="' + nextPhotoNum + '" placeholder="예: 100">' +
+      '</div>' +
+      '<div class="form-group">' +
+      '  <label>🧱 제원: 석축</label>' +
+      '  <select id="sg-form-type">' +
+      '    <option value="화강암">화강암</option>' +
+      '    <option value="기타">기타</option>' +
+      '  </select>' +
+      '  <input type="text" id="sg-form-type-etc" style="display:none; margin-top:5px;" placeholder="직접 입력">' +
+      '</div>' +
+      '<div class="form-group">' +
+      '  <label>📈 최대 높이 (m)</label>' +
+      '  <input type="text" inputmode="decimal" pattern="[0-9]*\\.?[0-9]*" id="sg-form-max-h" placeholder="숫자 입력 (소수점 가능)">' +
+      '</div>' +
+      '<div class="form-group">' +
+      '  <label>📉 최소 높이 (m)</label>' +
+      '  <input type="text" inputmode="decimal" pattern="[0-9]*\\.?[0-9]*" id="sg-form-min-h" placeholder="숫자 입력 (소수점 가능)">' +
+      '</div>' +
+      '<div class="form-group">' +
+      '  <label>↔️ 폭 (m)</label>' +
+      '  <input type="text" inputmode="decimal" pattern="[0-9]*\\.?[0-9]*" id="sg-form-width" placeholder="숫자 입력 (소수점 가능)">' +
+      '</div>' +
+      '<button type="button" class="btn" id="sg-form-submit" style="background:#34C759; margin-top:10px; width:100%; padding:12px; font-weight:bold;">제원 저장</button>';
+  } else {
+    // 가로등 폼 마크업
+    html = 
+      '<div class="form-group">' +
+      '  <label>🔢 사진 번호 (직접 입력/수정 가능)</label>' +
+      '  <input type="text" id="st-form-num" value="' + nextPhotoNum + '" placeholder="예: 100">' +
+      '</div>' +
+      '<div class="form-group">' +
+      '  <label>📐 제원: 기본</label>' +
+      '  <select id="st-form-type-1">' +
+      '    <option value="기본">기본</option>' +
+      '    <option value="2등형">2등형</option>' +
+      '    <option value="기타">기타</option>' +
+      '  </select>' +
+      '  <input type="text" id="st-form-type-1-etc" style="display:none; margin-top:5px;" placeholder="직접 입력">' +
+      '</div>' +
+      '<div class="form-group">' +
+      '  <label>🛠️ 제원: 강관</label>' +
+      '  <select id="st-form-type-2">' +
+      '    <option value="강관">강관</option>' +
+      '    <option value="강판">강판</option>' +
+      '    <option value="기타">기타</option>' +
+      '  </select>' +
+      '  <input type="text" id="st-form-type-2-etc" style="display:none; margin-top:5px;" placeholder="직접 입력">' +
+      '</div>' +
+      '<div class="form-group">' +
+      '  <label>🔢 제원: 수량/높이</label>' +
+      '  <select id="st-form-type-3">' +
+      '    <option value="1">1</option>' +
+      '    <option value="2">2</option>' +
+      '    <option value="3">3</option>' +
+      '    <option value="4">4</option>' +
+      '    <option value="기타">기타</option>' +
+      '  </select>' +
+      '  <input type="text" id="st-form-type-3-etc" style="display:none; margin-top:5px;" placeholder="직접 입력">' +
+      '</div>' +
+      '<button type="button" class="btn" id="st-form-submit" style="background:#34C759; margin-top:10px; width:100%; padding:12px; font-weight:bold;">제원 저장</button>';
+  }
 
   var formDiv = document.createElement('div');
   formDiv.innerHTML = html;
   content.appendChild(formDiv);
 
-  // 이벤트 바인딩
-  var select1 = document.getElementById('st-form-type-1');
-  var select2 = document.getElementById('st-form-type-2');
-  var select3 = document.getElementById('st-form-type-3');
-  var etc1 = document.getElementById('st-form-type-1-etc');
-  var etc2 = document.getElementById('st-form-type-2-etc');
-  var etc3 = document.getElementById('st-form-type-3-etc');
+  if (pendingFacilityType === '측구') {
+    var selectSg = document.getElementById('sg-form-type');
+    var etcSg = document.getElementById('sg-form-type-etc');
+    var maxHInput = document.getElementById('sg-form-max-h');
+    var minHInput = document.getElementById('sg-form-min-h');
+    var widthInput = document.getElementById('sg-form-width');
 
-  function bindEtcChange(selectEl, etcInputEl) {
-    if (selectEl && etcInputEl) {
-      selectEl.addEventListener('change', function () {
-        etcInputEl.style.display = (selectEl.value === '기타') ? 'block' : 'none';
-        if (selectEl.value !== '기타') etcInputEl.value = '';
+    if (selectSg && etcSg) {
+      selectSg.addEventListener('change', function () {
+        etcSg.style.display = (selectSg.value === '기타') ? 'block' : 'none';
+        if (selectSg.value !== '기타') etcSg.value = '';
       });
     }
-  }
-  bindEtcChange(select1, etc1);
-  bindEtcChange(select2, etc2);
-  bindEtcChange(select3, etc3);
 
-  // 직전 저장값 연계 자동완성
-  if (lastStreetlightSpec) {
-    if (select1) {
-      if (['기본', '2등형'].includes(lastStreetlightSpec.type1)) select1.value = lastStreetlightSpec.type1;
-      else { select1.value = '기타'; if (etc1) { etc1.style.display = 'block'; etc1.value = lastStreetlightSpec.type1; } }
-    }
-    if (select2) {
-      if (['강관', '강판'].includes(lastStreetlightSpec.type2)) select2.value = lastStreetlightSpec.type2;
-      else { select2.value = '기타'; if (etc2) { etc2.style.display = 'block'; etc2.value = lastStreetlightSpec.type2; } }
-    }
-    if (select3) {
-      if (['1', '2', '3', '4'].includes(lastStreetlightSpec.type3)) select3.value = lastStreetlightSpec.type3;
-      else { select3.value = '기타'; if (etc3) { etc3.style.display = 'block'; etc3.value = lastStreetlightSpec.type3; } }
-    }
-  }
-
-  var submitBtn = document.getElementById('st-form-submit');
-  if (submitBtn) {
-    submitBtn.addEventListener('click', function () {
-      var formData = {
-        num: document.getElementById('st-form-num') ? document.getElementById('st-form-num').value.trim() : '',
-        val1: (select1 && select1.value === '기타' && etc1) ? etc1.value.trim() : (select1 ? select1.value : ''),
-        val2: (select2 && select2.value === '기타' && etc2) ? etc2.value.trim() : (select2 ? select2.value : ''),
-        val3: (select3 && select3.value === '기타' && etc3) ? etc3.value.trim() : (select3 ? select3.value : '')
-      };
-      
-      // 입력 유효성 검증
-      if (!formData.num) {
-        alert('사진 번호를 입력해 주세요.');
-        return;
+    // 직전 측구 데이터 자동완성
+    if (lastSidegutterSpec) {
+      if (selectSg) {
+        if (['화강암'].includes(lastSidegutterSpec.type)) selectSg.value = lastSidegutterSpec.type;
+        else { selectSg.value = '기타'; if (etcSg) { etcSg.style.display = 'block'; etcSg.value = lastSidegutterSpec.type; } }
       }
-      if (!formData.val1 || !formData.val2 || !formData.val3) {
-        alert('제원을 모두 입력하거나 선택해 주세요.');
-        return;
-      }
+      if (maxHInput) maxHInput.value = lastSidegutterSpec.maxH || '';
+      if (minHInput) minHInput.value = lastSidegutterSpec.minH || '';
+      if (widthInput) widthInput.value = lastSidegutterSpec.width || '';
+    }
 
-      saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng);
-    });
+    var submitSg = document.getElementById('sg-form-submit');
+    if (submitSg) {
+      submitSg.addEventListener('click', function () {
+        var formData = {
+          num: document.getElementById('sg-form-num') ? document.getElementById('sg-form-num').value.trim() : '',
+          val1: (selectSg && selectSg.value === '기타' && etcSg) ? etcSg.value.trim() : (selectSg ? selectSg.value : ''),
+          val2: maxHInput ? maxHInput.value.trim() : '',
+          val3: minHInput ? minHInput.value.trim() : '',
+          val4: widthInput ? widthInput.value.trim() : ''
+        };
+
+        if (!formData.num) { alert('사진 번호를 입력해 주세요.'); return; }
+        if (!formData.val1 || !formData.val2 || !formData.val3 || !formData.val4) {
+          alert('제원을 모두 입력해 주세요.');
+          return;
+        }
+
+        saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng);
+      });
+    }
+  } else {
+    var select1 = document.getElementById('st-form-type-1');
+    var select2 = document.getElementById('st-form-type-2');
+    var select3 = document.getElementById('st-form-type-3');
+    var etc1 = document.getElementById('st-form-type-1-etc');
+    var etc2 = document.getElementById('st-form-type-2-etc');
+    var etc3 = document.getElementById('st-form-type-3-etc');
+
+    function bindEtcChange(selectEl, etcInputEl) {
+      if (selectEl && etcInputEl) {
+        selectEl.addEventListener('change', function () {
+          etcInputEl.style.display = (selectEl.value === '기타') ? 'block' : 'none';
+          if (selectEl.value !== '기타') etcInputEl.value = '';
+        });
+      }
+    }
+    bindEtcChange(select1, etc1);
+    bindEtcChange(select2, etc2);
+    bindEtcChange(select3, etc3);
+
+    if (lastStreetlightSpec) {
+      if (select1) {
+        if (['기본', '2등형'].includes(lastStreetlightSpec.type1)) select1.value = lastStreetlightSpec.type1;
+        else { select1.value = '기타'; if (etc1) { etc1.style.display = 'block'; etc1.value = lastStreetlightSpec.type1; } }
+      }
+      if (select2) {
+        if (['강관', '강판'].includes(lastStreetlightSpec.type2)) select2.value = lastStreetlightSpec.type2;
+        else { select2.value = '기타'; if (etc2) { etc2.style.display = 'block'; etc2.value = lastStreetlightSpec.type2; } }
+      }
+      if (select3) {
+        if (['1', '2', '3', '4'].includes(lastStreetlightSpec.type3)) select3.value = lastStreetlightSpec.type3;
+        else { select3.value = '기타'; if (etc3) { etc3.style.display = 'block'; etc3.value = lastStreetlightSpec.type3; } }
+      }
+    }
+
+    var submitSt = document.getElementById('st-form-submit');
+    if (submitSt) {
+      submitSt.addEventListener('click', function () {
+        var formData = {
+          num: document.getElementById('st-form-num') ? document.getElementById('st-form-num').value.trim() : '',
+          val1: (select1 && select1.value === '기타' && etc1) ? etc1.value.trim() : (select1 ? select1.value : ''),
+          val2: (select2 && select2.value === '기타' && etc2) ? etc2.value.trim() : (select2 ? select2.value : ''),
+          val3: (select3 && select3.value === '기타' && etc3) ? etc3.value.trim() : (select3 ? select3.value : '')
+        };
+
+        if (!formData.num) { alert('사진 번호를 입력해 주세요.'); return; }
+        if (!formData.val1 || !formData.val2 || !formData.val3) {
+          alert('제원을 모두 입력하거나 선택해 주세요.');
+          return;
+        }
+
+        saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng);
+      });
+    }
   }
 }
 
@@ -2502,20 +2647,26 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
   if (!dxfFileFullName || !window.localStore) return;
   showLoading(true);
 
-  // 직전 제원값 캐싱
-  lastStreetlightSpec = {
-    type1: formData.val1,
-    type2: formData.val2,
-    type3: formData.val3
-  };
+  if (pendingFacilityType === '측구') {
+    lastSidegutterSpec = {
+      type: formData.val1,
+      maxH: formData.val2,
+      minH: formData.val3,
+      width: formData.val4
+    };
+  } else {
+    lastStreetlightSpec = {
+      type1: formData.val1,
+      type2: formData.val2,
+      type3: formData.val3
+    };
+  }
 
-  // 사진번호 최근값 localStorage에 기록
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem('dmap:lastPhotoNumber', formData.num);
   }
 
-  // 1. 사진 마커 및 텍스트 데이터의 삽입점은 시설물의 삽입점 사용 (블록 속성 존재 시)
-  var insertionDxf = dxfCoords; // 기본 터치 지점
+  var insertionDxf = dxfCoords;
   var feature = item.feature;
   if (feature) {
     var bx = feature.getProperty('blockInsertX');
@@ -2536,7 +2687,6 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
   var numTextId = 'text-num-' + Date.now();
   var specTextId = 'text-spec-' + (Date.now() + 1);
 
-  // 사진번호 텍스트 (레이어: 사진번호)
   var numTextObj = {
     id: numTextId,
     x: insertionDxf.x,
@@ -2546,20 +2696,18 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
     layer: '사진번호'
   };
 
-  // 제원 텍스트 (레이어: 가로등_T)
   var specTextObj = {
     id: specTextId,
     x: insertionDxf.x,
     y: insertionDxf.y,
-    text: formData.val1 + '/' + formData.val2 + '/' + formData.val3,
+    text: pendingFacilityType === '측구' ? (formData.val1 + '/' + formData.val2 + '/' + formData.val3 + '/' + formData.val4) : (formData.val1 + '/' + formData.val2 + '/' + formData.val3),
     fontSize: 12,
-    layer: '가로등_T'
+    layer: pendingFacilityType === '측구' ? '측구_T' : '가로등_T'
   };
 
   texts.push(numTextObj);
   texts.push(specTextObj);
 
-  // 사진 데이터 (텍스트 ID 정보 바인딩 연계)
   var targetSize = getImageTargetSize();
   function finishSave(blob) {
     var photo = {
@@ -2569,16 +2717,16 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
       width: 1,
       height: 1,
       blob: blob,
-      memo: '가로등 시설물 조사 (' + item.name + ')',
+      memo: pendingFacilityType === '측구' ? ('측구 시설물 조사 (' + item.name + ')') : ('가로등 시설물 조사 (' + item.name + ')'),
       fileName: generatePhotoFileName(),
       createdAt: new Date().toISOString(),
       numTextId: numTextId,
-      specTextId: specTextId
+      specTextId: specTextId,
+      facilityType: pendingFacilityType
     };
 
     photos.push(photo);
 
-    // IndexedDB 저장 진행
     Promise.all([
       window.localStore.savePhoto(dxfFileFullName, photo),
       window.localStore.saveProject(dxfFileFullName, { texts: texts, lastModified: new Date().toISOString() })
@@ -2587,10 +2735,10 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
       drawTextMarkers();
       showLoading(false);
       hideStreetlightBottomSheet();
-      alert('가로등 제원 저장이 완료되었습니다.');
+      alert('제원 저장이 완료되었습니다.');
     }).catch(function (err) {
       showLoading(false);
-      console.error('가로등 제원 저장 실패:', err);
+      console.error('제원 저장 실패:', err);
       alert('저장에 실패했습니다.');
     });
   }

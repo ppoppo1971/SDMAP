@@ -83,7 +83,10 @@
           width: photo.width, height: photo.height,
           blob: photo.blob,
           createdAt: photo.createdAt || new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString(),
+          numTextId: photo.numTextId || null,
+          specTextId: photo.specTextId || null,
+          facilityType: photo.facilityType || null
         };
         var tx = db.transaction(PHOTO_STORE, 'readwrite');
         tx.objectStore(PHOTO_STORE).put(record);
@@ -334,7 +337,10 @@
             id: p.id, fileName: p.fileName,
             position: { x: p.x, y: -p.y },
             size: { width: p.width, height: p.height },
-            memo: p.memo || '', uploaded: true
+            memo: p.memo || '', uploaded: true,
+            numTextId: p.numTextId || null,
+            specTextId: p.specTextId || null,
+            facilityType: p.facilityType || null
           };
         }),
         texts: (project.texts || []).map(function (t) {
@@ -379,7 +385,10 @@
             id: p.id, fileName: p.fileName,
             position: { x: p.x, y: -p.y },
             size: { width: p.width, height: p.height },
-            memo: p.memo || '', uploaded: true
+            memo: p.memo || '', uploaded: true,
+            numTextId: p.numTextId || null,
+            specTextId: p.specTextId || null,
+            facilityType: p.facilityType || null
           };
         }),
         texts: (project.texts || []).map(function (t) {
