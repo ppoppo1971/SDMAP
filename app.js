@@ -33,7 +33,8 @@ var pendingStreetlightDxfCoords = null;
 var pendingStreetlightLatLng = null;
 var pendingFacilityType = null; // '가로등' 또는 '측구'
 var lastStreetlightSpec = { type1: '기본', type2: '강관', type3: '1', type1Etc: '', type2Etc: '', type3Etc: '' };
-var lastSidegutterSpec = { type: '화강암', maxH: '', minH: '', width: '', typeEtc: '' };
+var lastSidegutterSpec = { type: 'L형', width: '', height: '', typeEtc: '' };
+var lastStonewallSpec = { type: '화강암', maxH: '', minH: '', width: '', typeEtc: '' };
 
 
 
@@ -1609,7 +1610,7 @@ function drawTextMarkers() {
 
     var self = this;
     this.textsArr.forEach(function (t) {
-      if (t.layer === '사진번호' || t.layer === '가로등_T' || t.layer === '측구_T') return;
+      if (t.layer === '사진번호' || t.layer === '가로등_T' || t.layer === '측구_T' || t.layer === '석축_T') return;
       var pos = dxfToLatLng(t.x, t.y);
       if (!pos) return;
       var span = document.createElement('span');
@@ -1640,7 +1641,7 @@ function drawTextMarkers() {
       var offsetY = 0;
       if (t.layer === '사진번호') {
         offsetY = -18;
-      } else if (t.layer === '가로등_T') {
+      } else {
         offsetY = 18;
       }
       span._offsetY = offsetY;
@@ -1712,8 +1713,12 @@ function bindMapLongPress() {
   function showMenuAt(clientX, clientY, latLng) {
     if (!latLng) return;
     
-    // 2m 이내 가로등 시설물 및 블록 탐색 (기존 1m에서 2m로 변경)
+    // 2m 이내 시설물 탐색 및 유효한 시설물 유형(석축/측구/가로등)만 필터링
     var nearby = findNearbyFacilities(latLng, 2.0);
+    nearby = nearby.filter(function (item) {
+      return detectFacilityType(item.name, item.layer) !== null;
+    });
+
     if (nearby && nearby.length > 0) {
       var dxfCoords = latLngToDxf(latLng);
       showStreetlightBottomSheet(nearby, dxfCoords, latLng);
@@ -2003,9 +2008,10 @@ function showPhotoModal(photoId) {
   img.style.display = 'block';
   img.src = '';
 
-  // 가로등/측구 전용 입력 필드 초기화
+  // 가로등/측구/석축 전용 입력 필드 초기화
   var slFields = document.getElementById('photo-modal-streetlight-fields');
   var sgFields = document.getElementById('photo-modal-sidegutter-fields');
+  var swFields = document.getElementById('photo-modal-stonewall-fields');
   
   var stNumInput = document.getElementById('photo-modal-num');
   var stType1 = document.getElementById('photo-modal-type-1');
@@ -2018,16 +2024,24 @@ function showPhotoModal(photoId) {
   var sgNumInput = document.getElementById('photo-modal-sg-num');
   var sgType = document.getElementById('photo-modal-sg-type');
   var sgTypeEtc = document.getElementById('photo-modal-sg-type-etc');
-  var sgMaxH = document.getElementById('photo-modal-sg-max-h');
-  var sgMinH = document.getElementById('photo-modal-sg-min-h');
   var sgWidth = document.getElementById('photo-modal-sg-width');
+  var sgHeight = document.getElementById('photo-modal-sg-height');
+
+  var swNumInput = document.getElementById('photo-modal-sw-num');
+  var swType = document.getElementById('photo-modal-sw-type');
+  var swTypeEtc = document.getElementById('photo-modal-sw-type-etc');
+  var swMaxH = document.getElementById('photo-modal-sw-max-h');
+  var swMinH = document.getElementById('photo-modal-sw-min-h');
+  var swWidth = document.getElementById('photo-modal-sw-width');
   
   if (slFields) slFields.style.display = 'none';
   if (sgFields) sgFields.style.display = 'none';
+  if (swFields) swFields.style.display = 'none';
   if (stType1Etc) stType1Etc.style.display = 'none';
   if (stType2Etc) stType2Etc.style.display = 'none';
   if (stType3Etc) stType3Etc.style.display = 'none';
   if (sgTypeEtc) sgTypeEtc.style.display = 'none';
+  if (swTypeEtc) swTypeEtc.style.display = 'none';
 
   if (p.numTextId || p.specTextId) {
     var numTextObj = texts.filter(function (t) { return t.id === p.numTextId; })[0];
@@ -2040,24 +2054,48 @@ function showPhotoModal(photoId) {
       
       if (specTextObj && specTextObj.text) {
         var parts = specTextObj.text.split('/');
-        var tType = parts[0] || '화강암';
-        var tMax = parts[1] || '';
-        var tMin = parts[2] || '';
-        var tWidth = parts[3] || '';
+        var tType = parts[0] || 'L형';
+        var tDim = parts[1] || '';
+        var dimParts = tDim.split('*');
+        var tW = dimParts[0] || '';
+        var tH = dimParts[1] || '';
         
         if (sgType) {
-          if (['화강암'].includes(tType)) {
+          if (['L형', 'U형', 'V형', '토사형', '옹벽형'].includes(tType)) {
             sgType.value = tType;
           } else {
             sgType.value = '기타';
             if (sgTypeEtc) { sgTypeEtc.style.display = 'block'; sgTypeEtc.value = tType; }
           }
         }
-        if (sgMaxH) sgMaxH.value = tMax;
-        if (sgMinH) sgMinH.value = tMin;
-        if (sgWidth) sgWidth.value = tWidth;
+        if (sgWidth) sgWidth.value = tW;
+        if (sgHeight) sgHeight.value = tH;
       }
-    } else {
+    } else if (p.facilityType === '석축') {
+      // 석축 정보 폼 매핑
+      if (swFields) swFields.style.display = 'flex';
+      if (swNumInput) swNumInput.value = numTextObj ? numTextObj.text : '';
+      
+      if (specTextObj && specTextObj.text) {
+        var parts = specTextObj.text.split('/');
+        var tType = parts[0] || '화강암';
+        var tMax = parts[1] || '';
+        var tMin = parts[2] || '';
+        var tWidth = parts[3] || '';
+        
+        if (swType) {
+          if (['화강암'].includes(tType)) {
+            swType.value = tType;
+          } else {
+            swType.value = '기타';
+            if (swTypeEtc) { swTypeEtc.style.display = 'block'; swTypeEtc.value = tType; }
+          }
+        }
+        if (swMaxH) swMaxH.value = tMax;
+        if (swMinH) swMinH.value = tMin;
+        if (swWidth) swWidth.value = tWidth;
+      }
+    } else if (p.facilityType === '가로등') {
       // 가로등 정보 폼 매핑
       if (slFields) slFields.style.display = 'flex';
       if (stNumInput) stNumInput.value = numTextObj ? numTextObj.text : '';
@@ -2171,6 +2209,7 @@ function bindPhotoModal() {
   handleEtcSelect(document.getElementById('photo-modal-type-2'), document.getElementById('photo-modal-type-2-etc'));
   handleEtcSelect(document.getElementById('photo-modal-type-3'), document.getElementById('photo-modal-type-3-etc'));
   handleEtcSelect(document.getElementById('photo-modal-sg-type'), document.getElementById('photo-modal-sg-type-etc'));
+  handleEtcSelect(document.getElementById('photo-modal-sw-type'), document.getElementById('photo-modal-sw-type-etc'));
 
   if (closeBtn) closeBtn.addEventListener('click', hidePhotoModal);
   if (saveBtn) saveBtn.addEventListener('click', function () {
@@ -2191,15 +2230,27 @@ function bindPhotoModal() {
         var sgNumInput = document.getElementById('photo-modal-sg-num');
         var sgType = document.getElementById('photo-modal-sg-type');
         var sgTypeEtc = document.getElementById('photo-modal-sg-type-etc');
-        var sgMaxH = document.getElementById('photo-modal-sg-max-h');
-        var sgMinH = document.getElementById('photo-modal-sg-min-h');
         var sgWidth = document.getElementById('photo-modal-sg-width');
+        var sgHeight = document.getElementById('photo-modal-sg-height');
         
         newNum = sgNumInput ? sgNumInput.value.trim() : '';
         var tVal = (sgType && sgType.value === '기타' && sgTypeEtc) ? sgTypeEtc.value.trim() : (sgType ? sgType.value : '');
-        var maxHVal = sgMaxH ? sgMaxH.value.trim() : '';
-        var minHVal = sgMinH ? sgMinH.value.trim() : '';
         var wVal = sgWidth ? sgWidth.value.trim() : '';
+        var hVal = sgHeight ? sgHeight.value.trim() : '';
+        newSpec = tVal + '/' + wVal + '*' + hVal;
+      } else if (p.facilityType === '석축') {
+        var swNumInput = document.getElementById('photo-modal-sw-num');
+        var swType = document.getElementById('photo-modal-sw-type');
+        var swTypeEtc = document.getElementById('photo-modal-sw-type-etc');
+        var swMaxH = document.getElementById('photo-modal-sw-max-h');
+        var swMinH = document.getElementById('photo-modal-sw-min-h');
+        var swWidth = document.getElementById('photo-modal-sw-width');
+        
+        newNum = swNumInput ? swNumInput.value.trim() : '';
+        var tVal = (swType && swType.value === '기타' && swTypeEtc) ? swTypeEtc.value.trim() : (swType ? swType.value : '');
+        var maxHVal = swMaxH ? swMaxH.value.trim() : '';
+        var minHVal = swMinH ? swMinH.value.trim() : '';
+        var wVal = swWidth ? swWidth.value.trim() : '';
         newSpec = tVal + '/' + maxHVal + '/' + minHVal + '/' + wVal;
       } else {
         var stNumInput = document.getElementById('photo-modal-num');
@@ -2336,11 +2387,21 @@ if (typeof DxfParser === 'undefined' && typeof window !== 'undefined') {
 function detectFacilityType(name, layer) {
   var n = String(name || '').toLowerCase();
   var l = String(layer || '').toLowerCase();
-  var gutterKeywords = ['측구', 'u형', 'l형', '배수', '플룸', 'gutter', 'drain'];
-  var isGutter = gutterKeywords.some(function (k) {
-    return n.indexOf(k) >= 0 || l.indexOf(k) >= 0;
-  });
-  return isGutter ? '측구' : '가로등';
+  
+  var stonewallKeywords = ['석축', '옹벽', 'stonewall', 'stone'];
+  var gutterKeywords = ['측구', 'u형', 'l형', 'v형', '배수', '플룸', 'gutter', 'drain'];
+  var streetlightKeywords = ['가로등', '보안등', '신호등', ' streetlight', 'lamp', 'pole'];
+
+  if (stonewallKeywords.some(function (k) { return n.indexOf(k) >= 0 || l.indexOf(k) >= 0; })) {
+    return '석축';
+  }
+  if (gutterKeywords.some(function (k) { return n.indexOf(k) >= 0 || l.indexOf(k) >= 0; })) {
+    return '측구';
+  }
+  if (streetlightKeywords.some(function (k) { return n.indexOf(k) >= 0 || l.indexOf(k) >= 0; })) {
+    return '가로등';
+  }
+  return null;
 }
 
 // 점(P)과 선분(A-B) 사이의 최단 미터 거리 계산 헬퍼 함수
@@ -2522,35 +2583,63 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
   }
 
   var html = '';
-  if (pendingFacilityType === '측구') {
-    // 측구 폼 마크업 (석축 드롭다운 + iOS 숫자패드 지원 최대/최소높이, 폭)
+  if (pendingFacilityType === '석축') {
+    // 석축 폼 마크업
+    html = 
+      '<div class="form-group">' +
+      '  <label>🔢 사진 번호 (직접 입력/수정 가능)</label>' +
+      '  <input type="text" id="sw-form-num" value="' + nextPhotoNum + '" placeholder="예: 100">' +
+      '</div>' +
+      '<div class="form-group">' +
+      '  <label>🧱 제원: 석축</label>' +
+      '  <select id="sw-form-type">' +
+      '    <option value="화강암">화강암</option>' +
+      '    <option value="기타">기타</option>' +
+      '  </select>' +
+      '  <input type="text" id="sw-form-type-etc" style="display:none; margin-top:5px;" placeholder="직접 입력">' +
+      '</div>' +
+      '<div class="form-group">' +
+      '  <label>📈 최대 높이 (m)</label>' +
+      '  <input type="text" inputmode="decimal" pattern="[0-9]*\\.?[0-9]*" id="sw-form-max-h" placeholder="숫자 입력 (소수점 가능)">' +
+      '</div>' +
+      '<div class="form-group">' +
+      '  <label>📉 최소 높이 (m)</label>' +
+      '  <input type="text" inputmode="decimal" pattern="[0-9]*\\.?[0-9]*" id="sw-form-min-h" placeholder="숫자 입력 (소수점 가능)">' +
+      '</div>' +
+      '<div class="form-group">' +
+      '  <label>↔️ 폭 (m)</label>' +
+      '  <input type="text" inputmode="decimal" pattern="[0-9]*\\.?[0-9]*" id="sw-form-width" placeholder="숫자 입력 (소수점 가능)">' +
+      '</div>' +
+      '<button type="button" class="btn" id="sw-form-submit" style="background:#34C759; margin-top:10px; width:100%; padding:12px; font-weight:bold;">제원 저장</button>';
+  } else if (pendingFacilityType === '측구') {
+    // 측구 폼 마크업
     html = 
       '<div class="form-group">' +
       '  <label>🔢 사진 번호 (직접 입력/수정 가능)</label>' +
       '  <input type="text" id="sg-form-num" value="' + nextPhotoNum + '" placeholder="예: 100">' +
       '</div>' +
       '<div class="form-group">' +
-      '  <label>🧱 제원: 석축</label>' +
+      '  <label>🧱 제원: 종류</label>' +
       '  <select id="sg-form-type">' +
-      '    <option value="화강암">화강암</option>' +
+      '    <option value="L형">L형</option>' +
+      '    <option value="U형">U형</option>' +
+      '    <option value="V형">V형</option>' +
+      '    <option value="토사형">토사형</option>' +
+      '    <option value="옹벽형">옹벽형</option>' +
       '    <option value="기타">기타</option>' +
       '  </select>' +
       '  <input type="text" id="sg-form-type-etc" style="display:none; margin-top:5px;" placeholder="직접 입력">' +
       '</div>' +
       '<div class="form-group">' +
-      '  <label>📈 최대 높이 (m)</label>' +
-      '  <input type="text" inputmode="decimal" pattern="[0-9]*\\.?[0-9]*" id="sg-form-max-h" placeholder="숫자 입력 (소수점 가능)">' +
-      '</div>' +
-      '<div class="form-group">' +
-      '  <label>📉 최소 높이 (m)</label>' +
-      '  <input type="text" inputmode="decimal" pattern="[0-9]*\\.?[0-9]*" id="sg-form-min-h" placeholder="숫자 입력 (소수점 가능)">' +
-      '</div>' +
-      '<div class="form-group">' +
-      '  <label>↔️ 폭 (m)</label>' +
+      '  <label>↔️ 가로 (m)</label>' +
       '  <input type="text" inputmode="decimal" pattern="[0-9]*\\.?[0-9]*" id="sg-form-width" placeholder="숫자 입력 (소수점 가능)">' +
       '</div>' +
+      '<div class="form-group">' +
+      '  <label>↕️ 세로 (m)</label>' +
+      '  <input type="text" inputmode="decimal" pattern="[0-9]*\\.?[0-9]*" id="sg-form-height" placeholder="숫자 입력 (소수점 가능)">' +
+      '</div>' +
       '<button type="button" class="btn" id="sg-form-submit" style="background:#34C759; margin-top:10px; width:100%; padding:12px; font-weight:bold;">제원 저장</button>';
-  } else {
+  } else if (pendingFacilityType === '가로등') {
     // 가로등 폼 마크업
     html = 
       '<div class="form-group">' +
@@ -2593,37 +2682,36 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
   formDiv.innerHTML = html;
   content.appendChild(formDiv);
 
-  if (pendingFacilityType === '측구') {
-    var selectSg = document.getElementById('sg-form-type');
-    var etcSg = document.getElementById('sg-form-type-etc');
-    var maxHInput = document.getElementById('sg-form-max-h');
-    var minHInput = document.getElementById('sg-form-min-h');
-    var widthInput = document.getElementById('sg-form-width');
+  if (pendingFacilityType === '석축') {
+    var selectSw = document.getElementById('sw-form-type');
+    var etcSw = document.getElementById('sw-form-type-etc');
+    var maxHInput = document.getElementById('sw-form-max-h');
+    var minHInput = document.getElementById('sw-form-min-h');
+    var widthInput = document.getElementById('sw-form-width');
 
-    if (selectSg && etcSg) {
-      selectSg.addEventListener('change', function () {
-        etcSg.style.display = (selectSg.value === '기타') ? 'block' : 'none';
-        if (selectSg.value !== '기타') etcSg.value = '';
+    if (selectSw && etcSw) {
+      selectSw.addEventListener('change', function () {
+        etcSw.style.display = (selectSw.value === '기타') ? 'block' : 'none';
+        if (selectSw.value !== '기타') etcSw.value = '';
       });
     }
 
-    // 직전 측구 데이터 자동완성
-    if (lastSidegutterSpec) {
-      if (selectSg) {
-        if (['화강암'].includes(lastSidegutterSpec.type)) selectSg.value = lastSidegutterSpec.type;
-        else { selectSg.value = '기타'; if (etcSg) { etcSg.style.display = 'block'; etcSg.value = lastSidegutterSpec.type; } }
+    if (lastStonewallSpec) {
+      if (selectSw) {
+        if (['화강암'].includes(lastStonewallSpec.type)) selectSw.value = lastStonewallSpec.type;
+        else { selectSw.value = '기타'; if (etcSw) { etcSw.style.display = 'block'; etcSw.value = lastStonewallSpec.type; } }
       }
-      if (maxHInput) maxHInput.value = lastSidegutterSpec.maxH || '';
-      if (minHInput) minHInput.value = lastSidegutterSpec.minH || '';
-      if (widthInput) widthInput.value = lastSidegutterSpec.width || '';
+      if (maxHInput) maxHInput.value = lastStonewallSpec.maxH || '';
+      if (minHInput) minHInput.value = lastStonewallSpec.minH || '';
+      if (widthInput) widthInput.value = lastStonewallSpec.width || '';
     }
 
-    var submitSg = document.getElementById('sg-form-submit');
-    if (submitSg) {
-      submitSg.addEventListener('click', function () {
+    var submitSw = document.getElementById('sw-form-submit');
+    if (submitSw) {
+      submitSw.addEventListener('click', function () {
         var formData = {
-          num: document.getElementById('sg-form-num') ? document.getElementById('sg-form-num').value.trim() : '',
-          val1: (selectSg && selectSg.value === '기타' && etcSg) ? etcSg.value.trim() : (selectSg ? selectSg.value : ''),
+          num: document.getElementById('sw-form-num') ? document.getElementById('sw-form-num').value.trim() : '',
+          val1: (selectSw && selectSw.value === '기타' && etcSw) ? etcSw.value.trim() : (selectSw ? selectSw.value : ''),
           val2: maxHInput ? maxHInput.value.trim() : '',
           val3: minHInput ? minHInput.value.trim() : '',
           val4: widthInput ? widthInput.value.trim() : ''
@@ -2638,7 +2726,48 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
         saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng);
       });
     }
-  } else {
+  } else if (pendingFacilityType === '측구') {
+    var selectSg = document.getElementById('sg-form-type');
+    var etcSg = document.getElementById('sg-form-type-etc');
+    var widthInput = document.getElementById('sg-form-width');
+    var heightInput = document.getElementById('sg-form-height');
+
+    if (selectSg && etcSg) {
+      selectSg.addEventListener('change', function () {
+        etcSg.style.display = (selectSg.value === '기타') ? 'block' : 'none';
+        if (selectSg.value !== '기타') etcSg.value = '';
+      });
+    }
+
+    if (lastSidegutterSpec) {
+      if (selectSg) {
+        if (['L형', 'U형', 'V형', '토사형', '옹벽형'].includes(lastSidegutterSpec.type)) selectSg.value = lastSidegutterSpec.type;
+        else { selectSg.value = '기타'; if (etcSg) { etcSg.style.display = 'block'; etcSg.value = lastSidegutterSpec.type; } }
+      }
+      if (widthInput) widthInput.value = lastSidegutterSpec.width || '';
+      if (heightInput) heightInput.value = lastSidegutterSpec.height || '';
+    }
+
+    var submitSg = document.getElementById('sg-form-submit');
+    if (submitSg) {
+      submitSg.addEventListener('click', function () {
+        var formData = {
+          num: document.getElementById('sg-form-num') ? document.getElementById('sg-form-num').value.trim() : '',
+          val1: (selectSg && selectSg.value === '기타' && etcSg) ? etcSg.value.trim() : (selectSg ? selectSg.value : ''),
+          val2: widthInput ? widthInput.value.trim() : '',
+          val3: heightInput ? heightInput.value.trim() : ''
+        };
+
+        if (!formData.num) { alert('사진 번호를 입력해 주세요.'); return; }
+        if (!formData.val1 || !formData.val2 || !formData.val3) {
+          alert('제원을 모두 입력해 주세요.');
+          return;
+        }
+
+        saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng);
+      });
+    }
+  } else if (pendingFacilityType === '가로등') {
     var select1 = document.getElementById('st-form-type-1');
     var select2 = document.getElementById('st-form-type-2');
     var select3 = document.getElementById('st-form-type-3');
@@ -2699,12 +2828,18 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
   if (!dxfFileFullName || !window.localStore) return;
   showLoading(true);
 
-  if (pendingFacilityType === '측구') {
-    lastSidegutterSpec = {
+  if (pendingFacilityType === '석축') {
+    lastStonewallSpec = {
       type: formData.val1,
       maxH: formData.val2,
       minH: formData.val3,
       width: formData.val4
+    };
+  } else if (pendingFacilityType === '측구') {
+    lastSidegutterSpec = {
+      type: formData.val1,
+      width: formData.val2,
+      height: formData.val3
     };
   } else {
     lastStreetlightSpec = {
@@ -2748,13 +2883,26 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
     layer: '사진번호'
   };
 
+  var specText = '';
+  var specLayer = '';
+  if (pendingFacilityType === '석축') {
+    specText = formData.val1 + '/' + formData.val2 + '/' + formData.val3 + '/' + formData.val4;
+    specLayer = '석축_T';
+  } else if (pendingFacilityType === '측구') {
+    specText = formData.val1 + '/' + formData.val2 + '*' + formData.val3;
+    specLayer = '측구_T';
+  } else {
+    specText = formData.val1 + '/' + formData.val2 + '/' + formData.val3;
+    specLayer = '가로등_T';
+  }
+
   var specTextObj = {
     id: specTextId,
     x: insertionDxf.x,
     y: insertionDxf.y,
-    text: pendingFacilityType === '측구' ? (formData.val1 + '/' + formData.val2 + '/' + formData.val3 + '/' + formData.val4) : (formData.val1 + '/' + formData.val2 + '/' + formData.val3),
+    text: specText,
     fontSize: 12,
-    layer: pendingFacilityType === '측구' ? '측구_T' : '가로등_T'
+    layer: specLayer
   };
 
   texts.push(numTextObj);
@@ -2769,7 +2917,7 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
       width: 1,
       height: 1,
       blob: blob,
-      memo: pendingFacilityType === '측구' ? ('측구 시설물 조사 (' + item.name + ')') : ('가로등 시설물 조사 (' + item.name + ')'),
+      memo: pendingFacilityType === '석축' ? ('석축 시설물 조사 (' + item.name + ')') : (pendingFacilityType === '측구' ? ('측구 시설물 조사 (' + item.name + ')') : ('가로등 시설물 조사 (' + item.name + ')')),
       fileName: generatePhotoFileName(),
       createdAt: new Date().toISOString(),
       numTextId: numTextId,

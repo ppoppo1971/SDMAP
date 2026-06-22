@@ -494,24 +494,51 @@
           <input type="text" id="photo-modal-sg-num" placeholder="사진번호 입력">
         </div>
         <div class="form-group">
-          <label>🧱 제원: 석축</label>
+          <label>🧱 제원: 종류</label>
           <select id="photo-modal-sg-type">
-            <option value="화강암">화강암</option>
+            <option value="L형">L형</option>
+            <option value="U형">U형</option>
+            <option value="V형">V형</option>
+            <option value="토사형">토사형</option>
+            <option value="옹벽형">옹벽형</option>
             <option value="기타">기타</option>
           </select>
           <input type="text" id="photo-modal-sg-type-etc" style="display:none; margin-top:5px;" placeholder="직접 입력">
         </div>
         <div class="form-group">
+          <label>↔️ 가로 (m)</label>
+          <input type="text" inputmode="decimal" pattern="[0-9]*\.?[0-9]*" id="photo-modal-sg-width" placeholder="숫자 입력 (소수점 가능)">
+        </div>
+        <div class="form-group">
+          <label>↕️ 세로 (m)</label>
+          <input type="text" inputmode="decimal" pattern="[0-9]*\.?[0-9]*" id="photo-modal-sg-height" placeholder="숫자 입력 (소수점 가능)">
+        </div>
+      </div>
+      <!-- 석축 전용 제원 조회/수정 영역 -->
+      <div id="photo-modal-stonewall-fields" style="display:none; border-top: 1px dashed #ccc; padding-top: 10px; margin-top: 10px; flex-direction: column; gap: 8px;">
+        <div class="form-group">
+          <label>🔢 사진 번호</label>
+          <input type="text" id="photo-modal-sw-num" placeholder="사진번호 입력">
+        </div>
+        <div class="form-group">
+          <label>🧱 제원: 석축</label>
+          <select id="photo-modal-sw-type">
+            <option value="화강암">화강암</option>
+            <option value="기타">기타</option>
+          </select>
+          <input type="text" id="photo-modal-sw-type-etc" style="display:none; margin-top:5px;" placeholder="직접 입력">
+        </div>
+        <div class="form-group">
           <label>📈 최대 높이 (m)</label>
-          <input type="text" inputmode="decimal" pattern="[0-9]*\.?[0-9]*" id="photo-modal-sg-max-h" placeholder="숫자 입력 (소수점 가능)">
+          <input type="text" inputmode="decimal" pattern="[0-9]*\.?[0-9]*" id="photo-modal-sw-max-h" placeholder="숫자 입력 (소수점 가능)">
         </div>
         <div class="form-group">
           <label>📉 최소 높이 (m)</label>
-          <input type="text" inputmode="decimal" pattern="[0-9]*\.?[0-9]*" id="photo-modal-sg-min-h" placeholder="숫자 입력 (소수점 가능)">
+          <input type="text" inputmode="decimal" pattern="[0-9]*\.?[0-9]*" id="photo-modal-sw-min-h" placeholder="숫자 입력 (소수점 가능)">
         </div>
         <div class="form-group">
           <label>↔️ 폭 (m)</label>
-          <input type="text" inputmode="decimal" pattern="[0-9]*\.?[0-9]*" id="photo-modal-sg-width" placeholder="숫자 입력 (소수점 가능)">
+          <input type="text" inputmode="decimal" pattern="[0-9]*\.?[0-9]*" id="photo-modal-sw-width" placeholder="숫자 입력 (소수점 가능)">
         </div>
       </div>
       <div id="photo-modal-actions" style="display:flex; gap:10px;">
