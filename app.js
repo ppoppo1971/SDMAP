@@ -1706,8 +1706,8 @@ function bindMapLongPress() {
   function showMenuAt(clientX, clientY, latLng) {
     if (!latLng) return;
     
-    // 1m 이내 가로등 시설물 및 블록 탐색 (기존 3m에서 1m로 변경)
-    var nearby = findNearbyFacilities(latLng, 1.0);
+    // 2m 이내 가로등 시설물 및 블록 탐색 (기존 1m에서 2m로 변경)
+    var nearby = findNearbyFacilities(latLng, 2.0);
     if (nearby && nearby.length > 0) {
       var dxfCoords = latLngToDxf(latLng);
       showStreetlightBottomSheet(nearby, dxfCoords, latLng);
@@ -2328,7 +2328,7 @@ function showStreetlightBottomSheet(list, dxfCoords, latLng) {
   var closeBtn = document.getElementById('bottom-sheet-close');
   if (!sheet || !content) return;
 
-  if (title) title.textContent = '📍 시설물 선택 (반경 3m 이내)';
+  if (title) title.textContent = '📍 시설물 선택 (반경 2m 이내)';
   content.innerHTML = '<p style="font-size:13px; color:#666; margin:0 0 10px 0;">사진을 추가할 가로등 시설물을 선택하세요.</p>';
 
   list.forEach(function (item) {
@@ -2512,14 +2512,22 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
     localStorage.setItem('dmap:lastPhotoNumber', formData.num);
   }
 
-  // 1. 사진 마커 및 텍스트 데이터의 삽입점은 시설물의 삽입점 사용 (Point 기하 구조인 경우)
+  // 1. 사진 마커 및 텍스트 데이터의 삽입점은 시설물의 삽입점 사용 (블록 속성 존재 시)
   var insertionDxf = dxfCoords; // 기본 터치 지점
   var feature = item.feature;
-  var geom = feature && feature.getGeometry && feature.getGeometry();
-  if (geom && geom.getType() === 'Point') {
-    var geomLatLng = geom.get();
-    var backDxf = latLngToDxf(geomLatLng);
-    if (backDxf) insertionDxf = backDxf;
+  if (feature) {
+    var bx = feature.getProperty('blockInsertX');
+    var by = feature.getProperty('blockInsertY');
+    if (bx != null && by != null) {
+      insertionDxf = { x: parseFloat(bx), y: parseFloat(by) };
+    } else {
+      var geom = feature.getGeometry && feature.getGeometry();
+      if (geom && geom.getType() === 'Point') {
+        var geomLatLng = geom.get();
+        var backDxf = latLngToDxf(geomLatLng);
+        if (backDxf) insertionDxf = backDxf;
+      }
+    }
   }
 
   var photoId = 'photo-' + Date.now();

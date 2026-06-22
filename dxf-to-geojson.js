@@ -579,6 +579,8 @@
         for (var c = 0; c < childFeatures.length; c++) {
           if (childFeatures[c].properties) {
             childFeatures[c].properties.blockName = childFeatures[c].properties.blockName || entity.name;
+            childFeatures[c].properties.blockInsertX = childFeatures[c].properties.blockInsertX != null ? childFeatures[c].properties.blockInsertX : insertPos.x;
+            childFeatures[c].properties.blockInsertY = childFeatures[c].properties.blockInsertY != null ? childFeatures[c].properties.blockInsertY : insertPos.y;
           }
           features.push(childFeatures[c]);
         }
@@ -587,6 +589,8 @@
         if (f) {
           if (!f.properties) f.properties = {};
           f.properties.blockName = entity.name;
+          f.properties.blockInsertX = insertPos.x;
+          f.properties.blockInsertY = insertPos.y;
           features.push(f);
         }
       }
