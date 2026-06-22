@@ -229,7 +229,6 @@
         <input type="file" id="local-file-input" accept=".dxf">
         <label for="folder-input" class="btn btn-secondary">폴더 선택 (DXF+이미지)</label>
         <input type="file" id="folder-input" webkitdirectory directory multiple style="display:none">
-        <button class="btn" id="file-crs-btn" type="button" style="background:#5856D6;">📐 5186</button>
       </div>
       <div id="file-list" class="file-list">
         <p class="info-text">로컬 DXF 파일을 선택하세요.</p>
@@ -261,6 +260,7 @@
 
   <!-- 배경 지도 선택 (VMAP처럼 구글·브이월드 선택) -->
   <div id="map-type-selector">
+    <div class="map-type-crs-info" style="padding: 8px 12px; font-size: 13px; font-weight: bold; border-bottom: 1px solid #eee; color: #333; text-align: center; background: #f9f9f9; border-top-left-radius: 8px; border-top-right-radius: 8px;">📐 설정된 좌표계: <span id="map-selector-crs-display" style="color:#5856D6;">EPSG:5186</span></div>
     <button type="button" data-type="none" class="active">배경 없음</button>
     <button type="button" data-type="roadmap">도로 (구글)</button>
     <button type="button" data-type="브이월드일반">도로 (브이월드)</button>
@@ -273,7 +273,6 @@
   <div class="slide-menu" id="slide-menu">
     <button class="slide-menu-item" id="menu-back-to-list">목록</button>
     <button class="slide-menu-item" id="menu-map-type">배경 지도 <span class="menu-item-sub" id="menu-map-type-crs"></span></button>
-    <button class="slide-menu-item" id="menu-crs">좌표계 <span class="menu-item-sub" id="menu-crs-current"></span></button>
     <button class="slide-menu-item" id="menu-image-size">용량조정</button>
     <button class="slide-menu-item" id="menu-export">자료 내보내기</button>
     <button class="slide-menu-item" id="menu-delete-data">자료 삭제</button>

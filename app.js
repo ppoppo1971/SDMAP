@@ -24,6 +24,9 @@ var contextMenuEl = null;
 var currentCrs = typeof localStorage !== 'undefined' ? (localStorage.getItem('dmap:crs') || 'EPSG:5186') : 'EPSG:5186';
 var longPressTimer = null;
 var longPressDuration = 400;
+var pendingLoadFile = null; // 좌표계 선택 완료 시 로드할 단일 DXF 파일
+var pendingLoadFolderFiles = null; // 좌표계 선택 완료 시 로드할 폴더 파일들
+
 
 var fileListScreen = null;
 var viewerScreen = null;
@@ -175,7 +178,11 @@ function bindUI() {
   if (localFileInput) {
     localFileInput.addEventListener('change', function (e) {
       var file = e.target && e.target.files[0];
-      if (file) loadDxfFile(file);
+      if (file) {
+        pendingLoadFile = file;
+        pendingLoadFolderFiles = null;
+        showCrsModal();
+      }
       e.target.value = '';
     });
   }
@@ -183,7 +190,11 @@ function bindUI() {
   if (folderInput) {
     folderInput.addEventListener('change', function (e) {
       var files = e.target && e.target.files;
-      if (files && files.length) loadDxfFromFolder(files);
+      if (files && files.length) {
+        pendingLoadFile = null;
+        pendingLoadFolderFiles = files;
+        showCrsModal();
+      }
       e.target.value = '';
     });
   }
@@ -275,21 +286,7 @@ function bindUI() {
   if (objVisBlue) objVisBlue.addEventListener('change', syncObjectVisibilityFromCheckboxes);
   if (objVisText) objVisText.addEventListener('change', syncObjectVisibilityFromCheckboxes);
 
-  var menuCrsBtn = document.getElementById('menu-crs');
-  if (menuCrsBtn) {
-    menuCrsBtn.addEventListener('click', function () {
-      slideMenu.classList.remove('active');
-      menuOverlay.classList.remove('active');
-      showCrsModal();
-    });
-  }
-
-  var fileCrsBtn = document.getElementById('file-crs-btn');
-  if (fileCrsBtn) {
-    fileCrsBtn.addEventListener('click', function () {
-      showCrsModal();
-    });
-  }
+  // 기존 menu-crs 및 file-crs-btn 이벤트 핸들러 제거 (HTML에서 삭제됨)
 
   var menuConsoleBtn = document.getElementById('menu-console');
   if (menuConsoleBtn) {
@@ -1063,6 +1060,9 @@ function showCrsModal() {
 function hideCrsModal() {
   var modal = document.getElementById('crs-modal');
   if (modal) modal.classList.remove('active');
+  // 취소 시 대기 중인 파일 로드 정보 초기화
+  pendingLoadFile = null;
+  pendingLoadFolderFiles = null;
 }
 
 function bindCrsModal() {
@@ -1081,8 +1081,17 @@ function changeCrs(newCrs) {
     window.DxfToGeoJSON.setCrs(newCrs);
   }
   updateCrsDisplay();
-  // 도면이 로드된 상태면 새 좌표계로 다시 렌더링
-  if (dxfData) {
+  
+  if (pendingLoadFile) {
+    var file = pendingLoadFile;
+    pendingLoadFile = null;
+    loadDxfFile(file);
+  } else if (pendingLoadFolderFiles) {
+    var files = pendingLoadFolderFiles;
+    pendingLoadFolderFiles = null;
+    loadDxfFromFolder(files);
+  } else if (dxfData) {
+    // 도면이 이미 로드된 상태면 새 좌표계로 다시 렌더링
     applyDxfToMap();
     drawPhotoMarkers();
     drawTextMarkers();
@@ -1093,11 +1102,14 @@ function changeCrs(newCrs) {
 
 function updateCrsDisplay() {
   var code = currentCrs || 'EPSG:5186';
-  var shortCode = code.replace('EPSG:', '');
-  var menuEl = document.getElementById('menu-crs-current');
-  if (menuEl) menuEl.textContent = '(' + code + ')';
-  var fileBtn = document.getElementById('file-crs-btn');
-  if (fileBtn) fileBtn.textContent = '📐 ' + shortCode;
+  var selectorCrsDisplay = document.getElementById('map-selector-crs-display');
+  if (selectorCrsDisplay) {
+    selectorCrsDisplay.textContent = code;
+  }
+  var menuMapTypeCrs = document.getElementById('menu-map-type-crs');
+  if (menuMapTypeCrs) {
+    menuMapTypeCrs.textContent = '(' + code + ')';
+  }
 }
 
 function buildConsoleReport() {
