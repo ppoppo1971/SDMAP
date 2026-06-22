@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<!--
+  new_dmap - 지도 엔진 기반 DXF 도면 뷰어
+  ADMAP 기능 유지 + Google Maps 렌더링 (VMAP 참조)
+  배경 기본 없음, 사용자 선택 가능
+-->
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>new_dmap - 도면 뷰어</title>
+  <style>
+    /* 구글 지도 하단 UI (단축키, 로고, 저작권, 약관 등) 강제 숨김 */
+    .gmnoprint, .gm-style-cc { display: none !important; }
+    a[href^="https://maps.google.com/maps"], a[href^="http://maps.google.com/maps"], a[title="Click to see this area on Google Maps"] { display: none !important; }
+    button[aria-label="Keyboard shortcuts"], button[aria-label="키보드 단축키"], button[title="Keyboard shortcuts"], button[title="키보드 단축키"] { display: none !important; }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      position: fixed;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f5f5f5;
+    }
+    .app-container { display: flex; flex-direction: column; height: 100vh; }
+    .screen { display: flex; flex-direction: column; height: 100vh; }
+    .screen.hidden { display: none; }
+    /* VMAP 참고: 뷰어가 숨겨져 있어도 #map이 크기를 유지하도록 (지도 타일 로드 위해) */
+    #viewer-screen.hidden {
+      display: flex !important;
+      visibility: hidden;
+      pointer-events: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 0;
+    }
+    #file-list-screen { position: relative; z-index: 1; }
+    .screen-header { padding: 20px; background: white; border-bottom: 1px solid #e0e0e0; }
+    .screen-header h2 { font-size: 20px; margin: 0; }
+    .file-list-actions { padding: 15px; background: white; display: flex; gap: 10px; border-bottom: 1px solid #e0e0e0; }
+    .btn {
+      padding: 10px 15px; border: none; border-radius: 8px; background: #007AFF; color: white;
+      font-size: 14px; cursor: pointer; white-space: nowrap; touch-action: manipulation;
+      user-select: none; -webkit-user-select: none;
+    }
+    .btn:active { background: #0051D5; transform: scale(0.96); }
+    .btn-secondary { background: #34C759; }
+    .file-list {
+      flex: 1; overflow-y: auto; padding: 15px; background: #f5f5f5;
+      -webkit-overflow-scrolling: touch;
+    }
+    .file-item {
+      background: white; padding: 15px; margin-bottom: 10px; border-radius: 12px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer;
+    }
+    .file-item:active { transform: scale(0.97); }
+    .file-item-name { font-size: 16px; font-weight: 600; color: #007AFF; margin-bottom: 5px; }
+    .info-text { text-align: center; color: #999; padding: 40px 20px; font-size: 15px; }
+    input[type="file"] { display: none; }
+
+    /* 뷰어: 지도 전체 화면 */
+    #viewer-screen .map-container { flex: 1; position: relative; overflow: hidden; }
+    #map { width: 100%; height: 100%; min-height: 100%; touch-action: manipulation; }
+    #viewer-ui { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 10; }
+    #viewer-ui.hidden { display: none; }
+    #viewer-ui > * { pointer-events: auto; }
+    .file-name-display {
+      position: fixed; top: 10px; left: 50%; transform: translateX(-50%); color: #007AFF;
+      font-size: 12px; font-weight: 600; z-index: 11; pointer-events: none;
+      max-width: 80vw; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      text-shadow: 0 0 3px white, 0 0 5px white;
+    }
+    .hamburger-btn {
+      position: fixed; top: 20px; right: 20px; z-index: 12;
+      background: transparent;
+      color: #8e24aa;
+      border: none;
+      border-radius: 50%;
+      width: 45px;
+      height: 45px;
+      font-size: 1.5rem;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      -webkit-tap-highlight-color: transparent;
+      transition: all 0.2s ease;
+    }
+    .hamburger-btn:active {
+      transform: scale(0.95);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      background: rgba(142, 36, 170, 0.1);
+    }
+    .zoom-controls-fixed { position: fixed; bottom: 20px; left: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 12; }
+    .zoom-btn {
+      background: transparent;
+      color: #8e24aa;
+      border: none;
+      border-radius: 50%;
+      width: 45px;
+      height: 45px;
+      font-size: 1.5rem;
+      font-weight: 300;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      -webkit-tap-highlight-color: transparent;
+      transition: all 0.2s ease;
+    }
+    .zoom-btn:active {
+      transform: scale(0.95);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      background: rgba(142, 36, 170, 0.1);
+    }
+    .scale-wrapper {
+      position: fixed; bottom: 20px; right: 20px; z-index: 12;
+      display: inline-block;
+    }
+    .scale-display {
+      background: rgba(0,0,0,0.45); color: white;
+      padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: bold;
+      display: inline-block;
+    }
+    .current-location-btn {
+      position: absolute; bottom: calc(100% + 25px); left: 50%;
+      transform: translateX(-50%);
+      background: transparent;
+      color: #8e24aa;
+      border: none;
+      border-radius: 50%;
+      width: 45px;
+      height: 45px;
+      font-size: 1.3rem;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      -webkit-tap-highlight-color: transparent;
+      transition: all 0.2s ease;
+    }
+    .current-location-btn:active {
+      transform: translateX(-50%) scale(0.95);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      background: rgba(142, 36, 170, 0.1);
+    }
+    /* vConsole 플로팅 배지 숨김: 콘솔은 햄버거 메뉴 > 콘솔로만 열기 */
+    .vc-switch { display: none !important; }
+    .slide-menu {
+      position: fixed; top: 0; right: -300px; width: 250px; height: 100vh; background: white;
+      box-shadow: -4px 0 12px rgba(0,0,0,0.3); z-index: 1001; transition: right 0.3s ease-out; padding-top: 80px;
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
+    }
+    .slide-menu.active { right: 0; }
+    .slide-menu-item {
+      display: flex; align-items: center; width: 100%; padding: 20px 25px; border: none;
+      background: white; font-size: 18px; text-align: left; cursor: pointer;
+      border-bottom: 1px solid #e0e0e0; user-select: none;
+    }
+    .slide-menu-item:active { background: #f0f0f0; }
+    .slide-menu-item .menu-item-sub { font-size: 0.75em; color: #888; font-weight: normal; margin-left: 4px; }
+    .menu-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; }
+    .menu-overlay.active { display: block; }
+    .loading {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: white; padding: 20px 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      z-index: 2000; display: none;
+    }
+    .loading.active { display: block; }
+    .spinner {
+      border: 3px solid #f3f3f3; border-top: 3px solid #007AFF; border-radius: 50%;
+      width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 10px;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    #map-type-selector {
+      position: fixed; top: 70px; right: 20px; z-index: 12; background: white; border-radius: 12px;
+      padding: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: none;
+    }
+    #map-type-selector.show { display: block; }
+    #map-type-selector button { display: block; width: 100%; padding: 10px; margin-bottom: 6px; text-align: left; border: none; background: #f5f5f5; border-radius: 8px; cursor: pointer; }
+    #map-type-selector button:last-child { margin-bottom: 0; }
+    #map-type-selector button:active { background: #e0e0e0; }
+    #map-type-selector button.active { background: #007AFF; color: white; }
+
+    .context-menu {
+      display: none; position: fixed; background: white; border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 1002; overflow: hidden; min-width: 200px;
+    }
+    .context-menu.active { display: block; }
+    .context-menu-item {
+      display: block; width: 100%; padding: 16px 20px; border: none; background: white;
+      font-size: 16px; text-align: left; cursor: pointer; border-top: 1px solid #eee;
+    }
+    .context-menu-item:first-child { border-top: none; }
+    .context-menu-item:active { background: #f0f0f0; }
+    .modal {
+      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5); z-index: 1003; justify-content: center; align-items: center;
+    }
+    .modal.active { display: flex; }
+    .modal-content { background: white; border-radius: 12px; padding: 20px; width: 90%; max-width: 420px; max-height: 85vh; overflow-y: auto; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .modal-header h3 { margin: 0; font-size: 18px; }
+    .close-btn { font-size: 24px; color: #999; cursor: pointer; line-height: 1; }
+    .btn-delete { background: #FF3B30; color: white; }
+    .btn-delete:active { background: #C60B00; }
+    .btn-cancel { background: #e0e0e0; color: #333; }
+    .btn-cancel:active { background: #ccc; }
+    .info-box { background: #E3F2FD; padding: 12px; border-radius: 8px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <!-- 파일 선택 화면 -->
+    <div id="file-list-screen" class="screen">
+      <div class="screen-header"><h2>DXF 도면 선택</h2></div>
+      <div class="file-list-actions">
+        <label for="local-file-input" class="btn btn-secondary">로컬 DXF 선택</label>
+        <input type="file" id="local-file-input" accept=".dxf">
+        <label for="folder-input" class="btn btn-secondary">폴더 선택 (DXF+이미지)</label>
+        <input type="file" id="folder-input" webkitdirectory directory multiple style="display:none">
+        <button class="btn" id="file-crs-btn" type="button" style="background:#5856D6;">📐 5186</button>
+      </div>
+      <div id="file-list" class="file-list">
+        <p class="info-text">로컬 DXF 파일을 선택하세요.</p>
+      </div>
+    </div>
+
+    <!-- 도면 뷰어 화면 (지도 엔진) -->
+    <div id="viewer-screen" class="screen hidden">
+      <div class="map-container">
+        <div id="map"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 뷰어 UI -->
+  <div id="viewer-ui" class="hidden">
+    <div class="file-name-display" id="file-name-display"><span id="file-name-text">도면 로딩 중...</span></div>
+    <button class="hamburger-btn" id="hamburger-btn" type="button">☰</button>
+    <div class="zoom-controls-fixed">
+      <button class="zoom-btn" id="zoom-fit" type="button" title="전체보기">⊡</button>
+      <button class="zoom-btn" id="zoom-in" type="button">+</button>
+      <button class="zoom-btn" id="zoom-out" type="button">−</button>
+    </div>
+    <div class="scale-wrapper">
+      <button class="current-location-btn" id="current-location-btn" type="button" title="현재 위치">📌</button>
+      <div class="scale-display" id="scale-display">—</div>
+    </div>
+  </div>
+
+  <!-- 배경 지도 선택 (VMAP처럼 구글·브이월드 선택) -->
+  <div id="map-type-selector">
+    <button type="button" data-type="none" class="active">배경 없음</button>
+    <button type="button" data-type="roadmap">도로 (구글)</button>
+    <button type="button" data-type="브이월드일반">도로 (브이월드)</button>
+    <button type="button" data-type="satellite">위성 (구글)</button>
+    <button type="button" data-type="브이월드영상">위성 (브이월드)</button>
+    <button type="button" data-type="hybrid">하이브리드</button>
+  </div>
+
+  <!-- 슬라이드 메뉴 -->
+  <div class="slide-menu" id="slide-menu">
+    <button class="slide-menu-item" id="menu-back-to-list">목록</button>
+    <button class="slide-menu-item" id="menu-map-type">배경 지도 <span class="menu-item-sub" id="menu-map-type-crs"></span></button>
+    <button class="slide-menu-item" id="menu-crs">좌표계 <span class="menu-item-sub" id="menu-crs-current"></span></button>
+    <button class="slide-menu-item" id="menu-image-size">용량조정</button>
+    <button class="slide-menu-item" id="menu-export">자료 내보내기</button>
+    <button class="slide-menu-item" id="menu-delete-data">자료 삭제</button>
+    <button class="slide-menu-item" id="menu-toggle-object-visibility">
+      <span class="object-visibility-label">객체 숨기기</span>
+    </button>
+    <button class="slide-menu-item" id="menu-console">콘솔</button>
+  </div>
+  <div class="menu-overlay" id="menu-overlay"></div>
+
+  <!-- 객체 표시/숨김 모달 (빨간원·파란원·문자) -->
+  <div class="modal" id="object-visibility-modal">
+    <div class="modal-content" style="max-width:320px;">
+      <div class="modal-header">
+        <h3>👁 객체 표시</h3>
+        <span class="close-btn" id="object-visibility-close">&times;</span>
+      </div>
+      <p style="margin-bottom:12px; font-size:14px; color:#666;">표시할 객체를 선택하세요.</p>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+          <input type="checkbox" id="obj-vis-red" checked>
+          <span>빨간원 (촬영 사진)</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+          <input type="checkbox" id="obj-vis-blue" checked>
+          <span>파란원 (참조 이미지)</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+          <input type="checkbox" id="obj-vis-text" checked>
+          <span>문자 (DXF 텍스트)</span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- 내보내기 방식 선택 모달 (ADMAP과 동일) -->
+  <div class="modal" id="export-method-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>📦 내보내기 방식 선택</h3>
+        <span class="close-btn" id="export-method-close">&times;</span>
+      </div>
+      <div class="info-box" id="export-info-box">사진 0장, 총 0MB</div>
+      <div style="display:flex; flex-direction:column; gap:12px; margin:15px 0;">
+        <button type="button" class="btn" id="export-zip-btn" style="background:#007AFF; text-align:left; padding:15px;">
+          <strong>📁 ZIP 파일</strong><br>
+          <span style="font-size:12px; opacity:0.8;">하나의 압축 파일로 다운로드 (소용량 권장)</span>
+        </button>
+        <button type="button" class="btn btn-secondary" id="export-individual-btn" style="text-align:left; padding:15px;">
+          <strong>📷 개별 다운로드</strong><br>
+          <span style="font-size:12px; opacity:0.8;">파일을 하나씩 순차 다운로드 (대용량·안정성 권장)</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 자료 삭제 모달 (현재 도면의 모든 데이터 일괄 삭제) -->
+  <div class="modal" id="delete-data-modal">
+    <div class="modal-content" style="max-width:360px;">
+      <div class="modal-header">
+        <h3>🧹 자료 삭제</h3>
+        <span class="close-btn" id="delete-data-close">&times;</span>
+      </div>
+      <div class="info-box" style="margin-bottom:20px;">
+        현재 도면과 매핑된 <strong>모든 데이터(사진, 메모, 텍스트)</strong>를 로컬에서 일괄 삭제합니다.<br>삭제 후 복구할 수 없습니다.
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button type="button" class="btn btn-cancel" id="delete-data-cancel">취소</button>
+        <button type="button" class="btn" id="delete-data-confirm" style="background:#FF3B30;">일괄 삭제</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <div>처리 중...</div>
+  </div>
+
+  <!-- 롱프레스 컨텍스트 메뉴 -->
+  <div class="context-menu" id="context-menu">
+    <button type="button" class="context-menu-item" id="camera-btn">📷 사진 촬영</button>
+    <button type="button" class="context-menu-item" id="text-btn">📝 텍스트 입력</button>
+  </div>
+  <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none">
+
+  <!-- 사진 보기 모달 (촬영 사진 + DXF 참조 이미지 공용) -->
+  <div class="modal" id="photo-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="photo-modal-title">📷 사진</h3>
+        <span class="close-btn" id="photo-modal-close">&times;</span>
+      </div>
+      <div class="photo-view-wrap"><img id="photo-modal-img" alt="사진" style="max-width:100%; max-height:50vh;"></div>
+      <div id="photo-modal-no-file" style="display:none; padding:12px; color:#666;">이미지 파일을 찾을 수 없습니다. DXF와 같은 폴더를 선택하세요.</div>
+      <textarea id="photo-modal-memo" placeholder="메모" style="width:100%; min-height:60px; margin:10px 0;"></textarea>
+      <div id="photo-modal-actions" style="display:flex; gap:10px;">
+        <button type="button" class="btn" id="photo-modal-save">저장</button>
+        <button type="button" class="btn btn-delete" id="photo-modal-delete">삭제</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 용량 조정 모달 (ADMAP 참조) -->
+  <div class="modal" id="image-size-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>📏 사진 용량 조정</h3>
+        <span class="close-btn" id="image-size-close">&times;</span>
+      </div>
+      <div class="info-box" style="margin-bottom:16px;">
+        <strong>현재 설정:</strong> <span id="current-size-display">2MB</span>
+        <br><br>
+        사진을 추가할 때 선택한 용량으로 자동 압축됩니다.
+      </div>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <button type="button" class="btn size-opt" id="size-500kb" data-size="500KB" style="background:#007AFF; text-align:left; padding:12px;">
+          <strong>500KB</strong> (권장)<br><span style="font-size:12px; opacity:0.9;">빠른 업로드, 적은 저장 공간</span>
+        </button>
+        <button type="button" class="btn size-opt" id="size-1mb" data-size="1MB" style="background:#34C759; text-align:left; padding:12px;">
+          <strong>1MB</strong><br><span style="font-size:12px; opacity:0.9;">더 나은 화질, 중간 용량</span>
+        </button>
+        <button type="button" class="btn size-opt" id="size-2mb" data-size="2MB" style="background:#5856D6; text-align:left; padding:12px;">
+          <strong>2MB</strong><br><span style="font-size:12px; opacity:0.9;">고화질, 큰 용량</span>
+        </button>
+        <button type="button" class="btn size-opt" id="size-original" data-size="original" style="background:#FF9500; text-align:left; padding:12px;">
+          <strong>원본</strong><br><span style="font-size:12px; opacity:0.9;">최고 화질, 압축 없음</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 좌표계 선택 모달 -->
+  <div class="modal" id="crs-modal">
+    <div class="modal-content" style="max-width:320px;">
+      <div class="modal-header">
+        <h3>📐 좌표계 선택</h3>
+        <span class="close-btn" id="crs-modal-close">&times;</span>
+      </div>
+      <p style="margin-bottom:12px; font-size:14px; color:#666;">도면의 좌표계를 선택하세요.</p>
+      <div id="crs-options-container" style="display:flex; flex-direction:column; gap:10px;"></div>
+    </div>
+  </div>
+  <!-- DXF 문자 보기 모달 (간단, 모달 외 터치 시 닫힘) -->
+  <div class="modal" id="dxf-text-modal">
+    <div class="modal-content" style="max-width:320px;">
+      <div class="modal-header">
+        <h3>문자</h3>
+        <span class="close-btn" id="dxf-text-modal-close">&times;</span>
+      </div>
+      <div id="dxf-text-modal-body" style="padding:8px 0; word-break:break-all; max-height:40vh; overflow-y:auto;"></div>
+    </div>
+  </div>
+
+  <!-- 진단 콘솔 모달 (DXF 문자/Point 등 내부 상태 확인용) -->
+  <div class="modal" id="console-modal">
+    <div class="modal-content" style="max-width:480px; max-height:70vh; overflow-y:auto;">
+      <div class="modal-header">
+        <h3>콘솔</h3>
+        <span class="close-btn" id="console-modal-close">&times;</span>
+      </div>
+      <pre id="console-modal-body" style="white-space:pre-wrap; word-break:break-all; font-size:12px; font-family:SFMono-Regular,Menlo,Monaco,Consolas,'Liberation Mono','Courier New',monospace;"></pre>
+    </div>
+  </div>
+
+  <!-- 텍스트 입력/편집 모달 -->
+  <div class="modal" id="text-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="text-modal-title">📝 텍스트 입력</h3>
+        <span class="close-btn" id="text-modal-close">&times;</span>
+      </div>
+      <textarea id="text-modal-input" placeholder="텍스트 입력" style="width:100%; min-height:80px;"></textarea>
+      <div style="display:flex; gap:10px; margin-top:10px;">
+        <button type="button" class="btn" id="text-modal-save">저장</button>
+        <button type="button" class="btn btn-delete" id="text-modal-delete" style="display:none;">삭제</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <!-- 좌표계 변환: DXF 평면직각좌표(EPSG) → WGS84 (config.DXF_CRS 사용 시) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+  <script src="local-storage.js"></script>
+  <!-- DXF 파서: 로컬 libs (오프라인용). 없으면 npm run copy-libs 또는 ADMAP-main/libs에서 복사 -->
+  <script src="libs/dxf-parser.min.js"></script>
+  <script src="dxf-to-geojson.js"></script>
+  <!-- 사진 마커 클러스터링 (200~300장 대응) -->
+  <script src="https://unpkg.com/@googlemaps/markerclusterer@2.5.3/dist/index.min.js"></script>
+  <script src="app.js"></script>
+  <script>
+    (function() {
+      var key = window.DMAP_CONFIG && window.DMAP_CONFIG.GMAPS_API_KEY;
+      if (!key) { console.error('DMAP_CONFIG.GMAPS_API_KEY 없음'); return; }
+      var s = document.createElement('script');
+      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + key + '&libraries=geometry&callback=initMap&loading=async';
+      s.async = true; s.defer = true;
+      document.head.appendChild(s);
+    })();
+  </script>
+  <!-- vConsole: URL에 ?debug=1 파라미터가 있을 때만 로드 (배터리·메모리 절감) -->
+  <script>
+    (function() {
+      if (new URLSearchParams(window.location.search).get('debug') !== '1') return;
+      var s = document.createElement('script');
+      s.src = 'https://unpkg.com/vconsole@latest/dist/vconsole.min.js';
+      s.onload = function() {
+        if (typeof window.VConsole === 'undefined') return;
+        var vConsole = new window.VConsole({
+          defaultPlugins: ['system', 'network', 'element', 'storage'],
+          maxLogNumber: 1000,
+          theme: 'dark',
+          onReady: function() {
+            console.log('📱 vConsole 준비됨 (햄버거 메뉴 > 콘솔에서 열기)');
+          }
+        });
+        window.vConsole = vConsole;
+      };
+      document.head.appendChild(s);
+    })();
+  </script>
+</body>
+</html>
