@@ -546,7 +546,7 @@
       if (!bp2) return [];
       var sc2 = getEntityColor(entity, dxfData);
       var text2 = entity.text || entity.value || entity.string || '';
-      return [{ type: 'Feature', geometry: { type: 'Point', coordinates: bp2 }, properties: { layer: entity.layer || '', text: String(text2).trim(), strokeColor: sc2 } }];
+      return [{ type: 'Feature', geometry: { type: 'Point', coordinates: bp2 }, properties: { layer: entity.layer || '', text: String(text2).trim(), strokeColor: sc2, blockName: entity.name } }];
     }
 
     var insertPos = entityPos;
@@ -576,10 +576,19 @@
       var bt = String(child.type).toUpperCase();
       if (bt === 'INSERT') {
         var childFeatures = insertToFeatures(child, dxfData, compositeTf);
-        for (var c = 0; c < childFeatures.length; c++) features.push(childFeatures[c]);
+        for (var c = 0; c < childFeatures.length; c++) {
+          if (childFeatures[c].properties) {
+            childFeatures[c].properties.blockName = childFeatures[c].properties.blockName || entity.name;
+          }
+          features.push(childFeatures[c]);
+        }
       } else {
         var f = blockEntityToFeature(child, compositeTf, dxfData);
-        if (f) features.push(f);
+        if (f) {
+          if (!f.properties) f.properties = {};
+          f.properties.blockName = entity.name;
+          features.push(f);
+        }
       }
     }
     return features;
