@@ -1603,6 +1603,7 @@ function drawTextMarkers() {
 
     var self = this;
     this.textsArr.forEach(function (t) {
+      if (t.layer === '사진번호' || t.layer === '가로등_T') return;
       var pos = dxfToLatLng(t.x, t.y);
       if (!pos) return;
       var span = document.createElement('span');
