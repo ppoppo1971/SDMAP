@@ -2721,7 +2721,6 @@ function findNearbyFacilities(latLng, maxDistM) {
       var bx = feature.getProperty('blockInsertX');
       var by = feature.getProperty('blockInsertY');
       
-      // 중복 방지 조건 강화: 동일 블록 좌표(blockInsertX, Y)가 같거나 동일 피처 ID인 경우 중복 제거
       var already = list.some(function (x) {
         if (bx != null && by != null && x.bx != null && x.by != null) {
           return Math.abs(x.bx - bx) < 0.01 && Math.abs(x.by - by) < 0.01;
@@ -2736,7 +2735,7 @@ function findNearbyFacilities(latLng, maxDistM) {
           blockName: blockName,
           distance: dist,
           feature: feature,
-          coord: coords[0] || latLng, // 최인접 선상 좌표 대입
+          coord: coords[0] || latLng, 
           bx: bx != null ? parseFloat(bx) : null,
           by: by != null ? parseFloat(by) : null
         });
@@ -2802,7 +2801,7 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
   var title = document.getElementById('bottom-sheet-title');
   if (!content) return;
 
-  var typeText = pendingFacilityType === '측구' ? '측구' : '가로등';
+  var typeText = pendingFacilityType || '시설물';
   if (title) title.textContent = '📐 ' + typeText + ' 제원 입력';
   content.innerHTML = '';
 
@@ -2824,14 +2823,13 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
 
   var html = '';
   if (pendingFacilityType === '석축') {
-    // 석축 폼 마크업
     html = 
       '<div class="form-group">' +
       '  <label>🔢 사진 번호 (직접 입력/수정 가능)</label>' +
       '  <input type="text" id="sw-form-num" value="' + nextPhotoNum + '" placeholder="예: 100">' +
       '</div>' +
       '<div class="form-group">' +
-      '  <label>🧱 제원: 석축</label>' +
+      '  <label>🧱 종류: 석축 (화강암, 기타)</label>' +
       '  <select id="sw-form-type">' +
       '    <option value="화강암">화강암</option>' +
       '    <option value="기타">기타</option>' +
@@ -2852,14 +2850,13 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
       '</div>' +
       '<button type="button" class="btn" id="sw-form-submit" style="background:#34C759; margin-top:10px; width:100%; padding:12px; font-weight:bold;">제원 저장</button>';
   } else if (pendingFacilityType === '옹벽') {
-    // 옹벽 폼 마크업
     html = 
       '<div class="form-group">' +
       '  <label>🔢 사진 번호 (직접 입력/수정 가능)</label>' +
       '  <input type="text" id="rw-form-num" value="' + nextPhotoNum + '" placeholder="예: 100">' +
       '</div>' +
       '<div class="form-group">' +
-      '  <label>🧱 제원: 옹벽 종류</label>' +
+      '  <label>🧱 종류: 옹벽 (중력식, 반중력식, 보강토, 기타)</label>' +
       '  <select id="rw-form-type">' +
       '    <option value="중력식">중력식</option>' +
       '    <option value="반중력식">반중력식</option>' +
@@ -2882,7 +2879,6 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
       '</div>' +
       '<button type="button" class="btn" id="rw-form-submit" style="background:#34C759; margin-top:10px; width:100%; padding:12px; font-weight:bold;">제원 저장</button>';
   } else if (pendingFacilityType === '절개면' || pendingFacilityType === '성토면') {
-    // 절개면/성토면(사면) 폼 마크업
     var titleText = pendingFacilityType === '성토면' ? '성토면' : '절개면';
     html = 
       '<div class="form-group">' +
@@ -2890,7 +2886,7 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
       '  <input type="text" id="slp-form-num" value="' + nextPhotoNum + '" placeholder="예: 100">' +
       '</div>' +
       '<div class="form-group">' +
-      '  <label>🧱 제원: ' + titleText + ' 종류</label>' +
+      '  <label>🧱 종류: ' + titleText + ' (흙, 암사면, 혼합사면, 기타)</label>' +
       '  <select id="slp-form-type">' +
       '    <option value="흙">흙</option>' +
       '    <option value="암사면">암사면</option>' +
@@ -2913,7 +2909,6 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
       '</div>' +
       '<button type="button" class="btn" id="slp-form-submit" style="background:#34C759; margin-top:10px; width:100%; padding:12px; font-weight:bold;">제원 저장</button>';
   } else if (pendingFacilityType === '배수암거') {
-    // 배수암거 폼 마크업
     html = 
       '<div class="form-group">' +
       '  <label>🔢 사진 번호 (직접 입력/수정 가능)</label>' +
@@ -2928,7 +2923,7 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
       '  <input type="text" inputmode="decimal" pattern="[0-9]*\\.?[0-9]*" id="bc-form-height" placeholder="세로 입력 (숫자)">' +
       '</div>' +
       '<div class="form-group">' +
-      '  <label>🧱 제원: 재질</label>' +
+      '  <label>🧱 종류: 재질 (콘크리트, 기타)</label>' +
       '  <select id="bc-form-type">' +
       '    <option value="콘크리트">콘크리트</option>' +
       '    <option value="기타">기타</option>' +
@@ -2945,7 +2940,6 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
       '</div>' +
       '<button type="button" class="btn" id="bc-form-submit" style="background:#34C759; margin-top:10px; width:100%; padding:12px; font-weight:bold;">제원 저장</button>';
   } else if (pendingFacilityType === '배수관') {
-    // 배수관 폼 마크업
     html = 
       '<div class="form-group">' +
       '  <label>🔢 사진 번호 (직접 입력/수정 가능)</label>' +
@@ -2956,7 +2950,7 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
       '  <input type="text" inputmode="decimal" pattern="[0-9]*" id="pc-form-spec" placeholder="규격 입력 (숫자)">' +
       '</div>' +
       '<div class="form-group">' +
-      '  <label>🧱 제원: 종류</label>' +
+      '  <label>🧱 종류: 재질 (흄관, PE, PVC, CSP, 기타)</label>' +
       '  <select id="pc-form-type">' +
       '    <option value="흄관">흄관</option>' +
       '    <option value="PE">PE</option>' +
@@ -2976,14 +2970,13 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
       '</div>' +
       '<button type="button" class="btn" id="pc-form-submit" style="background:#34C759; margin-top:10px; width:100%; padding:12px; font-weight:bold;">제원 저장</button>';
   } else if (pendingFacilityType === '측구') {
-    // 측구 폼 마크업
     html = 
       '<div class="form-group">' +
       '  <label>🔢 사진 번호 (직접 입력/수정 가능)</label>' +
       '  <input type="text" id="sg-form-num" value="' + nextPhotoNum + '" placeholder="예: 100">' +
       '</div>' +
       '<div class="form-group">' +
-      '  <label>🧱 제원: 종류</label>' +
+      '  <label>🧱 종류: 측구 (L형, U형, V형, 토사형, 옹벽형, 기타)</label>' +
       '  <select id="sg-form-type">' +
       '    <option value="L형">L형</option>' +
       '    <option value="U형">U형</option>' +
@@ -3004,7 +2997,6 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
       '</div>' +
       '<button type="button" class="btn" id="sg-form-submit" style="background:#34C759; margin-top:10px; width:100%; padding:12px; font-weight:bold;">제원 저장</button>';
   } else if (pendingFacilityType === '가로등') {
-    // 가로등 폼 마크업
     html = 
       '<div class="form-group">' +
       '  <label>🔢 사진 번호 (직접 입력/수정 가능)</label>' +
@@ -3270,65 +3262,6 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
       });
     }
   } else if (pendingFacilityType === '측구') {
-    // 측구 폼 마크업
-    html = 
-      '<div class="form-group">' +
-      '  <label>🔢 사진 번호 (직접 입력/수정 가능)</label>' +
-      '  <input type="text" id="sg-form-num" value="' + nextPhotoNum + '" placeholder="예: 100">' +
-      '</div>' +
-      '<div class="form-group">' +
-      '  <label>🧱 제원: 종류</label>' +
-      '  <select id="sg-form-type">' +
-      '    <option value="L형">L형</option>' +
-      '    <option value="U형">U형</option>' +
-      '    <option value="V형">V형</option>' +
-      '    <option value="토사형">토사형</option>' +
-      '    <option value="옹벽형">옹벽형</option>' +
-      '    <option value="기타">기타</option>' +
-      '  </select>' +
-      '  <input type="text" id="sg-form-type-etc" style="display:none; margin-top:5px;" placeholder="직접 입력">' +
-      '</div>' +
-      '<div class="form-group">' +
-      '  <label>↔️ 가로 (m)</label>' +
-      '  <input type="text" inputmode="decimal" pattern="[0-9]*\\.?[0-9]*" id="sg-form-width" placeholder="숫자 입력 (소수점 가능)">' +
-      '</div>' +
-      '<div class="form-group">' +
-      '  <label>↕️ 세로 (m)</label>' +
-      '  <input type="text" inputmode="decimal" pattern="[0-9]*\\.?[0-9]*" id="sg-form-height" placeholder="숫자 입력 (소수점 가능)">' +
-      '</div>' +
-      '<button type="button" class="btn" id="sg-form-submit" style="background:#34C759; margin-top:10px; width:100%; padding:12px; font-weight:bold;">제원 저장</button>';
-  } else if (pendingFacilityType === '가로등') {
-    // 가로등 폼 마크업
-    html = 
-      '<div class="form-group">' +
-      '  <label>🔢 사진 번호 (직접 입력/수정 가능)</label>' +
-      '  <input type="text" id="st-form-num" value="' + nextPhotoNum + '" placeholder="예: 100">' +
-      '</div>' +
-      '<div class="form-group">' +
-      '  <label>📐 제원: 기본</label>' +
-      '  <select id="st-form-type-1">' +
-      '    <option value="기본">기본</option>' +
-      '    <option value="2등형">2등형</option>' +
-      '    <option value="기타">기타</option>' +
-      '  </select>' +
-      '  <input type="text" id="st-form-type-1-etc" style="display:none; margin-top:5px;" placeholder="직접 입력">' +
-      '</div>' +
-      '<div class="form-group">' +
-      '  <label>🛠️ 제원: 강관</label>' +
-      '  <select id="st-form-type-2">' +
-      '    <option value="강관">강관</option>' +
-      '    <option value="강판">강판</option>' +
-      '    <option value="기타">기타</option>' +
-      '  </select>' +
-      '  <input type="text" id="st-form-type-2-etc" style="display:none; margin-top:5px;" placeholder="직접 입력">' +
-      '</div>' +
-      '<div class="form-group">' +
-      '  <label>🔢 제원: 수량/높이</label>' +
-      '  <select id="st-form-type-3">' +
-      '    <option value="1">1</option>' +
-      '    <option value="2">2</option>' +
-      '    <option value="3">3</option>' +
-      '    <option value="4">4</option>' +
       '    <option value="기타">기타</option>' +
       '  </select>' +
       '  <input type="text" id="st-form-type-3-etc" style="display:none; margin-top:5px;" placeholder="직접 입력">' +
