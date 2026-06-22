@@ -2343,6 +2343,42 @@ function detectFacilityType(name, layer) {
   return isGutter ? '측구' : '가로등';
 }
 
+// 점(P)과 선분(A-B) 사이의 최단 미터 거리 계산 헬퍼 함수
+function getDistanceToSegmentM(p, a, b) {
+  var lat1 = typeof a.lat === 'function' ? a.lat() : a.lat;
+  var lng1 = typeof a.lng === 'function' ? a.lng() : a.lng;
+  var lat2 = typeof b.lat === 'function' ? b.lat() : b.lat;
+  var lng2 = typeof b.lng === 'function' ? b.lng() : b.lng;
+  var latP = typeof p.lat === 'function' ? p.lat() : p.lat;
+  var lngP = typeof p.lng === 'function' ? p.lng() : p.lng;
+
+  var latRad = (latP * Math.PI) / 180;
+  var metersPerDegLat = 111320;
+  var metersPerDegLng = 111320 * Math.cos(latRad);
+
+  var ax = lng1 * metersPerDegLng;
+  var ay = lat1 * metersPerDegLat;
+  var bx = lng2 * metersPerDegLng;
+  var by = lat2 * metersPerDegLat;
+  var px = lngP * metersPerDegLng;
+  var py = latP * metersPerDegLat;
+
+  var dx = bx - ax;
+  var dy = by - ay;
+  if (dx === 0 && dy === 0) {
+    return getLatLngDistanceM(p, a);
+  }
+
+  var t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy);
+  t = Math.max(0, Math.min(1, t));
+
+  var closestLng = (ax + t * dx) / metersPerDegLng;
+  var closestLat = (ay + t * dy) / metersPerDegLat;
+  var closestLatLng = new google.maps.LatLng(closestLat, closestLng);
+
+  return getLatLngDistanceM(p, closestLatLng);
+}
+
 function findNearbyFacilities(latLng, maxDistM) {
   if (!map || !map.data) return [];
   var list = [];
@@ -2354,30 +2390,44 @@ function findNearbyFacilities(latLng, maxDistM) {
     var coords = [];
 
     if (type === 'Point') {
-      coords.push(geom.get());
+      var pt = geom.get();
+      dist = getLatLngDistanceM(latLng, pt);
+      coords.push(pt);
     } else if (type === 'LineString') {
-      coords = geom.getArray();
+      var arr = geom.getArray();
+      for (var idx = 0; idx < arr.length - 1; idx++) {
+        var d = getDistanceToSegmentM(latLng, arr[idx], arr[idx + 1]);
+        if (d < dist) dist = d;
+      }
+      coords = arr;
     } else if (type === 'Polygon') {
       var path = geom.getAt(0);
-      if (path && path.getArray) coords = path.getArray();
-    }
-
-    if (coords && coords.length > 0) {
-      coords.forEach(function (c) {
-        var d = getLatLngDistanceM(latLng, c);
-        if (d < dist) dist = d;
-      });
+      if (path && path.getArray) {
+        var arr = path.getArray();
+        for (var idx = 0; idx < arr.length; idx++) {
+          var nextIdx = (idx + 1) % arr.length;
+          var d = getDistanceToSegmentM(latLng, arr[idx], arr[nextIdx]);
+          if (d < dist) dist = d;
+        }
+        coords = arr;
+      }
     }
 
     if (dist <= maxDistM) {
       var layerName = feature.getProperty('layer') || '';
       var blockName = feature.getProperty('blockName') || '';
       var name = blockName || layerName || '알 수 없는 시설물';
+      var bx = feature.getProperty('blockInsertX');
+      var by = feature.getProperty('blockInsertY');
       
-      // 중복 방지
+      // 중복 방지 조건 강화: 동일 블록 좌표(blockInsertX, Y)가 같거나 동일 피처 ID인 경우 중복 제거
       var already = list.some(function (x) {
-        return x.name === name && Math.abs(x.distance - dist) < 0.1;
+        if (bx != null && by != null && x.bx != null && x.by != null) {
+          return Math.abs(x.bx - bx) < 0.01 && Math.abs(x.by - by) < 0.01;
+        }
+        return x.name === name && Math.abs(x.distance - dist) < 0.2;
       });
+      
       if (!already) {
         list.push({
           name: name,
@@ -2385,7 +2435,9 @@ function findNearbyFacilities(latLng, maxDistM) {
           blockName: blockName,
           distance: dist,
           feature: feature,
-          coord: coords[0] // 최인접 좌표 기준 삽입점 사용
+          coord: coords[0], // 최인접 좌표 기준 삽입점 사용
+          bx: bx != null ? parseFloat(bx) : null,
+          by: by != null ? parseFloat(by) : null
         });
       }
     }
@@ -2408,7 +2460,7 @@ function showStreetlightBottomSheet(list, dxfCoords, latLng) {
   list.forEach(function (item) {
     var div = document.createElement('div');
     div.className = 'facility-list-item';
-    div.textContent = item.name + ' (' + item.layer + ')';
+    div.textContent = item.name + ' (' + item.layer + ') — ' + item.distance.toFixed(1) + 'm';
     div.addEventListener('click', function () {
       triggerStreetlightCamera(item, dxfCoords, latLng);
     });
