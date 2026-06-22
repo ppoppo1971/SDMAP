@@ -1705,8 +1705,8 @@ function bindMapLongPress() {
   function showMenuAt(clientX, clientY, latLng) {
     if (!latLng) return;
     
-    // 3m 이내 가로등 시설물 및 블록 탐색
-    var nearby = findNearbyFacilities(latLng, 3.0);
+    // 1m 이내 가로등 시설물 및 블록 탐색 (기존 3m에서 1m로 변경)
+    var nearby = findNearbyFacilities(latLng, 1.0);
     if (nearby && nearby.length > 0) {
       var dxfCoords = latLngToDxf(latLng);
       showStreetlightBottomSheet(nearby, dxfCoords, latLng);
@@ -1802,7 +1802,13 @@ function bindContextMenu() {
   });
   document.getElementById('camera-input').addEventListener('change', function (e) {
     var file = e.target && e.target.files[0];
-    if (file && pendingAddPosition) addPhotoAtPosition(pendingAddPosition, file);
+    if (file) {
+      if (pendingStreetlightItem) {
+        showStreetlightInputForm(file, pendingStreetlightItem, pendingStreetlightDxfCoords, pendingStreetlightLatLng);
+      } else if (pendingAddPosition) {
+        addPhotoAtPosition(pendingAddPosition, file);
+      }
+    }
     e.target.value = '';
   });
 }
@@ -2357,16 +2363,6 @@ function triggerStreetlightCamera(item, dxfCoords, latLng) {
 
   var cameraInput = document.getElementById('camera-input');
   if (cameraInput) {
-    // 기존의 change 리스너와 충돌을 피하기 위해 가로등 전용 이벤트를 한 번만 가로챔
-    var onCameraChange = function (e) {
-      cameraInput.removeEventListener('change', onCameraChange);
-      var file = e.target && e.target.files[0];
-      if (file && pendingStreetlightItem) {
-        showStreetlightInputForm(file, pendingStreetlightItem, pendingStreetlightDxfCoords, pendingStreetlightLatLng);
-      }
-      e.target.value = '';
-    };
-    cameraInput.addEventListener('change', onCameraChange);
     cameraInput.click();
   }
 }
