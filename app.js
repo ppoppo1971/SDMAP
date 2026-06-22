@@ -2130,7 +2130,7 @@ function showPhotoModal(photoId) {
         var tWidth = parts[3] || '';
         
         if (swType) {
-          if (['화강암'].includes(tType)) {
+          if (['석축', '화강암'].includes(tType)) {
             swType.value = tType;
           } else {
             swType.value = '기타';
@@ -2831,6 +2831,7 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
       '<div class="form-group">' +
       '  <label>🧱 종류: 석축 (화강암, 기타)</label>' +
       '  <select id="sw-form-type">' +
+      '    <option value="석축" selected>석축</option>' +
       '    <option value="화강암">화강암</option>' +
       '    <option value="기타">기타</option>' +
       '  </select>' +
@@ -3054,7 +3055,7 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
 
     if (lastStonewallSpec) {
       if (selectSw) {
-        if (['화강암'].includes(lastStonewallSpec.type)) selectSw.value = lastStonewallSpec.type;
+        if (['석축', '화강암'].includes(lastStonewallSpec.type)) selectSw.value = lastStonewallSpec.type;
         else { selectSw.value = '기타'; if (etcSw) { etcSw.style.display = 'block'; etcSw.value = lastStonewallSpec.type; } }
       }
       if (maxHInput) maxHInput.value = lastStonewallSpec.maxH || '';
@@ -3254,103 +3255,6 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
 
         if (!formData.num) { alert('사진 번호를 입력해 주세요.'); return; }
         if (!formData.val1 || !formData.val2 || !formData.val3 || !formData.val4) {
-          alert('제원을 모두 입력해 주세요.');
-          return;
-        }
-
-        saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng);
-      });
-    }
-  } else if (pendingFacilityType === '측구') {
-      '    <option value="기타">기타</option>' +
-      '  </select>' +
-      '  <input type="text" id="st-form-type-3-etc" style="display:none; margin-top:5px;" placeholder="직접 입력">' +
-      '</div>' +
-      '<button type="button" class="btn" id="st-form-submit" style="background:#34C759; margin-top:10px; width:100%; padding:12px; font-weight:bold;">제원 저장</button>';
-  }
-
-  var formDiv = document.createElement('div');
-  formDiv.innerHTML = html;
-  content.appendChild(formDiv);
-
-  if (pendingFacilityType === '석축') {
-    var selectSw = document.getElementById('sw-form-type');
-    var etcSw = document.getElementById('sw-form-type-etc');
-    var maxHInput = document.getElementById('sw-form-max-h');
-    var minHInput = document.getElementById('sw-form-min-h');
-    var widthInput = document.getElementById('sw-form-width');
-
-    if (selectSw && etcSw) {
-      selectSw.addEventListener('change', function () {
-        etcSw.style.display = (selectSw.value === '기타') ? 'block' : 'none';
-        if (selectSw.value !== '기타') etcSw.value = '';
-      });
-    }
-
-    if (lastStonewallSpec) {
-      if (selectSw) {
-        if (['화강암'].includes(lastStonewallSpec.type)) selectSw.value = lastStonewallSpec.type;
-        else { selectSw.value = '기타'; if (etcSw) { etcSw.style.display = 'block'; etcSw.value = lastStonewallSpec.type; } }
-      }
-      if (maxHInput) maxHInput.value = lastStonewallSpec.maxH || '';
-      if (minHInput) minHInput.value = lastStonewallSpec.minH || '';
-      if (widthInput) widthInput.value = lastStonewallSpec.width || '';
-    }
-
-    var submitSw = document.getElementById('sw-form-submit');
-    if (submitSw) {
-      submitSw.addEventListener('click', function () {
-        var formData = {
-          num: document.getElementById('sw-form-num') ? document.getElementById('sw-form-num').value.trim() : '',
-          val1: (selectSw && selectSw.value === '기타' && etcSw) ? etcSw.value.trim() : (selectSw ? selectSw.value : ''),
-          val2: maxHInput ? maxHInput.value.trim() : '',
-          val3: minHInput ? minHInput.value.trim() : '',
-          val4: widthInput ? widthInput.value.trim() : ''
-        };
-
-        if (!formData.num) { alert('사진 번호를 입력해 주세요.'); return; }
-        if (!formData.val1 || !formData.val2 || !formData.val3 || !formData.val4) {
-          alert('제원을 모두 입력해 주세요.');
-          return;
-        }
-
-        saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng);
-      });
-    }
-  } else if (pendingFacilityType === '측구') {
-    var selectSg = document.getElementById('sg-form-type');
-    var etcSg = document.getElementById('sg-form-type-etc');
-    var widthInput = document.getElementById('sg-form-width');
-    var heightInput = document.getElementById('sg-form-height');
-
-    if (selectSg && etcSg) {
-      selectSg.addEventListener('change', function () {
-        etcSg.style.display = (selectSg.value === '기타') ? 'block' : 'none';
-        if (selectSg.value !== '기타') etcSg.value = '';
-      });
-    }
-
-    if (lastSidegutterSpec) {
-      if (selectSg) {
-        if (['L형', 'U형', 'V형', '토사형', '옹벽형'].includes(lastSidegutterSpec.type)) selectSg.value = lastSidegutterSpec.type;
-        else { selectSg.value = '기타'; if (etcSg) { etcSg.style.display = 'block'; etcSg.value = lastSidegutterSpec.type; } }
-      }
-      if (widthInput) widthInput.value = lastSidegutterSpec.width || '';
-      if (heightInput) heightInput.value = lastSidegutterSpec.height || '';
-    }
-
-    var submitSg = document.getElementById('sg-form-submit');
-    if (submitSg) {
-      submitSg.addEventListener('click', function () {
-        var formData = {
-          num: document.getElementById('sg-form-num') ? document.getElementById('sg-form-num').value.trim() : '',
-          val1: (selectSg && selectSg.value === '기타' && etcSg) ? etcSg.value.trim() : (selectSg ? selectSg.value : ''),
-          val2: widthInput ? widthInput.value.trim() : '',
-          val3: heightInput ? heightInput.value.trim() : ''
-        };
-
-        if (!formData.num) { alert('사진 번호를 입력해 주세요.'); return; }
-        if (!formData.val1 || !formData.val2 || !formData.val3) {
           alert('제원을 모두 입력해 주세요.');
           return;
         }
