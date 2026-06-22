@@ -1495,7 +1495,9 @@ function loadMetadataAndDisplay(dxfFile) {
       photos.push({
         id: p.id, x: p.x, y: p.y, width: p.width, height: p.height,
         blob: p.blob, memo: p.memo || '', fileName: p.fileName || '',
-        createdAt: p.createdAt, updatedAt: p.updatedAt
+        createdAt: p.createdAt, updatedAt: p.updatedAt,
+        numTextId: p.numTextId,
+        specTextId: p.specTextId
       });
     });
     drawPhotoMarkers();
