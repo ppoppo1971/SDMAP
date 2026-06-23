@@ -23,6 +23,7 @@ var lastLongPressEndTime = 0;
 var contextMenuEl = null;
 var showPhotoNumberToggle = typeof localStorage !== 'undefined' ? (localStorage.getItem('dmap:showPhotoNumber') !== 'false') : true; // 기본값 참(보이기)
 var showSpecTextToggle = typeof localStorage !== 'undefined' ? (localStorage.getItem('dmap:showSpecText') === 'true') : false; // 기본값 거짓(숨기기)
+window.isPMode = false; // P 모드 토글 변수 (true 시 레이어 감지 무시)
 var currentCrs = typeof localStorage !== 'undefined' ? (localStorage.getItem('dmap:crs') || 'EPSG:5186') : 'EPSG:5186';
 var longPressTimer = null;
 var longPressDuration = 400;
@@ -850,6 +851,20 @@ function bindUI() {
         this.classList.add('active');
         mapTypeSelector.classList.remove('show');
       });
+    });
+  }
+
+  var pmodeBtn = document.getElementById('pmode-btn');
+  if (pmodeBtn) {
+    pmodeBtn.addEventListener('click', function () {
+      window.isPMode = !window.isPMode;
+      if (window.isPMode) {
+        pmodeBtn.classList.add('active');
+        showToast('P 모드(사진/메모 우선) 켜짐');
+      } else {
+        pmodeBtn.classList.remove('active');
+        showToast('P 모드(사진/메모 우선) 꺼짐');
+      }
     });
   }
 }
@@ -2199,16 +2214,18 @@ function bindMapLongPress() {
   function showMenuAt(clientX, clientY, latLng) {
     if (!latLng) return;
     
-    // 2m 이내 시설물 탐색 및 유효한 시설물 유형(석축/측구/가로등)만 필터링
-    var nearby = findNearbyFacilities(latLng, 2.0);
-    nearby = nearby.filter(function (item) {
-      return detectFacilityType(item.name, item.layer) !== null;
-    });
+    if (!window.isPMode) {
+      // 2m 이내 시설물 탐색 및 유효한 시설물 유형(석축/측구/가로등)만 필터링
+      var nearby = findNearbyFacilities(latLng, 2.0);
+      nearby = nearby.filter(function (item) {
+        return detectFacilityType(item.name, item.layer) !== null;
+      });
 
-    if (nearby && nearby.length > 0) {
-      var dxfCoords = latLngToDxf(latLng);
-      showStreetlightBottomSheet(nearby, dxfCoords, latLng);
-      return;
+      if (nearby && nearby.length > 0) {
+        var dxfCoords = latLngToDxf(latLng);
+        showStreetlightBottomSheet(nearby, dxfCoords, latLng);
+        return;
+      }
     }
 
     var xy = latLngToDxf(latLng);
