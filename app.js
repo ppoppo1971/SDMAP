@@ -449,7 +449,7 @@ var FACILITY_CONFIG = {
   '도로': {
     title: '도로',
     layer: '도로_T',
-    prefix: '포장',
+    prefix: '',
     fields: [
       { id: 'material', label: '🛣️ 포장재질 (아스팔트, 콘크리트, 비포장, 기타)', type: 'select', options: ['아스팔트', '콘크리트', '비포장', '기타'], default: '아스팔트' },
       { id: 'lanes', label: '🚗 차선수 (1, 2, 3, 4, 기타)', type: 'select', options: ['1', '2', '3', '4', '기타'], default: '2' }
@@ -2064,7 +2064,8 @@ function drawTextMarkers() {
           t.layer === '과속방지턱_T' ||
           t.layer === '방음시설_T' ||
           t.layer === '통로박스_T' ||
-          t.layer === '교량_T') return;
+          t.layer === '교량_T' ||
+          t.layer === '도로_T') return;
       var pos = dxfToLatLng(t.x, t.y);
       if (!pos) return;
       var span = document.createElement('span');
@@ -3148,6 +3149,27 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
     customLayerInput.addEventListener('focus', function () { this.select(); });
   }
 
+  // 1-2. 보라색 마커에 입력될 전체 제원 미리보기 필드 삽입
+  var previewGroup = document.createElement('div');
+  previewGroup.className = 'form-group';
+  previewGroup.style.background = '#F2F2F7';
+  previewGroup.style.padding = '8px 12px';
+  previewGroup.style.borderRadius = '8px';
+  previewGroup.style.border = '1px solid #E5E5EA';
+  previewGroup.innerHTML = 
+    '<label style="color:#5856D6; font-size:11px; margin-bottom:2px;">🔮 전체 제원 텍스트 미리보기</label>' +
+    '<div id="' + prefixId + '-spec-preview" style="font-size:13px; font-weight:bold; color:#1C1C1E; word-break:break-all; min-height:16px;"></div>';
+  container.appendChild(previewGroup);
+
+  function updatePreview() {
+    var previewEl = document.getElementById(prefixId + '-spec-preview');
+    if (!previewEl) return;
+    var result = serializeFacilityForm(container, config, prefixId);
+    if (result) {
+      previewEl.textContent = result.specText;
+    }
+  }
+
   // 2. 설정 테이블 필드 동적 생성
   config.fields.forEach(function (field) {
     var group = document.createElement('div');
@@ -3182,8 +3204,8 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       var etcDisplay = showEtc ? 'block' : 'none';
       html += '<input type="text" id="' + prefixId + '-' + field.id + '-etc" style="display:' + etcDisplay + '; margin-top:5px;" value="' + etcVal + '" placeholder="직접 입력">';
     } else if (field.type === 'number' || field.isNumber) {
-      // 숫자 키보드가 표시되도록 강제하는 속성 반영
-      html += '<input type="number" inputmode="numeric" pattern="[0-9]*\\.?[0-9]*" id="' + prefixId + '-' + field.id + '" value="' + val + '" placeholder="' + (field.placeholder || '') + '">';
+      // 소수점을 입력할 수 있도록 step="any" 및 inputmode="decimal" 설정
+      html += '<input type="number" step="any" inputmode="decimal" id="' + prefixId + '-' + field.id + '" value="' + val + '" placeholder="' + (field.placeholder || '') + '">';
     } else {
       var readOnlyAttr = field.readonly ? ' readonly' : '';
       html += '<input type="text"' + readOnlyAttr + ' id="' + prefixId + '-' + field.id + '" value="' + val + '" placeholder="' + (field.placeholder || '') + '">';
@@ -3200,12 +3222,13 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       group.style.display = (typeVal === '보행') ? 'flex' : 'none';
     }
 
-    // input 포커스 이벤트 바인딩 (자동 전체 선택)
+    // input 포커스 이벤트 바인딩 (자동 전체 선택) 및 미리보기 동기화
     var inputs = group.querySelectorAll('input');
     inputs.forEach(function (inputEl) {
       inputEl.addEventListener('focus', function () {
         this.select();
       });
+      inputEl.addEventListener('input', updatePreview);
     });
 
     // select 체인지 이벤트 걸어서 '기타'일 때 주관식 입력 활성화
@@ -3216,7 +3239,11 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
         selEl.addEventListener('change', function () {
           etcEl.style.display = (this.value === '기타') ? 'block' : 'none';
           if (this.value !== '기타') etcEl.value = '';
+          updatePreview();
         });
+      }
+      if (selEl) {
+        selEl.addEventListener('change', updatePreview);
       }
       
       // 신호등 종류(type) 선택값이 바뀔 때 보행등 입력 필드 보이기/숨기기 처리 추가
@@ -3227,10 +3254,19 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
           var pedCountGrp = document.getElementById(prefixId + '-group-pedestrianCount');
           if (pedTypeGrp) pedTypeGrp.style.display = showPed ? 'flex' : 'none';
           if (pedCountGrp) pedCountGrp.style.display = showPed ? 'flex' : 'none';
+          updatePreview();
         });
       }
     }
   });
+
+  // 커스텀 레이어 입력 박스가 변경될 때도 미리보기가 아닌 레이어명이 수정될 수 있으므로 동기화 (혹은 수동 동기화용)
+  if (customLayerInput) {
+    customLayerInput.addEventListener('input', updatePreview);
+  }
+
+  // 초기 렌더링 시점에 1회 호출하여 초기값을 미리보기에 적용
+  updatePreview();
 }
 
 // 동적 시설물 폼 데이터 취득 및 직렬화
