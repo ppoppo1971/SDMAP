@@ -300,6 +300,32 @@
       background: #eee;
       margin-bottom: 10px;
     }
+    
+    /* 토스트 메시지 스타일 */
+    .toast-container {
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: rgba(0, 0, 0, 0.85);
+      color: #ffffff;
+      padding: 12px 24px;
+      border-radius: 30px;
+      font-size: 14px;
+      font-weight: 500;
+      z-index: 10000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .toast-container.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
   </style>
 </head>
 <body>
@@ -432,6 +458,12 @@
   <div class="loading" id="loading">
     <div class="spinner"></div>
     <div>처리 중...</div>
+  </div>
+
+  <!-- 토스트 메시지 컨테이너 -->
+  <div class="toast-container" id="toast-container">
+    <span>✅</span>
+    <span id="toast-message"></span>
   </div>
 
   <!-- 롱프레스 컨텍스트 메뉴 -->

@@ -43,9 +43,9 @@ var FACILITY_CONFIG = {
     layer: '가로등_T',
     prefix: '가로등',
     fields: [
-      { id: 'type1', label: '📐 종류 (기본, 2등형, 기타)', type: 'select', options: ['기본', '2등형', '기타'], default: '기본' },
-      { id: 'type2', label: '🛠️ 재질 (강관, 강판, 기타)', type: 'select', options: ['강관', '강판', '기타'], default: '강관' },
-      { id: 'type3', label: '🔢 수량/높이 (1, 2, 3, 4, 기타)', type: 'select', options: ['1', '2', '3', '4', '기타'], default: '1' }
+      { id: 'type1', label: '종류', type: 'select', options: ['기본', '2등형', '기타'], default: '기본' },
+      { id: 'type2', label: '재질', type: 'select', options: ['강관', '강판', '기타'], default: '강관' },
+      { id: 'type3', label: '수량/높이', type: 'select', options: ['1', '2', '3', '4', '기타'], default: '1' }
     ]
   },
   '석축': {
@@ -53,10 +53,10 @@ var FACILITY_CONFIG = {
     layer: '석축_T',
     prefix: '석축',
     fields: [
-      { id: 'type', label: '🧱 종류 (석축, 화강암, 기타)', type: 'select', options: ['석축', '화강암', '기타'], default: '석축' },
-      { id: 'maxH', label: '📈 최대 높이 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' },
-      { id: 'minH', label: '📉 최소 높이 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' },
-      { id: 'width', label: '↔️ 폭 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' }
+      { id: 'type', label: '종류', type: 'select', options: ['석축', '화강암', '기타'], default: '석축' },
+      { id: 'maxH', label: '최대 높이', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'minH', label: '최소 높이', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'width', label: '폭', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' }
     ]
   },
   '옹벽': {
@@ -64,10 +64,10 @@ var FACILITY_CONFIG = {
     layer: '옹벽_T',
     prefix: '옹벽',
     fields: [
-      { id: 'type', label: '🧱 종류 (중력식, 반중력식, 보강토, 기타)', type: 'select', options: ['중력식', '반중력식', '보강토', '기타'], default: '중력식' },
-      { id: 'maxH', label: '📈 최대 높이 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' },
-      { id: 'minH', label: '📉 최소 높이 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' },
-      { id: 'width', label: '↔️ 폭 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' }
+      { id: 'type', label: '종류', type: 'select', options: ['중력식', '반중력식', '보강토', '기타'], default: '중력식' },
+      { id: 'maxH', label: '최대 높이', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'minH', label: '최소 높이', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'width', label: '폭', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' }
     ]
   },
   '절개면': {
@@ -75,10 +75,10 @@ var FACILITY_CONFIG = {
     layer: '절개면_T',
     prefix: '절개면',
     fields: [
-      { id: 'type', label: '🧱 종류 (흙, 암사면, 혼합사면, 기타)', type: 'select', options: ['흙', '암사면', '혼합사면', '기타'], default: '흙' },
-      { id: 'maxH', label: '📈 최대 높이 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' },
-      { id: 'minH', label: '📉 최소 높이 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' },
-      { id: 'gradient', label: '📐 경사도 (°)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' }
+      { id: 'type', label: '종류', type: 'select', options: ['흙', '암사면', '혼합사면', '기타'], default: '흙' },
+      { id: 'maxH', label: '최대 높이', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'minH', label: '최소 높이', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'gradient', label: '경사도', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' }
     ]
   },
   '성토면': {
@@ -86,23 +86,23 @@ var FACILITY_CONFIG = {
     layer: '성토면_T',
     prefix: '성토면',
     fields: [
-      { id: 'type', label: '🧱 종류 (흙, 암사면, 혼합사면, 기타)', type: 'select', options: ['흙', '암사면', '혼합사면', '기타'], default: '흙' },
-      { id: 'maxH', label: '📈 최대 높이 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' },
-      { id: 'minH', label: '📉 최소 높이 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' },
-      { id: 'gradient', label: '📐 경사도 (°)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' }
+      { id: 'type', label: '종류', type: 'select', options: ['흙', '암사면', '혼합사면', '기타'], default: '흙' },
+      { id: 'maxH', label: '최대 높이', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'minH', label: '최소 높이', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'gradient', label: '경사도', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' }
     ]
   },
   '배수암거': {
     title: '배수암거',
     layer: '배수암거_T',
     prefix: '배수암거',
-    joinFormat: 'dimension/type/wing/sump', // 특별 결합 구조 (가로*세로/재질/날개벽/집수정)
+    joinFormat: 'dimension/type/wing/sump',
     fields: [
-      { id: 'width', label: '↔️ 가로 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' },
-      { id: 'height', label: '↕️ 세로 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' },
-      { id: 'type', label: '🧱 재질 (콘크리트, 기타)', type: 'select', options: ['콘크리트', '기타'], default: '콘크리트' },
-      { id: 'wing', label: '👐 날개벽 개수', type: 'number', placeholder: '숫자 입력', default: '기타' },
-      { id: 'sump', label: '🕳️ 집수정 개수', type: 'number', placeholder: '숫자 입력', default: '기타' }
+      { id: 'width', label: '가로', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'height', label: '세로', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'type', label: '재질', type: 'select', options: ['콘크리트', '기타'], default: '콘크리트' },
+      { id: 'wing', label: '날개벽', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'sump', label: '집수정', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' }
     ]
   },
   '배수관': {
@@ -110,21 +110,21 @@ var FACILITY_CONFIG = {
     layer: '배수관_T',
     prefix: '배수관',
     fields: [
-      { id: 'spec', label: '📐 규격 (mm)', type: 'number', placeholder: '숫자 입력', default: '기타' },
-      { id: 'type', label: '🧱 재질 (흄관, PE, PVC, CSP, 기타)', type: 'select', options: ['흄관', 'PE', 'PVC', 'CSP', '기타'], default: '흄관' },
-      { id: 'wing', label: '👐 날개벽 개수', type: 'number', placeholder: '숫자 입력', default: '기타' },
-      { id: 'sump', label: '🕳️ 집수정 개수', type: 'number', placeholder: '숫자 입력', default: '기타' }
+      { id: 'spec', label: '규격', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'type', label: '재질', type: 'select', options: ['흄관', 'PE', 'PVC', 'CSP', '기타'], default: '흄관' },
+      { id: 'wing', label: '날개벽', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'sump', label: '집수정', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' }
     ]
   },
   '측구': {
     title: '측구',
     layer: '측구_T',
     prefix: '측구',
-    joinFormat: 'type/dimension', // 특별 결합 구조 (종류/가로*세로)
+    joinFormat: 'type/dimension',
     fields: [
-      { id: 'type', label: '🧱 종류 (L형, U형, V형, 토사형, 옹벽형, 기타)', type: 'select', options: ['L형', 'U형', 'V형', '토사형', '옹벽형', '기타'], default: 'L형' },
-      { id: 'width', label: '↔️ 가로 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' },
-      { id: 'height', label: '↕️ 세로 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' }
+      { id: 'type', label: '종류', type: 'select', options: ['L형', 'U형', 'V형', '토사형', '옹벽형', '기타'], default: 'L형' },
+      { id: 'width', label: '가로', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'height', label: '세로', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' }
     ]
   },
   '중앙분리대': {
@@ -132,20 +132,20 @@ var FACILITY_CONFIG = {
     layer: '중앙분리대_T',
     prefix: '중앙분리대',
     fields: [
-      { id: 'type1', label: '🧱 종류 (가드레일, 가드펜스, 가드파이프, 연석형, 기타)', type: 'select', options: ['가드레일', '가드펜스', '가드파이프', '연석형', '기타'], default: '가드레일' },
-      { id: 'type2', label: '🌱 재질 (탄소, 기타)', type: 'select', options: ['탄소', '기타'], default: '탄소' },
-      { id: 'width', label: '↔️ 폭 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' },
-      { id: 'height', label: '↕️ 높이 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' }
+      { id: 'type', label: '종류', type: 'select', options: ['가드레일', '가드펜스', '가드파이프', '연석형', '기타'], default: '가드레일' },
+      { id: 'material', label: '재질', type: 'select', options: ['탄소', '기타'], default: '탄소' },
+      { id: 'width', label: '폭', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'height', label: '높이', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' }
     ]
   },
-  '차량방호안전시설': {
-    title: '차량방호안전시설',
+  '차량방호시설': {
+    title: '차량방호시설',
     layer: '차량방호_T',
     prefix: '차량방호',
     fields: [
-      { id: 'type1', label: '🧱 종류 (가드레일, 가드펜스, 가드파이프, 연석형, 기타)', type: 'select', options: ['가드레일', '가드펜스', '가드파이프', '연석형', '기타'], default: '가드레일' },
-      { id: 'type2', label: '🌱 재질 (탄소, 기타)', type: 'select', options: ['탄소', '기타'], default: '탄소' },
-      { id: 'height', label: '↕️ 높이 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' }
+      { id: 'type', label: '종류', type: 'select', options: ['가드레일', '가드펜스', '가드파이프', '연석형', '기타'], default: '가드레일' },
+      { id: 'material', label: '재질', type: 'select', options: ['탄소', '기타'], default: '탄소' },
+      { id: 'height', label: '높이', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' }
     ]
   },
   '낙석방지시설': {
@@ -153,8 +153,8 @@ var FACILITY_CONFIG = {
     layer: '낙석방지_T',
     prefix: '낙석방지',
     fields: [
-      { id: 'type', label: '🧱 종류 (낙석방지울타리, 낙석방지망, 낙석방지옹벽, 기타)', type: 'select', options: ['낙석방지울타리', '낙석방지망', '낙석방지옹벽', '기타'], default: '낙석방지울타리' },
-      { id: 'height', label: '↕️ 높이 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' }
+      { id: 'type', label: '종류', type: 'select', options: ['낙석방지책', '낙석방지망', '기타'], default: '낙석방지책' },
+      { id: 'height', label: '높이', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' }
     ]
   },
   '주의표지': {
@@ -162,9 +162,8 @@ var FACILITY_CONFIG = {
     layer: '주의표지_T',
     prefix: '주의표지',
     fields: [
-      { id: 'name', label: '🏷️ 레이어명', type: 'text', default: '주의표지', readonly: true },
-      { id: 'content', label: '📝 내용 (직접 입력)', type: 'text', placeholder: '내용 입력', default: '내용' },
-      { id: 'support', label: '支 지주형식 (단주, 복주, 측주, 편지, 부착, 복합, 문형식, 현수식, 기타)', type: 'select', options: ['단주', '복주', '측주', '편지', '부착', '복합', '문형식', '현수식', '기타'], default: '단주' }
+      { id: 'content', label: '내용', type: 'text', placeholder: '내용 입력', default: '내용' },
+      { id: 'support', label: '지주형식', type: 'select', options: ['단주', '복주', '측주', '편지', '부착', '복합', '문형식', '현수식', '기타'], default: '단주' }
     ]
   },
   '규제표지': {
@@ -172,9 +171,8 @@ var FACILITY_CONFIG = {
     layer: '규제표지_T',
     prefix: '규제표지',
     fields: [
-      { id: 'name', label: '🏷️ 레이어명', type: 'text', default: '규제표지', readonly: true },
-      { id: 'content', label: '📝 내용 (직접 입력)', type: 'text', placeholder: '내용 입력', default: '내용' },
-      { id: 'support', label: '支 지주형식 (단주, 복주, 측주, 편지, 부착, 복합, 문형식, 현수식, 기타)', type: 'select', options: ['단주', '복주', '측주', '편지', '부착', '복합', '문형식', '현수식', '기타'], default: '단주' }
+      { id: 'content', label: '내용', type: 'text', placeholder: '내용 입력', default: '내용' },
+      { id: 'support', label: '지주형식', type: 'select', options: ['단주', '복주', '측주', '편지', '부착', '복합', '문형식', '현수식', '기타'], default: '단주' }
     ]
   },
   '지시표지': {
@@ -182,9 +180,8 @@ var FACILITY_CONFIG = {
     layer: '지시표지_T',
     prefix: '지시표지',
     fields: [
-      { id: 'name', label: '🏷️ 레이어명', type: 'text', default: '지시표지', readonly: true },
-      { id: 'content', label: '📝 내용 (직접 입력)', type: 'text', placeholder: '내용 입력', default: '내용' },
-      { id: 'support', label: '支 지주형식 (단주, 복주, 측주, 편지, 부착, 복합, 문형식, 현수식, 기타)', type: 'select', options: ['단주', '복주', '측주', '편지', '부착', '복합', '문형식', '현수식', '기타'], default: '단주' }
+      { id: 'content', label: '내용', type: 'text', placeholder: '내용 입력', default: '내용' },
+      { id: 'support', label: '지주형식', type: 'select', options: ['단주', '복주', '측주', '편지', '부착', '복합', '문형식', '현수식', '기타'], default: '단주' }
     ]
   },
   '보조표지': {
@@ -192,9 +189,8 @@ var FACILITY_CONFIG = {
     layer: '보조표지_T',
     prefix: '보조표지',
     fields: [
-      { id: 'name', label: '🏷️ 레이어명', type: 'text', default: '보조표지', readonly: true },
-      { id: 'content', label: '📝 내용 (직접 입력)', type: 'text', placeholder: '내용 입력', default: '내용' },
-      { id: 'support', label: '支 지주형식 (단주, 복주, 측주, 편지, 부착, 복합, 문형식, 현수식, 기타)', type: 'select', options: ['단주', '복주', '측주', '편지', '부착', '복합', '문형식', '현수식', '기타'], default: '단주' }
+      { id: 'content', label: '내용', type: 'text', placeholder: '내용 입력', default: '내용' },
+      { id: 'support', label: '지주형식', type: 'select', options: ['단주', '복주', '측주', '편지', '부착', '복합', '문형식', '현수식', '기타'], default: '단주' }
     ]
   },
   '교통기타': {
@@ -202,9 +198,8 @@ var FACILITY_CONFIG = {
     layer: '교통기타_T',
     prefix: '교통기타',
     fields: [
-      { id: 'name', label: '🏷️ 레이어명', type: 'text', default: '교통기타', readonly: true },
-      { id: 'content', label: '📝 내용 (직접 입력)', type: 'text', placeholder: '내용 입력', default: '내용' },
-      { id: 'support', label: '支 지주형식 (단주, 복주, 측주, 편지, 부착, 복합, 문형식, 현수식, 기타)', type: 'select', options: ['단주', '복주', '측주', '편지', '부착', '복합', '문형식', '현수식', '기타'], default: '단주' }
+      { id: 'content', label: '내용', type: 'text', placeholder: '내용 입력', default: '내용' },
+      { id: 'support', label: '지주형식', type: 'select', options: ['단주', '복주', '측주', '편지', '부착', '복합', '문형식', '현수식', '기타'], default: '단주' }
     ]
   },
   '갈매기표지': {
@@ -212,16 +207,26 @@ var FACILITY_CONFIG = {
     layer: '갈매기_T',
     prefix: '갈매기표지',
     fields: [
-      { id: 'type', label: '🧱 구분 (양면, 단면)', type: 'select', options: ['양면', '단면'], default: '양면' },
-      { id: 'support', label: '支 지주형식 (단주, 복주, 기타)', type: 'select', options: ['단주', '복주', '기타'], default: '단주' }
+      { id: 'type', label: '구분', type: 'select', options: ['양면', '단면'], default: '양면' },
+      { id: 'support', label: '지주형식', type: 'select', options: ['단주', '복주', '기타'], default: '단주' }
     ]
   },
   '도로반사경': {
     title: '도로반사경',
-    layer: '반사경_T',
-    prefix: '반사경',
+    layer: '도로반사경_T',
+    prefix: '도로반사경',
     fields: [
-      { id: 'support', label: '支 지주형식 (단주, 부착, 기타)', type: 'select', options: ['단주', '부착', '기타'], default: '단주' }
+      { id: 'count', label: '수량', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'support', label: '지주형식', type: 'select', options: ['단주', '복주', '기타'], default: '단주' }
+    ]
+  },
+  'CCTV': {
+    title: 'CCTV',
+    layer: 'CCTV_T',
+    prefix: 'CCTV',
+    fields: [
+      { id: 'type', label: '종류', type: 'text', placeholder: '종류 입력', default: '종류' },
+      { id: 'count', label: '수량', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' }
     ]
   },
   '새주소': {
@@ -229,8 +234,8 @@ var FACILITY_CONFIG = {
     layer: '새주소_T',
     prefix: '새주소',
     fields: [
-      { id: 'content', label: '📝 내용 (직접 입력)', type: 'text', placeholder: '내용 입력', default: '내용' },
-      { id: 'support', label: '支 지주형식 (단주, 부착, 현수식, 기타)', type: 'select', options: ['단주', '부착', '현수식', '기타'], default: '단주' }
+      { id: 'content', label: '내용', type: 'text', placeholder: '내용 입력', default: '내용' },
+      { id: 'support', label: '지주형식', type: 'select', options: ['단주', '부착', '현수식', '기타'], default: '단주' }
     ]
   },
   '전광표지': {
@@ -238,9 +243,9 @@ var FACILITY_CONFIG = {
     layer: '전광표지_T',
     prefix: '전광표지',
     fields: [
-      { id: 'type', label: '🧱 종류 (발광형, 반사형, 기타)', type: 'select', options: ['발광형', '반사형', '기타'], default: '발광형' },
-      { id: 'style', label: '🎨 표출형식 (문자식, 도형식, 차량제어식, 동영상식, 기타)', type: 'select', options: ['문자식', '도형식', '차량제어식', '동영상식', '기타'], default: '문자식' },
-      { id: 'support', label: '支 지주형식 (현수식, 복주, 단주, 기타)', type: 'select', options: ['현수식', '복주', '단주', '기타'], default: '현수식' }
+      { id: 'type', label: '종류', type: 'select', options: ['발광형', '반사형', '기타'], default: '발광형' },
+      { id: 'style', label: '표출형식', type: 'select', options: ['문자식', '도형식', '차량제어식', '동영상식', '기타'], default: '문자식' },
+      { id: 'support', label: '지주형식', type: 'select', options: ['현수식', '복주', '단주', '기타'], default: '현수식' }
     ]
   },
   '보안등': {
@@ -248,9 +253,9 @@ var FACILITY_CONFIG = {
     layer: '보안등_T',
     prefix: '보안등',
     fields: [
-      { id: 'type1', label: '📐 종류 (기본, 2등형, 기타)', type: 'select', options: ['기본', '2등형', '기타'], default: '기본' },
-      { id: 'type2', label: '🛠️ 재질 (강관, 강판, 기타)', type: 'select', options: ['강관', '강판', '기타'], default: '강관' },
-      { id: 'type3', label: '🔢 수량/높이 (1, 2, 3, 4, 기타)', type: 'select', options: ['1', '2', '3', '4', '기타'], default: '1' }
+      { id: 'type1', label: '종류', type: 'select', options: ['기본', '2등형', '기타'], default: '기본' },
+      { id: 'type2', label: '재질', type: 'select', options: ['강관', '강판', '기타'], default: '강관' },
+      { id: 'type3', label: '수량/높이', type: 'select', options: ['1', '2', '3', '4', '기타'], default: '1' }
     ]
   },
   '신호등': {
@@ -258,10 +263,12 @@ var FACILITY_CONFIG = {
     layer: '신호등_T',
     prefix: '신호등',
     fields: [
-      { id: 'type', label: '🧱 종류 (차량, 보행)', type: 'select', options: ['차량', '보행'], default: '차량' },
-      { id: 'style', label: '🎨 형식 (횡4, 횡3, 종2, 종2+잔유, 기타)', type: 'select', options: ['횡4', '횡3', '종2', '종2+잔유', '기타'], default: '횡4' },
-      { id: 'count', label: '🔢 수량', type: 'number', placeholder: '숫자 입력', default: '기타' },
-      { id: 'support', label: '支 지주형식 (측주, 단주, 기타)', type: 'select', options: ['측주', '단주', '기타'], default: '측주' }
+      { id: 'type', label: '종류', type: 'select', options: ['차량', '보행'], default: '차량' },
+      { id: 'style', label: '형식', type: 'select', options: ['횡4', '횡3', '종2', '종2+잔유', '기타'], default: '횡4' },
+      { id: 'count', label: '수량', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'support', label: '지주형식', type: 'select', options: ['측주', '단주', '기타'], default: '측주' },
+      { id: 'pedestrianType', label: '보행등 구분', type: 'select', options: ['보행등무', '보행등', '기타'], default: '보행등무' },
+      { id: 'pedestrianCount', label: '보행등 수량', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' }
     ]
   },
   '과속방지턱': {
@@ -269,9 +276,9 @@ var FACILITY_CONFIG = {
     layer: '과속방지턱_T',
     prefix: '과방',
     fields: [
-      { id: 'style', label: '🧱 형식 (이미지방, 기타)', type: 'select', options: ['이미지방', '기타'], default: '이미지방' },
-      { id: 'material', label: '🌱 재질 (아스팔트, 콘, 기타)', type: 'select', options: ['아스팔트', '콘', '기타'], default: '아스팔트' },
-      { id: 'height', label: '📐 높이 (0.3, 0.2, 0.0, 기타)', type: 'select', options: ['0.3', '0.2', '0.0', '기타'], default: '0.3' }
+      { id: 'style', label: '형식', type: 'select', options: ['과속방지턱', '이미지방', '기타'], default: '과속방지턱' },
+      { id: 'material', label: '재질', type: 'select', options: ['아스팔트', '콘크리트', '기타'], default: '아스팔트' },
+      { id: 'height', label: '높이', type: 'select', options: ['0.3', '0.2', '0.0', '기타'], default: '0.3' }
     ]
   },
   '방음시설': {
@@ -279,8 +286,8 @@ var FACILITY_CONFIG = {
     layer: '방음시설_T',
     prefix: '방음시설',
     fields: [
-      { id: 'type', label: '🧱 종류 (흡음, 반사, 혼합, 기타)', type: 'select', options: ['흡음', '반사', '혼합', '기타'], default: '흡음' },
-      { id: 'height', label: '↕️ 높이 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' }
+      { id: 'type', label: '종류', type: 'select', options: ['흡음', '반사', '혼합', '기타'], default: '흡음' },
+      { id: 'height', label: '높이', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' }
     ]
   },
   '가로수': {
@@ -288,19 +295,19 @@ var FACILITY_CONFIG = {
     layer: '가로수_T',
     prefix: '가로수',
     fields: [
-      { id: 'type', label: '🌳 수종 (이팝, 기타)', type: 'select', options: ['이팝', '기타'], default: '이팝' }
+      { id: 'type', label: '수종', type: 'select', options: ['이팝', '기타'], default: '이팝' }
     ]
   },
   '통로박스': {
     title: '통로박스',
     layer: '통로박스_T',
     prefix: '통로박스',
-    joinFormat: 'dimension/type/traffic', // 특별 결합 구조 (가로*세로/재질/통행제한)
+    joinFormat: 'dimension/type/traffic',
     fields: [
-      { id: 'width', label: '↔️ 가로 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' },
-      { id: 'height', label: '↕️ 세로 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' },
-      { id: 'type', label: '🧱 재질 (RCB, 기타)', type: 'select', options: ['RCB', '기타'], default: 'RCB' },
-      { id: 'traffic', label: '🚗 통행제한 (차량통행, 기타)', type: 'select', options: ['차량통행', '기타'], default: '차량통행' }
+      { id: 'width', label: '가로', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'height', label: '세로', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'type', label: '재질', type: 'select', options: ['RCB', '기타'], default: 'RCB' },
+      { id: 'traffic', label: '통행제한', type: 'select', options: ['차량통행', '기타'], default: '차량통행' }
     ]
   },
   '과적검문소': {
@@ -308,7 +315,7 @@ var FACILITY_CONFIG = {
     layer: '과적검문소_T',
     prefix: '과적검문소',
     fields: [
-      { id: 'type', label: '🧱 종류 (직접 입력)', type: 'text', placeholder: '종류 입력', default: '종류' }
+      { id: 'type', label: '종류', type: 'text', placeholder: '종류 입력', default: '종류' }
     ]
   },
   '제설시설': {
@@ -316,7 +323,7 @@ var FACILITY_CONFIG = {
     layer: '제설시설_T',
     prefix: '제설시설',
     fields: [
-      { id: 'type', label: '📦 종류 (제설함, 기타)', type: 'select', options: ['제설함', '기타'], default: '제설함' }
+      { id: 'type', label: '종류', type: 'select', options: ['제설함', '기타'], default: '제설함' }
     ]
   },
   '제설함': {
@@ -324,7 +331,7 @@ var FACILITY_CONFIG = {
     layer: '제설시설_T',
     prefix: '제설시설',
     fields: [
-      { id: 'type', label: '📦 종류 (제설함, 기타)', type: 'select', options: ['제설함', '기타'], default: '제설함' }
+      { id: 'type', label: '종류', type: 'select', options: ['제설함', '기타'], default: '제설함' }
     ]
   },
   '정차대': {
@@ -332,8 +339,7 @@ var FACILITY_CONFIG = {
     layer: '정차대_T',
     prefix: '정차대',
     fields: [
-      { id: 'type', label: '🧱 종류 (대기소, 기타)', type: 'select', options: ['대기소', '기타'], default: '대기소' },
-      { id: 'flag', label: '🧱 유무 (무, 유)', type: 'select', options: ['무', '유'], default: '무' }
+      { id: 'type', label: '구분', type: 'select', options: ['대기소유', '대기소무', '기타'], default: '대기소유' }
     ]
   },
   '버스정류장': {
@@ -341,9 +347,9 @@ var FACILITY_CONFIG = {
     layer: '정류장_T',
     prefix: '정류장',
     fields: [
-      { id: 'type', label: '🚌 구분 (버스, 택시)', type: 'select', options: ['버스', '택시'], default: '버스' },
-      { id: 'content', label: '📝 내용 (직접 입력)', type: 'text', placeholder: '내용 입력', default: '내용' },
-      { id: 'support', label: '支 지주형식 (부착, 기타)', type: 'select', options: ['부착', '기타'], default: '부착' }
+      { id: 'type', label: '구분', type: 'select', options: ['버스', '택시'], default: '버스' },
+      { id: 'content', label: '내용', type: 'text', placeholder: '내용 입력', default: '내용' },
+      { id: 'support', label: '지주형식', type: 'select', options: ['단주', '부착', '기타'], default: '단주' }
     ]
   },
   '택시정류장': {
@@ -351,21 +357,21 @@ var FACILITY_CONFIG = {
     layer: '정류장_T',
     prefix: '정류장',
     fields: [
-      { id: 'type', label: '🚕 구분 (버스, 택시)', type: 'select', options: ['택시', '버스'], default: '택시' },
-      { id: 'content', label: '📝 내용 (직접 입력)', type: 'text', placeholder: '내용 입력', default: '내용' },
-      { id: 'support', label: '支 지주형식 (부착, 기타)', type: 'select', options: ['부착', '기타'], default: '부착' }
+      { id: 'type', label: '구분', type: 'select', options: ['택시', '버스'], default: '택시' },
+      { id: 'content', label: '내용', type: 'text', placeholder: '내용 입력', default: '내용' },
+      { id: 'support', label: '지주형식', type: 'select', options: ['단주', '부착', '기타'], default: '단주' }
     ]
   },
   '교량': {
     title: '교량',
     layer: '교량_T',
     prefix: '교량',
-    joinFormat: 'bridgeName/material/dimension', // 결합 구조 (교량명/재질/가로*세로)
+    joinFormat: 'bridgeName/material/dimension',
     fields: [
-      { id: 'bridgeName', label: '🌉 교량명 (직접 입력)', type: 'text', placeholder: '교량명 입력', default: '내용' },
-      { id: 'material', label: '🧱 재질 (직접 입력)', type: 'text', placeholder: '재질 입력', default: '종류' },
-      { id: 'width', label: '↔️ 폭 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' },
-      { id: 'height', label: '↕️ 높이 (m)', type: 'number', mode: 'decimal', placeholder: '숫자 입력', default: '기타' }
+      { id: 'bridgeName', label: '교량명', type: 'text', placeholder: '교량명 입력', default: '내용' },
+      { id: 'material', label: '재질', type: 'text', placeholder: '재질 입력', default: '종류' },
+      { id: 'width', label: '폭', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
+      { id: 'height', label: '높이', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' }
     ]
   },
   '터널': {
@@ -2005,6 +2011,25 @@ function drawPhotoMarkers() {
   }
 }
 
+var toastTimer = null;
+function showToast(message) {
+  var container = document.getElementById('toast-container');
+  var msgEl = document.getElementById('toast-message');
+  if (!container || !msgEl) return;
+
+  msgEl.textContent = message;
+  container.classList.add('show');
+
+  if (toastTimer) {
+    clearTimeout(toastTimer);
+  }
+
+  toastTimer = setTimeout(function () {
+    container.classList.remove('show');
+    toastTimer = null;
+  }, 2000);
+}
+
 function drawTextMarkers() {
   clearTextMarkers();
   if (!map || !window.DxfToGeoJSON || !texts.length) return;
@@ -2025,7 +2050,21 @@ function drawTextMarkers() {
 
     var self = this;
     this.textsArr.forEach(function (t) {
-      if (t.layer === '사진번호' || t.layer === '가로등_T' || t.layer === '측구_T' || t.layer === '석축_T' || t.layer === '옹벽_T' || t.layer === '절개면_T' || t.layer === '성토면_T' || t.layer === '배수암거_T' || t.layer === '배수관_T') return;
+      if (t.layer === '사진번호' || 
+          t.layer === '가로등_T' || 
+          t.layer === '측구_T' || 
+          t.layer === '석축_T' || 
+          t.layer === '옹벽_T' || 
+          t.layer === '절개면_T' || 
+          t.layer === '성토면_T' || 
+          t.layer === '배수암거_T' || 
+          t.layer === '배수관_T' ||
+          t.layer === '중앙분리대_T' ||
+          t.layer === '낙석방지_T' ||
+          t.layer === '과속방지턱_T' ||
+          t.layer === '방음시설_T' ||
+          t.layer === '통로박스_T' ||
+          t.layer === '교량_T') return;
       var pos = dxfToLatLng(t.x, t.y);
       if (!pos) return;
       var span = document.createElement('span');
@@ -2370,9 +2409,10 @@ function addPhotoAtPosition(xy, file) {
     window.localStore.savePhoto(dxfFileFullName, photo).then(function () {
       drawPhotoMarkers();
       pendingAddPosition = null;
+      showToast('사진이 추가되었습니다.');
     }).catch(function (err) {
       console.error('사진 저장 실패:', err);
-      alert('사진 저장에 실패했습니다. 다시 시도해 주세요.');
+      alert('데이터 저장소에 기록하는 도중 오류가 발생해 사진을 저장하지 못했습니다.');
     });
   }
 
@@ -2393,9 +2433,10 @@ function addTextAtPosition(xy, textStr) {
   window.localStore.saveProject(dxfFileFullName, { texts: texts, lastModified: new Date().toISOString() }).then(function () {
     drawTextMarkers();
     pendingAddPosition = null;
+    showToast('텍스트가 추가되었습니다.');
   }).catch(function (err) {
     console.error('텍스트 저장 실패:', err);
-    alert('텍스트 저장에 실패했습니다. 다시 시도해 주세요.');
+    alert('데이터 저장소에 기록하는 도중 오류가 발생해 텍스트를 저장하지 못했습니다.');
   });
 }
 
@@ -2409,7 +2450,30 @@ function deserializeSpecText(specText, config) {
     parts.shift(); // 접두어 제거
   }
 
-  if (config.joinFormat === 'dimension/type/wing/sump') {
+  if (config.title === '신호등') {
+    // parts[0]: 종류 (차량, 보행)
+    // parts[1]: 형식*수량 (횡4*2)
+    // parts[2]: 지주형식 (측주, 단주 등)
+    // parts[3]: 보행등구분*수량 (보행등*1) - 종류가 보행일 때만 존재 가능
+    values['type'] = parts[0] || '차량';
+    
+    var styleAndCount = parts[1] || '';
+    var scParts = styleAndCount.split('*');
+    values['style'] = scParts[0] || '횡4';
+    values['count'] = scParts[1] || '1';
+    
+    values['support'] = parts[2] || '측주';
+    
+    var pedInfo = parts[3] || '';
+    if (pedInfo) {
+      var pedParts = pedInfo.split('*');
+      values['pedestrianType'] = pedParts[0] || '보행등무';
+      values['pedestrianCount'] = pedParts[1] || '0';
+    } else {
+      values['pedestrianType'] = '보행등무';
+      values['pedestrianCount'] = '0';
+    }
+  } else if (config.joinFormat === 'dimension/type/wing/sump') {
     var dim = parts[0] || '';
     var dimParts = dim.split('*');
     values['width'] = dimParts[0] || '';
@@ -2624,9 +2688,10 @@ function bindPhotoModal() {
       drawPhotoMarkers();
       drawTextMarkers();
       hidePhotoModal();
+      showToast('제원 수정을 완료했습니다.');
     }).catch(function (err) {
       console.error('수정 저장 실패:', err);
-      alert('저장에 실패했습니다.');
+      alert('데이터 저장소에 기록하는 도중 오류가 발생해 수정하지 못했습니다.');
     });
   });
 
@@ -2645,8 +2710,10 @@ function bindPhotoModal() {
       drawPhotoMarkers();
       drawTextMarkers();
       hidePhotoModal();
+      showToast('사진과 제원 데이터를 삭제했습니다.');
     }).catch(function (err) {
       console.error('삭제 실패:', err);
+      alert('데이터 삭제에 실패했습니다. (저장소 오류)');
     });
   });
 }
@@ -2693,9 +2760,10 @@ function bindTextModal() {
         window.localStore.saveProject(dxfFileFullName, { texts: texts, lastModified: new Date().toISOString() }).then(function () {
           drawTextMarkers();
           hideTextModal();
+          showToast('텍스트가 수정되었습니다.');
         }).catch(function (err) {
           console.error('텍스트 저장 실패:', err);
-          alert('텍스트 저장에 실패했습니다. 다시 시도해 주세요.');
+          alert('데이터 저장소에 기록하는 도중 오류가 발생해 수정하지 못했습니다.');
         });
       }
     } else if (pendingAddPosition && window.localStore) {
@@ -2710,9 +2778,10 @@ function bindTextModal() {
     window.localStore.saveProject(dxfFileFullName, { texts: texts, lastModified: new Date().toISOString() }).then(function () {
       drawTextMarkers();
       hideTextModal();
+      showToast('텍스트가 삭제되었습니다.');
     }).catch(function (err) {
       console.error('텍스트 삭제 후 저장 실패:', err);
-      alert('저장에 실패했습니다. 다시 시도해 주세요.');
+      alert('데이터 저장소에 기록하는 도중 오류가 발생해 삭제 결과를 저장하지 못했습니다.');
     });
   });
 }
@@ -2728,8 +2797,15 @@ function detectFacilityType(name, layer) {
   var n = String(name || '').toLowerCase();
   var l = String(layer || '').toLowerCase();
 
+  // 0. 자전거 도로 예외 처리 (시설물 제원 폼 대신 기본 사진/텍스트 모달 호출 유도)
+  if (n.indexOf('자전거') >= 0 || l.indexOf('자전거') >= 0) {
+    return null;
+  }
+
   // 1. 도로/포장 처리
   if (n.indexOf('도로') >= 0 || l.indexOf('도로') >= 0 || n.indexOf('포장') >= 0 || l.indexOf('포장') >= 0) {
+    // 고가도로가 도로 키워드에 먼저 걸리지 않도록 고가도로 먼저 점검
+    if (n.indexOf('고가') >= 0 || l.indexOf('고가') >= 0) return '고가도로';
     return '도로';
   }
   // 2. 석축
@@ -2763,9 +2839,9 @@ function detectFacilityType(name, layer) {
   if (n.indexOf('중앙분리대') >= 0 || l.indexOf('중앙분리대') >= 0) {
     return '중앙분리대';
   }
-  // 9. 차량방호안전시설
-  if (n.indexOf('차량방호') >= 0 || l.indexOf('차량방호') >= 0 || n.indexOf('안전시설') >= 0 || l.indexOf('안전시설') >= 0) {
-    return '차량방호안전시설';
+  // 9. 차량방호시설
+  if (n.indexOf('차량방호') >= 0 || l.indexOf('차량방호') >= 0 || n.indexOf('방호시설') >= 0 || l.indexOf('방호시설') >= 0 || n.indexOf('안전시설') >= 0 || l.indexOf('안전시설') >= 0) {
+    return '차량방호시설';
   }
   // 10. 낙석방지시설
   if (n.indexOf('낙석방지') >= 0 || l.indexOf('낙석방지') >= 0) {
@@ -2785,6 +2861,10 @@ function detectFacilityType(name, layer) {
   // 13. 도로반사경
   if (n.indexOf('반사경') >= 0 || l.indexOf('반사경') >= 0) {
     return '도로반사경';
+  }
+  // CCTV 추가
+  if (n.indexOf('cctv') >= 0 || l.indexOf('cctv') >= 0) {
+    return 'CCTV';
   }
   // 14. 새주소
   if (n.indexOf('새주소') >= 0 || l.indexOf('새주소') >= 0) {
@@ -2827,7 +2907,7 @@ function detectFacilityType(name, layer) {
     return '제설시설';
   }
   // 24. 정차대
-  if (n.indexOf('정차대') >= 0 || l.indexOf('정차대') >= 0) {
+  if (n.indexOf('정차대') >= 0 || l.indexOf('정차대') >= 0 || n.indexOf('정차도') >= 0 || l.indexOf('정차도') >= 0) {
     return '정차대';
   }
   // 25. 버스/택시 정류장
@@ -3062,6 +3142,11 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
     '<label>🏷️ 레이어명 수동 지정 (필요시에만 변경)</label>' +
     '<input type="text" id="' + prefixId + '-custom-layer" value="' + (config.layer || '') + '" placeholder="기본: ' + (config.layer || '') + '">';
   container.appendChild(layerGroup);
+  
+  var customLayerInput = layerGroup.querySelector('input');
+  if (customLayerInput) {
+    customLayerInput.addEventListener('focus', function () { this.select(); });
+  }
 
   // 2. 설정 테이블 필드 동적 생성
   config.fields.forEach(function (field) {
@@ -3096,14 +3181,32 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       var etcVal = showEtc ? val : '';
       var etcDisplay = showEtc ? 'block' : 'none';
       html += '<input type="text" id="' + prefixId + '-' + field.id + '-etc" style="display:' + etcDisplay + '; margin-top:5px;" value="' + etcVal + '" placeholder="직접 입력">';
+    } else if (field.type === 'number' || field.isNumber) {
+      // 숫자 키보드가 표시되도록 강제하는 속성 반영
+      html += '<input type="number" inputmode="numeric" pattern="[0-9]*\\.?[0-9]*" id="' + prefixId + '-' + field.id + '" value="' + val + '" placeholder="' + (field.placeholder || '') + '">';
     } else {
       var readOnlyAttr = field.readonly ? ' readonly' : '';
-      var inputModeAttr = field.mode === 'decimal' ? ' inputmode="decimal" pattern="[0-9]*\\.?[0-9]*"' : '';
-      html += '<input type="text"' + inputModeAttr + readOnlyAttr + ' id="' + prefixId + '-' + field.id + '" value="' + val + '" placeholder="' + (field.placeholder || '') + '">';
+      html += '<input type="text"' + readOnlyAttr + ' id="' + prefixId + '-' + field.id + '" value="' + val + '" placeholder="' + (field.placeholder || '') + '">';
     }
 
     group.innerHTML = html;
     container.appendChild(group);
+
+    // 신호등 종류가 '차량'인 경우 보행등 필드들을 초기에 숨겨두기 위해 ID 속성을 부여하여 래핑하거나 스타일을 조절합니다.
+    if (config.title === '신호등' && (field.id === 'pedestrianType' || field.id === 'pedestrianCount')) {
+      group.id = prefixId + '-group-' + field.id;
+      // 초기 'type' 선택값을 기준으로 표시 여부 제어
+      var typeVal = cachedVals && cachedVals['type'] ? cachedVals['type'] : '차량';
+      group.style.display = (typeVal === '보행') ? 'flex' : 'none';
+    }
+
+    // input 포커스 이벤트 바인딩 (자동 전체 선택)
+    var inputs = group.querySelectorAll('input');
+    inputs.forEach(function (inputEl) {
+      inputEl.addEventListener('focus', function () {
+        this.select();
+      });
+    });
 
     // select 체인지 이벤트 걸어서 '기타'일 때 주관식 입력 활성화
     if (field.type === 'select') {
@@ -3113,6 +3216,17 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
         selEl.addEventListener('change', function () {
           etcEl.style.display = (this.value === '기타') ? 'block' : 'none';
           if (this.value !== '기타') etcEl.value = '';
+        });
+      }
+      
+      // 신호등 종류(type) 선택값이 바뀔 때 보행등 입력 필드 보이기/숨기기 처리 추가
+      if (config.title === '신호등' && field.id === 'type' && selEl) {
+        selEl.addEventListener('change', function () {
+          var showPed = this.value === '보행';
+          var pedTypeGrp = document.getElementById(prefixId + '-group-pedestrianType');
+          var pedCountGrp = document.getElementById(prefixId + '-group-pedestrianCount');
+          if (pedTypeGrp) pedTypeGrp.style.display = showPed ? 'flex' : 'none';
+          if (pedCountGrp) pedCountGrp.style.display = showPed ? 'flex' : 'none';
         });
       }
     }
@@ -3141,7 +3255,7 @@ function serializeFacilityForm(container, config, prefixId) {
       }
     }
 
-    // 빈칸 입력 검사 및 기본값 자동 보정
+    // 빈칸 입력 검사 및 기본값 자동 보정 (기타 선택 후 빈칸 시에도 기타로 보정)
     if (val === '') {
       val = field.default || '기타';
     }
@@ -3155,7 +3269,19 @@ function serializeFacilityForm(container, config, prefixId) {
   var specText = '';
   var prefixWord = config.prefix || config.title;
 
-  if (config.joinFormat === 'dimension/type/wing/sump') {
+  if (config.title === '신호등') {
+    // 신호등용 맞춤 포맷팅
+    // 1. 형식*수량 조립 (예: 횡4*2)
+    var styleAndCount = vals.style + '*' + vals.count;
+    
+    // 2. 종류가 '보행'이면 마지막에 '보행등*갯수'를 덧붙이고, '차량'이면 보행등 정보를 생략
+    if (vals.type === '보행') {
+      var ped = (vals.pedestrianType || '보행등무') + '*' + (vals.pedestrianCount || '1');
+      specText = prefixWord + '/' + vals.type + '/' + styleAndCount + '/' + vals.support + '/' + ped;
+    } else {
+      specText = prefixWord + '/' + vals.type + '/' + styleAndCount + '/' + vals.support;
+    }
+  } else if (config.joinFormat === 'dimension/type/wing/sump') {
     // 배수암거, 통로박스 등 (접두어/가로*세로/재질/날개벽/집수정 등)
     var dim = vals.width + '*' + vals.height;
     specText = prefixWord + '/' + dim + '/' + vals.type + '/' + (vals.wing || vals.traffic || vals.material || '기타') + '/' + (vals.sump || '기타');
@@ -3549,11 +3675,11 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
       drawTextMarkers();
       showLoading(false);
       hideStreetlightBottomSheet();
-      alert('제원 저장이 완료되었습니다.');
+      showToast('제원 저장이 완료되었습니다.');
     }).catch(function (err) {
       showLoading(false);
       console.error('제원 저장 실패:', err);
-      alert('저장에 실패했습니다.');
+      alert('데이터 저장소에 기록하는 도중 오류가 발생해 저장하지 못했습니다.');
     });
   }
 
