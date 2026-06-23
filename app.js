@@ -276,7 +276,7 @@ var FACILITY_CONFIG = {
   '과속방지턱': {
     title: '과속방지턱',
     layer: '과속방지턱_T',
-    prefix: '', // 고정 과방 제거
+    prefix: '',
     fields: [
       { id: 'style', label: '형식', type: 'select', options: ['과속방지턱', '이미지방', '기타'], default: '과속방지턱' },
       { id: 'material', label: '재질', type: 'select', options: ['아스팔트', '콘크리트', '기타'], default: '아스팔트' },
@@ -2104,11 +2104,11 @@ function drawTextMarkers() {
       var span = document.createElement('span');
       span.textContent = (t.text || '').trim() || ' ';
       span.style.position = 'absolute';
-      span.style.width = '100px';
       span.style.fontSize = '12px';
       span.style.fontWeight = 'bold';
       span.style.color = '#FF3B30';
-      span.style.textAlign = 'center';
+      span.style.textAlign = 'left';
+      span.style.whiteSpace = 'nowrap';
       span.style.pointerEvents = 'auto'; // 텍스트만 클릭되도록 허용
       span.style.cursor = 'pointer';
       span.style.textShadow = '0 0 1px #fff, 0 0 2px #fff';
@@ -2150,7 +2150,7 @@ function drawTextMarkers() {
       var point = proj.fromLatLngToDivPixel(span._latLng);
       if (point) {
         var offsetY = span._offsetY || 0;
-        span.style.transform = 'translate(' + (point.x - 50) + 'px, ' + (point.y - 8 + offsetY) + 'px)';
+        span.style.transform = 'translate(' + point.x + 'px, ' + (point.y - 8 + offsetY) + 'px)';
       }
     });
   };
@@ -2479,7 +2479,7 @@ function deserializeSpecText(specText, config) {
   if (!specText || !config) return values;
 
   var parts = specText.split('/');
-  var prefix = config.prefix || config.title;
+  var prefix = (config.prefix !== undefined) ? config.prefix : config.title;
   if (prefix && parts[0] === prefix) {
     parts.shift(); // 접두어 제거
   }
@@ -2609,7 +2609,7 @@ function showPhotoModal(photoId) {
             this.select();
             var self = this;
             setTimeout(function () {
-              self.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              self.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }, 300);
           });
         }
@@ -2852,9 +2852,10 @@ function detectFacilityType(name, layer) {
     return null;
   }
 
-  // 1. 도로/포장 처리
-  if (n.indexOf('고가') >= 0 || l.indexOf('고가') >= 0) return '고가도로';
+  // 1. 도로반사경 및 도로표지 등 특수 도로 시설물 우선 처리
+  if (n.indexOf('도로반사경') >= 0 || l.indexOf('도로반사경') >= 0 || n.indexOf('반사경') >= 0 || l.indexOf('반사경') >= 0) return '도로반사경';
   if (n.indexOf('도로표지') >= 0 || l.indexOf('도로표지') >= 0) return '도로표지';
+  if (n.indexOf('고가') >= 0 || l.indexOf('고가') >= 0) return '고가도로';
   if (n.indexOf('도로') >= 0 || l.indexOf('도로') >= 0 || n.indexOf('포장') >= 0 || l.indexOf('포장') >= 0) {
     return '도로';
   }
@@ -2907,10 +2908,6 @@ function detectFacilityType(name, layer) {
   // 12. 갈매기표지
   if (n.indexOf('갈매기') >= 0 || l.indexOf('갈매기') >= 0) {
     return '갈매기표지';
-  }
-  // 13. 도로반사경
-  if (n.indexOf('반사경') >= 0 || l.indexOf('반사경') >= 0) {
-    return '도로반사경';
   }
   // CCTV 추가
   if (n.indexOf('cctv') >= 0 || l.indexOf('cctv') >= 0) {
@@ -3032,7 +3029,7 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
       this.select();
       var self = this;
       setTimeout(function () {
-        self.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        self.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 300);
     });
   }
@@ -3300,7 +3297,7 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
         // 포커스 시 키보드 위로 요소가 보이도록 스크롤 이동 처리
         var self = this;
         setTimeout(function () {
-          self.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          self.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 300);
       });
       inputEl.addEventListener('input', updatePreview);
@@ -3316,7 +3313,7 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
         selEl.addEventListener('focus', function () {
           var self = this;
           setTimeout(function () {
-            self.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            self.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }, 300);
         });
       }
@@ -3403,7 +3400,7 @@ function serializeFacilityForm(container, config, prefixId) {
 
   // 제원 조립 처리 (포맷 규칙 준수: 맨 앞에 접두어 필수 포함)
   var specText = '';
-  var prefixWord = config.prefix || config.title;
+  var prefixWord = (config.prefix !== undefined) ? config.prefix : config.title;
 
   if (config.title === '신호등') {
     // 신호등용 맞춤 포맷팅
@@ -3418,22 +3415,22 @@ function serializeFacilityForm(container, config, prefixId) {
       } else {
         ped = (vals.pedestrianType || '보행등') + '*' + (vals.pedestrianCount || '1');
       }
-      specText = prefixWord + '/' + vals.type + '/' + styleAndCount + '/' + vals.support + '/' + ped;
+      specText = (prefixWord ? prefixWord + '/' : '') + vals.type + '/' + styleAndCount + '/' + vals.support + '/' + ped;
     } else {
-      specText = prefixWord + '/' + vals.type + '/' + styleAndCount + '/' + vals.support;
+      specText = (prefixWord ? prefixWord + '/' : '') + vals.type + '/' + styleAndCount + '/' + vals.support;
     }
   } else if (config.joinFormat === 'dimension/type/wing/sump') {
     // 배수암거, 통로박스 등 (접두어/가로*세로/재질/날개벽/집수정 등)
     var dim = vals.width + '*' + vals.height;
-    specText = prefixWord + '/' + dim + '/' + vals.type + '/' + (vals.wing || vals.traffic || vals.material || '기타') + '/' + (vals.sump || '기타');
+    specText = (prefixWord ? prefixWord + '/' : '') + dim + '/' + vals.type + '/' + (vals.wing || vals.traffic || vals.material || '기타') + '/' + (vals.sump || '기타');
   } else if (config.joinFormat === 'bridgeName/material/dimension') {
     // 교량 등 (접두어/교량명/재질/가로*세로)
     var dim = vals.width + '*' + vals.height;
-    specText = prefixWord + '/' + vals.bridgeName + '/' + vals.material + '/' + dim;
+    specText = (prefixWord ? prefixWord + '/' : '') + vals.bridgeName + '/' + vals.material + '/' + dim;
   } else if (config.joinFormat === 'type/dimension') {
     // 측구 (접두어/종류/가로*세로)
     var dim = vals.width + '*' + vals.height;
-    specText = prefixWord + '/' + vals.type + '/' + dim;
+    specText = (prefixWord ? prefixWord + '/' : '') + vals.type + '/' + dim;
   } else {
     // 기본 포맷: 접두어/val1/val2/val3...
     var parts = [];
