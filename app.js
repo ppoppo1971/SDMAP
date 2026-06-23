@@ -2106,7 +2106,11 @@ function drawTextMarkers() {
       span.style.position = 'absolute';
       span.style.fontSize = '12px';
       span.style.fontWeight = 'bold';
-      span.style.color = '#FF3B30';
+      if (t.layer === '사진번호') {
+        span.style.color = '#007AFF'; // 파란색
+      } else {
+        span.style.color = '#FF3B30'; // 빨간색
+      }
       span.style.textAlign = 'left';
       span.style.whiteSpace = 'nowrap';
       span.style.pointerEvents = 'auto'; // 텍스트만 클릭되도록 허용
@@ -2125,14 +2129,8 @@ function drawTextMarkers() {
       // draw에서 좌표 계산시 쓸 WGS84 객체를 미리 생성해 둠
       span._latLng = new google.maps.LatLng(pos.lat, pos.lng);
       
-      // Y축 오프셋 지정 (사진번호와 제원이 겹치는 현상 방지)
-      var offsetY = 0;
-      if (t.layer === '사진번호') {
-        offsetY = -18;
-      } else {
-        offsetY = 18;
-      }
-      span._offsetY = offsetY;
+      // Y축 오프셋 없이 마커와 동일한 좌표(높낮이)에 위치
+      span._offsetY = 0;
 
       self.div.appendChild(span);
       self.spans.push(span);
@@ -2607,10 +2605,6 @@ function showPhotoModal(photoId) {
         if (numInput) {
           numInput.addEventListener('focus', function () {
             this.select();
-            var self = this;
-            setTimeout(function () {
-              self.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 300);
           });
         }
 
@@ -3027,10 +3021,6 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
   if (numInput) {
     numInput.addEventListener('focus', function () {
       this.select();
-      var self = this;
-      setTimeout(function () {
-        self.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 300);
     });
   }
 
@@ -3289,16 +3279,11 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       }
     }
 
-    // input 포커스 이벤트 바인딩 (자동 전체 선택) 및 미리보기 동기화, 모바일 키보드 가림방지 스크롤바인딩
+    // input 포커스 이벤트 바인딩 (자동 전체 선택) 및 미리보기 동기화
     var inputs = group.querySelectorAll('input');
     inputs.forEach(function (inputEl) {
       inputEl.addEventListener('focus', function () {
         this.select();
-        // 포커스 시 키보드 위로 요소가 보이도록 스크롤 이동 처리
-        var self = this;
-        setTimeout(function () {
-          self.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 300);
       });
       inputEl.addEventListener('input', updatePreview);
     });
@@ -3307,16 +3292,6 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
     if (field.type === 'select') {
       var selEl = group.querySelector('select');
       var etcEl = group.querySelector('input[type="text"]');
-      
-      // select 포커스 시에도 모바일 키보드 가림방지 스크롤바인딩 적용
-      if (selEl) {
-        selEl.addEventListener('focus', function () {
-          var self = this;
-          setTimeout(function () {
-            self.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }, 300);
-        });
-      }
 
       if (selEl && etcEl) {
         selEl.addEventListener('change', function () {
