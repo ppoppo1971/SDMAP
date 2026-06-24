@@ -2449,16 +2449,8 @@ function addPhotoAtPosition(xy, file) {
   var numTextId = 'text-num-' + Date.now();
   var targetSize = getImageTargetSize();
 
-  // 기존 저장된 사진번호 + 1 계산
-  var nextPhotoNum = '';
-  if (typeof localStorage !== 'undefined') {
-    var lastNumStr = localStorage.getItem('dmap:lastPhotoNumber');
-    if (lastNumStr) {
-      var parsed = parseInt(lastNumStr, 10);
-      if (!isNaN(parsed)) nextPhotoNum = String(parsed + 1);
-      else nextPhotoNum = lastNumStr;
-    }
-  }
+  // 기존 도면 및 localStr을 종합하여 다음 사진번호 획득
+  var nextPhotoNum = getNextPhotoNumber();
 
   var numTextObj = {
     id: numTextId,
@@ -2469,6 +2461,11 @@ function addPhotoAtPosition(xy, file) {
     layer: '사진번호'
   };
   texts.push(numTextObj);
+
+  // 다음 촬영 연속 갱신을 위해 localStorage에 즉시 반영
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('dmap:lastPhotoNumber', nextPhotoNum);
+  }
 
   function finish(blob) {
     var photo = {
@@ -2773,6 +2770,13 @@ function bindPhotoModal() {
         newNum = pmNumInput.value.trim();
       }
 
+      // 중복 및 누락 감지 경고 로직 적용
+      if (newNum) {
+        if (!validatePhotoNumber(newNum, editingPhotoId)) {
+          return; // 사용자가 저장을 취소한 경우 중단
+        }
+      }
+
       if (config) {
         var container = document.getElementById('photo-modal-dynamic-fields');
         var formWrapper = container ? container.querySelector('div:last-child') : null;
@@ -3058,6 +3062,81 @@ function detectFacilityType(name, layer) {
   }
 
   return null;
+}
+
+// 현재 도면 내 사진번호 레이어의 최대 숫자를 조회하고 일련번호로 가공하는 공통 함수
+function getNextPhotoNumber() {
+  var maxNum = 0;
+  if (window.texts && window.texts.length > 0) {
+    window.texts.forEach(function (t) {
+      if (t.layer === '사진번호' && t.text) {
+        var num = parseInt(t.text, 10);
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
+      }
+    });
+  }
+  
+  var lastLocalStorageNum = 0;
+  if (typeof localStorage !== 'undefined') {
+    var lastStr = localStorage.getItem('dmap:lastPhotoNumber');
+    if (lastStr) {
+      var parsed = parseInt(lastStr, 10);
+      if (!isNaN(parsed)) lastLocalStorageNum = parsed;
+    }
+  }
+  
+  var finalLastNum = Math.max(maxNum, lastLocalStorageNum);
+  return finalLastNum > 0 ? String(finalLastNum + 1) : '100'; // 기본값 100
+}
+
+// 신규 입력/수정될 사진번호가 기존 번호들과 중복되거나 중간 순서가 누락되었는지 검증 (confirm 경고)
+function validatePhotoNumber(newNumStr, currentPhotoId) {
+  var newNum = parseInt(newNumStr, 10);
+  if (isNaN(newNum)) return true; // 숫자가 아닌 경우는 경고 제외
+
+  // 1. 수정 중인 사진번호는 중복 검사 대상에서 제외하기 위한 텍스트 ID 획득
+  var ignoreTextId = null;
+  if (currentPhotoId && window.photos) {
+    var p = window.photos.filter(function (x) { return x.id === currentPhotoId; })[0];
+    if (p) ignoreTextId = p.numTextId;
+  }
+
+  var existingNums = [];
+  if (window.texts) {
+    window.texts.forEach(function (t) {
+      if (t.layer === '사진번호' && t.text && t.id !== ignoreTextId) {
+        var num = parseInt(t.text, 10);
+        if (!isNaN(num)) {
+          existingNums.push(num);
+        }
+      }
+    });
+  }
+
+  // 중복 검사
+  if (existingNums.indexOf(newNum) >= 0) {
+    return confirm('⚠️ 사진번호 ' + newNum + '번은 이미 존재하는 중복 번호입니다.\n그래도 강제로 저장하시겠습니까?');
+  }
+
+  // 누락 검사
+  if (existingNums.length > 0) {
+    existingNums.sort(function (a, b) { return a - b; });
+    var minNum = existingNums[0];
+    var missingNums = [];
+    for (var i = minNum; i < newNum; i++) {
+      if (existingNums.indexOf(i) === -1) {
+        missingNums.push(i);
+      }
+    }
+    if (missingNums.length > 0) {
+      var listStr = missingNums.slice(0, 5).join(', ') + (missingNums.length > 5 ? ' 외 ' + (missingNums.length - 5) + '개' : '');
+      return confirm('⚠️ 이전 순번 중 누락된 사진번호(' + listStr + ')가 있습니다.\n이대로 강제로 저장하시겠습니까?');
+    }
+  }
+
+  return true;
 }
 
 function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
@@ -3713,15 +3792,7 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
   img.src = objectUrl;
   content.appendChild(img);
 
-  var nextPhotoNum = '';
-  if (typeof localStorage !== 'undefined') {
-    var lastNumStr = localStorage.getItem('dmap:lastPhotoNumber');
-    if (lastNumStr) {
-      var parsed = parseInt(lastNumStr, 10);
-      if (!isNaN(parsed)) nextPhotoNum = String(parsed + 1);
-      else nextPhotoNum = lastNumStr;
-    }
-  }
+  var nextPhotoNum = getNextPhotoNumber();
 
   // 사진 번호 입력 필드 (공통)
   var numGroup = document.createElement('div');
@@ -3766,6 +3837,11 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
     var numEl = document.getElementById('sw-form-num');
     var numVal = numEl ? numEl.value.trim() : '';
     if (!numVal) { alert('사진 번호를 입력해 주세요.'); return; }
+
+    // 중복 및 누락 감지 검증 실행
+    if (!validatePhotoNumber(numVal, null)) {
+      return; // 취소 시 저장 중단
+    }
 
     var result = serializeFacilityForm(dynamicContainer, config, 'sw');
     if (!result) return;
