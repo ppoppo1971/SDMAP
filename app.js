@@ -3420,10 +3420,19 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       
       var opts = [];
       if (field.type === 'select') {
-        opts = field.options || [];
+        opts = (field.options || []).slice(); // 기존 고정 옵션 복사
       } else {
         // 주관식/숫자형 필드는 도면 내 과거 이력 상위 10개를 목록으로 채움
         opts = getFieldSuggestions(field.id, config);
+      }
+
+      // 현재 입력된 커스텀 실제값(val)을 드롭다운 옵션 후보군에 동적 병합 (중복 방지)
+      // 이 처리를 통해 기존에 직접 입력했던 값(예: '5')이 드롭다운 항목에 동적으로 들어가 폼을 다시 열었을 때 드롭다운에 바로 표시됩니다.
+      if (val !== '' && val !== '기타' && val !== (field.default || '')) {
+        var strVal = String(val).trim();
+        if (opts.indexOf(strVal) === -1) {
+          opts.push(strVal);
+        }
       }
 
       var isOptionMatched = false;
@@ -3437,8 +3446,10 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       var showEtc = !isOptionMatched && val !== '' && val !== field.default;
       var etcSelected = showEtc ? ' selected' : '';
       
-      // 버그 수정: 이력 매칭 유무와 관계없이 '기타' 옵션은 언제나 드롭다운 리스트의 마지막 옵션으로 상시 추가되어야 함
-      html += '<option value="기타"' + etcSelected + '>기타</option>';
+      // 버그 수정: 이력 매칭 유무와 관계없이 '기타' 옵션은 상시 추가되나, 기존 옵션군(opts)에 '기타'가 원래 있는 경우에는 중복 생성을 방지합니다.
+      if (opts.indexOf('기타') === -1) {
+        html += '<option value="기타"' + etcSelected + '>기타</option>';
+      }
       html += '</select>';
       
       var etcVal = showEtc ? val : '';
@@ -3497,7 +3508,10 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
             // 버그 수정: 사용자가 기타를 고르면, 곧바로 입력창에 포커스를 주어 키보드가 즉시 올라오도록 보정
             setTimeout(function () {
               etcEl.focus();
-              etcEl.select();
+              // input type="number" 일 때는 select() 호출 시 iOS 브라우저 에러로 키보드 씹힘이 발생하므로 예외 처리
+              if (etcEl.type !== 'number') {
+                etcEl.select();
+              }
             }, 100);
           }
           updatePreview();
