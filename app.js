@@ -35,6 +35,7 @@ var pendingStreetlightItem = null;
 var pendingStreetlightDxfCoords = null;
 var pendingStreetlightLatLng = null;
 var pendingFacilityType = null;
+var isNewPhotoPending = false; // 신규 촬영된 사진이 저장 대기 상태인지 여부
 
 // 모든 시설물 통합 캐시 스펙 저장 객체
 var lastSpecs = {};
@@ -2514,6 +2515,7 @@ function addPhotoAtPosition(xy, file) {
       drawTextMarkers();
       pendingAddPosition = null;
       showToast('사진이 추가되었습니다.');
+      isNewPhotoPending = true;
       showPhotoModal(id); // 저장 완료 즉시 사진 뷰어를 띄움
     }).catch(function (err) {
       console.error('사진 저장 실패:', err);
@@ -2834,7 +2836,41 @@ function showDxfImageModal(ref) {
   modal.classList.add('active');
 }
 
+function rollbackPendingPhoto() {
+  if (!isNewPhotoPending || !editingPhotoId) return;
+  var photoId = editingPhotoId;
+  isNewPhotoPending = false; // 중복 호출 방지
+  
+  var p = photos.filter(function (x) { return x.id === photoId; })[0];
+  window.localStore.deletePhoto(photoId).then(function () {
+    photos = photos.filter(function (x) { return x.id !== photoId; });
+    if (p) {
+      var idsToRemove = [p.numTextId];
+      var textIds = p.specTextIds || [];
+      if (textIds.length === 0 && p.specTextId) {
+        textIds = [p.specTextId];
+      }
+      textIds.forEach(function (tid) {
+        if (tid) idsToRemove.push(tid);
+      });
+      texts = texts.filter(function (x) {
+        return idsToRemove.indexOf(x.id) === -1;
+      });
+      return window.localStore.saveProject(dxfFileFullName, { texts: texts, lastModified: new Date().toISOString() });
+    }
+  }).then(function () {
+    drawPhotoMarkers();
+    drawTextMarkers();
+    showToast('사진 등록이 취소되었습니다.');
+  }).catch(function (err) {
+    console.error('Pending photo rollback failed:', err);
+  });
+}
+
 function hidePhotoModal() {
+  if (isNewPhotoPending && editingPhotoId) {
+    rollbackPendingPhoto();
+  }
   var modal = document.getElementById('photo-modal');
   var img = document.getElementById('photo-modal-img');
   if (modal) modal.classList.remove('active');
@@ -2976,6 +3012,7 @@ function bindPhotoModal() {
     promises.push(window.localStore.saveProject(dxfFileFullName, { texts: texts, lastModified: new Date().toISOString() }));
 
     Promise.all(promises).then(function () {
+      isNewPhotoPending = false;
       drawPhotoMarkers();
       drawTextMarkers();
       hidePhotoModal();
@@ -3266,7 +3303,7 @@ function getNextPhotoNumber() {
   }
   
   var finalLastNum = Math.max(maxNum, lastLocalStorageNum);
-  return finalLastNum > 0 ? String(finalLastNum + 1) : '100'; // 기본값 100
+  return finalLastNum > 0 ? String(finalLastNum + 1) : '1'; // 기본값 1
 }
 
 // 신규 입력/수정될 사진번호가 기존 번호들과 중복되거나 중간 순서가 누락되었는지 검증 (confirm 경고)
