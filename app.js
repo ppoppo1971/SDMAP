@@ -41,6 +41,14 @@ var lastSpecs = {};
 
 // 30여 개 시설물 제원 포맷 및 입력 양식 설정 테이블
 var FACILITY_CONFIG = {
+  '참고사항': {
+    title: '참고사항',
+    layer: '참고사항_T',
+    prefix: '',
+    fields: [
+      { id: 'memo', label: '메모 (참고 내용 입력)', type: 'text', placeholder: '참고 메모 입력', default: '내용' }
+    ]
+  },
   '가로등': {
     title: '가로등',
     layer: '가로등_T',
@@ -2645,63 +2653,147 @@ function showPhotoModal(photoId) {
     dynamicFieldsContainer.style.display = 'none';
   }
 
-  if (p.numTextId || p.specTextId) {
+  if (p.numTextId || p.specTextId || (p.specTextIds && p.specTextIds.length > 0)) {
     var numTextObj = texts.filter(function (t) { return t.id === p.numTextId; })[0];
-    var specTextObj = texts.filter(function (t) { return t.id === p.specTextId; })[0];
     
-    var fType = p.facilityType || (specTextObj ? detectFacilityType('', specTextObj.layer) : null);
+    // 다중 제원 텍스트 ID들 취득 (구버전 호환 처리 포함)
+    var textIds = p.specTextIds || [];
+    if (textIds.length === 0 && p.specTextId) {
+      textIds = [p.specTextId];
+    }
 
-    if (fType && FACILITY_CONFIG[fType]) {
-      var config = FACILITY_CONFIG[fType];
-      if (dynamicFieldsContainer) {
-        dynamicFieldsContainer.style.display = 'flex';
-        dynamicFieldsContainer.style.flexDirection = 'column';
-        dynamicFieldsContainer.style.gap = '8px';
+    if (dynamicFieldsContainer) {
+      dynamicFieldsContainer.style.display = 'flex';
+      dynamicFieldsContainer.style.flexDirection = 'column';
+      dynamicFieldsContainer.style.gap = '8px';
 
-        // 공통 사진번호 필드 추가
-        var numGroup = document.createElement('div');
-        numGroup.className = 'form-group';
-        numGroup.innerHTML = 
-          '<label>사진 번호 (직접 입력/수정 가능)</label>' +
-          '<input type="text" id="pm-form-num" value="' + (numTextObj ? numTextObj.text : '') + '" placeholder="예: 100">';
-        dynamicFieldsContainer.appendChild(numGroup);
+      // 1. 공통 사진번호 필드 추가
+      var numGroup = document.createElement('div');
+      numGroup.className = 'form-group';
+      numGroup.innerHTML = 
+        '<label>사진 번호 (직접 입력/수정 가능)</label>' +
+        '<input type="text" id="pm-form-num" value="' + (numTextObj ? numTextObj.text : '') + '" placeholder="예: 100">';
+      dynamicFieldsContainer.appendChild(numGroup);
 
-        var numInput = numGroup.querySelector('input');
-        if (numInput) {
-          numInput.addEventListener('focus', function () {
-            this.select();
-          });
+      var numInput = numGroup.querySelector('input');
+      if (numInput) {
+        numInput.addEventListener('focus', function () {
+          this.select();
+        });
+      }
+
+      // 실시간 미리보기용 컨테이너 생성
+      var previewGroup = document.createElement('div');
+      previewGroup.className = 'form-group';
+      previewGroup.style.background = '#F2F2F7';
+      previewGroup.style.padding = '8px 12px';
+      previewGroup.style.borderRadius = '8px';
+      previewGroup.style.border = '1px solid #E5E5EA';
+      previewGroup.innerHTML = 
+        '<label style="color:#5856D6; font-size:11px; margin-bottom:2px;">수정 저장 제원 일괄 미리보기</label>' +
+        '<div id="pm-spec-preview" style="font-size:12px; color:#1C1C1E; word-break:break-all; min-height:16px; white-space:pre-line;"></div>';
+      dynamicFieldsContainer.appendChild(previewGroup);
+
+      // 실시간 다중 폼 전체 미리보기 업데이트 함수 정의
+      window.updateAllPreviewsPM = function () {
+        var previewEl = document.getElementById('pm-spec-preview');
+        if (!previewEl) return;
+        var cards = pmFormListContainer.querySelectorAll('.attr-card');
+        var previews = [];
+        cards.forEach(function (card) {
+          var type = card.getAttribute('data-type');
+          var prefixIdUnique = card.getAttribute('data-prefix-id');
+          var config = FACILITY_CONFIG[type] || { title: type, fields: [] };
+          var result = serializeFacilityForm(card.querySelector('div'), config, prefixIdUnique);
+          if (result) {
+            previews.push('[' + type + '] ' + result.specText + ' (' + result.layer + ')');
+          }
+        });
+        previewEl.textContent = previews.join('\n') || '추가된 속성이 없습니다.';
+      };
+
+      // 폼 카드를 담을 리스트 컨테이너 생성
+      var pmFormListContainer = document.createElement('div');
+      pmFormListContainer.id = 'pm-dynamic-form-list';
+      pmFormListContainer.style.display = 'flex';
+      pmFormListContainer.style.flexDirection = 'column';
+      pmFormListContainer.style.gap = '15px';
+      dynamicFieldsContainer.appendChild(pmFormListContainer);
+
+      // 2. 사진에 저장되어 있던 모든 제원 복원 렌더링
+      textIds.forEach(function (tId, idx) {
+        var specTextObj = texts.filter(function (t) { return t.id === tId; })[0];
+        if (specTextObj) {
+          var fType = detectFacilityType('', specTextObj.layer);
+          if (!fType) {
+            // 레이어명 또는 텍스트 접두어로 추출 시도
+            var parts = (specTextObj.text || '').split('/');
+            if (parts.length > 0 && FACILITY_CONFIG[parts[0]]) {
+              fType = parts[0];
+            } else {
+              fType = p.facilityType || '일반시설물';
+            }
+          }
+
+          var config = FACILITY_CONFIG[fType] || { title: fType, fields: [] };
+          var parsedValues = deserializeSpecText(specTextObj.text, config);
+          var uniquePrefix = 'pm-old-' + idx + '-' + Date.now();
+          renderMultiAttributeCard(pmFormListContainer, fType, parsedValues, uniquePrefix);
+        }
+      });
+
+      // 3. 편집 모달 내에서도 [속성 추가 선택기] 제공
+      var addSelectorGroup = document.createElement('div');
+      addSelectorGroup.className = 'form-group';
+      addSelectorGroup.style.marginTop = '15px';
+      addSelectorGroup.innerHTML = '<label>➕ 속성 추가 입력</label>';
+      
+      var addSelect = document.createElement('select');
+      addSelect.id = 'pm-attribute-adder';
+      var addOpts = ['-- 추가할 속성 선택 --', '주의표지', '규제표지', '지시표지', '보조표지', '교통기타', 'CCTV', '새주소', '전광표지', '보안등', '신호등', '참고사항'];
+      addOpts.forEach(function (opt) {
+        var disabled = opt.indexOf('--') === 0 ? ' disabled selected' : '';
+        addSelect.innerHTML += '<option value="' + opt + '"' + disabled + '>' + opt + '</option>';
+      });
+      addSelectorGroup.appendChild(addSelect);
+      dynamicFieldsContainer.appendChild(addSelectorGroup);
+
+      addSelect.addEventListener('change', function () {
+        var selectedType = this.value;
+        if (!selectedType || selectedType.indexOf('--') === 0) return;
+        
+        var cards = pmFormListContainer.querySelectorAll('.attr-card');
+        var isDuplicate = false;
+        cards.forEach(function (c) {
+          if (c.getAttribute('data-type') === selectedType) isDuplicate = true;
+        });
+        
+        if (isDuplicate && !confirm(selectedType + ' 속성이 이미 추가되어 있습니다. 중복해서 추가하시겠습니까?')) {
+          this.value = addOpts[0];
+          return;
         }
 
-        var specVal = specTextObj ? specTextObj.text : '';
-        var parsedValues = deserializeSpecText(specVal, config);
+        var uniquePrefix = 'pm-new-' + Date.now();
+        var cardCached = lastSpecs[selectedType] || {};
+        renderMultiAttributeCard(pmFormListContainer, selectedType, cardCached, uniquePrefix);
+        
+        var inputsAndSelects = pmFormListContainer.querySelectorAll('input, select');
+        inputsAndSelects.forEach(function (el) {
+          el.addEventListener('input', window.updateAllPreviewsPM);
+          el.addEventListener('change', window.updateAllPreviewsPM);
+        });
 
-        var formWrapper = document.createElement('div');
-        dynamicFieldsContainer.appendChild(formWrapper);
+        window.updateAllPreviewsPM();
+        this.value = addOpts[0];
+      });
 
-        renderFacilityForm(formWrapper, config, parsedValues, 'pm');
-      }
-    } else {
-      // 일반 사진인 경우에도 사진번호 필드를 표시하여 직접 번호를 보고 수정할 수 있게 함
-      if (numTextObj && dynamicFieldsContainer) {
-        dynamicFieldsContainer.style.display = 'flex';
-        dynamicFieldsContainer.style.flexDirection = 'column';
-        dynamicFieldsContainer.style.gap = '8px';
-
-        var numGroup = document.createElement('div');
-        numGroup.className = 'form-group';
-        numGroup.innerHTML = 
-          '<label>사진 번호 (직접 입력/수정 가능)</label>' +
-          '<input type="text" id="pm-form-num" value="' + numTextObj.text + '" placeholder="예: 100">';
-        dynamicFieldsContainer.appendChild(numGroup);
-
-        var numInput = numGroup.querySelector('input');
-        if (numInput) {
-          numInput.addEventListener('focus', function () {
-            this.select();
-          });
-        }
-      }
+      // 초기 리스너 연결 및 최초 1회 전체 미리보기 출력
+      var inputsAndSelects = pmFormListContainer.querySelectorAll('input, select');
+      inputsAndSelects.forEach(function (el) {
+        el.addEventListener('input', window.updateAllPreviewsPM);
+        el.addEventListener('change', window.updateAllPreviewsPM);
+      });
+      window.updateAllPreviewsPM();
     }
   }
 
@@ -2778,57 +2870,115 @@ function bindPhotoModal() {
       p.memo = memo.value;
     }));
 
-    if (p.numTextId || p.specTextId) {
-      var newNum = '';
-      var newSpec = '';
-      var newLayer = '';
-      
-      var specTextObj = p.specTextId ? texts.filter(function (t) { return t.id === p.specTextId; })[0] : null;
-      var fType = p.facilityType || (specTextObj ? detectFacilityType('', specTextObj.layer) : null);
-      var config = fType ? FACILITY_CONFIG[fType] : null;
-
-      var pmNumInput = document.getElementById('pm-form-num');
-      if (pmNumInput) {
-        newNum = pmNumInput.value.trim();
-      }
-
-      // 중복 및 누락 감지 경고 로직 적용
-      if (newNum) {
-        if (!validatePhotoNumber(newNum, editingPhotoId)) {
-          return; // 사용자가 저장을 취소한 경우 중단
-        }
-      }
-
-      if (config) {
-        var container = document.getElementById('photo-modal-dynamic-fields');
-        var formWrapper = container ? container.querySelector('div:last-child') : null;
-        var result = serializeFacilityForm(formWrapper, config, 'pm');
-        if (result) {
-          newSpec = result.specText;
-          newLayer = result.layer;
-        }
-      }
-
-      if (p.numTextId && newNum) {
-        var numObj = texts.filter(function (x) { return x.id === p.numTextId; })[0];
-        if (numObj) {
-          numObj.text = newNum;
-          // localStorage 에도 반영하여 다음 시설물 폼/사진촬영 시 일련번호 연동 보장
-          if (typeof localStorage !== 'undefined') {
-            localStorage.setItem('dmap:lastPhotoNumber', newNum);
-          }
-        }
-      }
-      if (p.specTextId && newSpec) {
-        var specObj = texts.filter(function (x) { return x.id === p.specTextId; })[0];
-        if (specObj) {
-          specObj.text = newSpec;
-          if (newLayer) specObj.layer = newLayer;
-        }
-      }
-      
-      promises.push(window.localStore.saveProject(dxfFileFullName, { texts: texts, lastModified: new Date().toISOString() }));
+    var newNum = '';
+    var pmNumInput = document.getElementById('pm-form-num');
+    if (pmNumInput) {
+      newNum = pmNumInput.value.trim();
     }
+
+    // 중복 및 누락 감지 경고 로직 적용
+    if (newNum) {
+      if (!validatePhotoNumber(newNum, editingPhotoId)) {
+        return; // 사용자가 저장을 취소한 경우 중단
+      }
+    }
+
+    // 1. 모달창 내에 렌더링된 모든 속성 카드들 수집 및 직렬화
+    var container = document.getElementById('pm-dynamic-form-list');
+    var attributeDataList = [];
+    var serializeSuccess = true;
+
+    if (container) {
+      var cards = container.querySelectorAll('.attr-card');
+      cards.forEach(function (card) {
+        var type = card.getAttribute('data-type');
+        var prefixIdUnique = card.getAttribute('data-prefix-id');
+        var config = FACILITY_CONFIG[type];
+        if (!config) return;
+
+        var result = serializeFacilityForm(card.querySelector('div'), config, prefixIdUnique);
+        if (!result) {
+          serializeSuccess = false;
+          return;
+        }
+
+        attributeDataList.push({
+          type: type,
+          layer: result.layer,
+          specText: result.specText,
+          values: result.values
+        });
+      });
+    }
+
+    if (!serializeSuccess) {
+      alert('일부 제원 양식의 입력값을 확인해 주세요.');
+      return;
+    }
+
+    // 2. 기존에 이 사진에 연결되어 도면에 뿌려졌던 모든 이전 제원 텍스트 마커들 일괄 청소
+    var oldTextIds = p.specTextIds || [];
+    if (oldTextIds.length === 0 && p.specTextId) {
+      oldTextIds = [p.specTextId];
+    }
+    
+    // texts 배열에서 기존 제원 텍스트를 제거
+    texts = texts.filter(function (t) {
+      return oldTextIds.indexOf(t.id) === -1;
+    });
+
+    // 3. 사진번호 텍스트 내용 갱신 (사진번호 텍스트는 기존 객체 재활용)
+    if (p.numTextId && newNum) {
+      var numObj = texts.filter(function (x) { return x.id === p.numTextId; })[0];
+      if (numObj) {
+        numObj.text = newNum;
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('dmap:lastPhotoNumber', newNum);
+        }
+      }
+    }
+
+    // 4. 새로운 수정된 속성 데이터들을 바탕으로 신규 제원 텍스트 마커 생성
+    var newSpecTextIds = [];
+    var primarySpecTextId = null;
+
+    attributeDataList.forEach(function (attr, index) {
+      var specTextId = 'text-spec-' + index + '-' + Date.now();
+      newSpecTextIds.push(specTextId);
+      
+      if (index === 0) {
+        primarySpecTextId = specTextId;
+      }
+
+      var specTextObj = {
+        id: specTextId,
+        x: p.x,
+        y: p.y,
+        text: attr.specText,
+        fontSize: 12,
+        layer: attr.layer || '일반_T'
+      };
+      texts.push(specTextObj);
+
+      // 개별 속성 폼 캐시 업데이트
+      lastSpecs[attr.type] = attr.values;
+    });
+
+    // 5. 사진 레코드 메타데이터 최종 업데이트
+    p.specTextId = primarySpecTextId;
+    p.specTextIds = newSpecTextIds;
+    p.facilityType = attributeDataList[0] ? attributeDataList[0].type : '일반시설물';
+    
+    var additionalTypes = [];
+    if (attributeDataList.length > 1) {
+      for (var idx = 1; idx < attributeDataList.length; idx++) {
+        additionalTypes.push(attributeDataList[idx].type);
+      }
+    }
+    p.additionalTypes = additionalTypes;
+
+    promises.push(window.localStore.savePhoto(dxfFileFullName, p));
+    promises.push(window.localStore.saveProject(dxfFileFullName, { texts: texts, lastModified: new Date().toISOString() }));
 
     Promise.all(promises).then(function () {
       drawPhotoMarkers();
@@ -2848,8 +2998,19 @@ function bindPhotoModal() {
     
     window.localStore.deletePhoto(editingPhotoId).then(function () {
       photos = photos.filter(function (x) { return x.id !== editingPhotoId; });
-      if (p && (p.numTextId || p.specTextId)) {
-        texts = texts.filter(function (x) { return x.id !== p.numTextId && x.id !== p.specTextId; });
+      if (p) {
+        var idsToRemove = [p.numTextId];
+        var textIds = p.specTextIds || [];
+        if (textIds.length === 0 && p.specTextId) {
+          textIds = [p.specTextId];
+        }
+        textIds.forEach(function (tid) {
+          if (tid) idsToRemove.push(tid);
+        });
+
+        texts = texts.filter(function (x) {
+          return idsToRemove.indexOf(x.id) === -1;
+        });
         return window.localStore.saveProject(dxfFileFullName, { texts: texts, lastModified: new Date().toISOString() });
       }
     }).then(function () {
@@ -3186,13 +3347,69 @@ function getFieldSuggestions(fieldId, config) {
   return list.slice(0, 10).map(function (item) { return item.val; });
 }
 
+// 개별 속성 카드(구분선, 타이틀, [X] 삭제 버튼 탑재)를 동적으로 생성하는 헬퍼 함수
+function renderMultiAttributeCard(container, type, cachedVals, prefixIdUnique) {
+  var card = document.createElement('div');
+  card.className = 'attr-card';
+  card.setAttribute('data-type', type);
+  card.setAttribute('data-prefix-id', prefixIdUnique);
+
+  var header = document.createElement('div');
+  header.className = 'attr-card-header';
+  
+  var title = document.createElement('span');
+  title.className = 'attr-card-title';
+  title.textContent = type + ' 제원 정보';
+  
+  var delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'attr-card-delete';
+  delBtn.textContent = '×';
+  delBtn.addEventListener('click', function () {
+    if (confirm(type + ' 속성 폼을 삭제하시겠습니까?')) {
+      card.remove();
+      // 전체 제원 미리보기 갱신 트리거
+      var previewEl = document.getElementById('sw-spec-preview') || document.getElementById('pm-spec-preview');
+      if (previewEl) {
+        // 전역 미리보기 업데이트 트리거
+        if (typeof updateAllPreviews === 'function') {
+          updateAllPreviews();
+        }
+      }
+    }
+  });
+
+  header.appendChild(title);
+  header.appendChild(delBtn);
+  card.appendChild(header);
+
+  var formBody = document.createElement('div');
+  card.appendChild(formBody);
+  container.appendChild(card);
+
+  var config = FACILITY_CONFIG[type];
+  if (!config) {
+    config = {
+      title: type,
+      layer: '기타_T',
+      prefix: type,
+      fields: [
+        { id: 'content', label: '내용 (직접 입력)', type: 'text', placeholder: '내용 입력', default: '내용' }
+      ]
+    };
+  }
+
+  renderFacilityForm(formBody, config, cachedVals, prefixIdUnique);
+  return card;
+}
+
+// 다중 속성 일괄 제원 입력 바텀 시트 구현
 function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
   var content = document.getElementById('bottom-sheet-content');
   var title = document.getElementById('bottom-sheet-title');
   if (!content) return;
 
-  var typeText = pendingFacilityType || '시설물';
-  if (title) title.textContent = typeText + ' 제원 입력';
+  if (title) title.textContent = '시설물 제원 입력';
   content.innerHTML = '';
 
   var img = document.createElement('img');
@@ -3226,53 +3443,170 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
     });
   }
 
-  // 동적 필드 컨테이너 추가
-  var dynamicContainer = document.createElement('div');
-  dynamicContainer.style.display = 'flex';
-  dynamicContainer.style.flexDirection = 'column';
-  dynamicContainer.style.gap = '8px';
-  content.appendChild(dynamicContainer);
+  // 실시간 전체 제원 미리보기 필드 삽입 (가시성 확보용)
+  var previewGroup = document.createElement('div');
+  previewGroup.className = 'form-group';
+  previewGroup.style.background = '#F2F2F7';
+  previewGroup.style.padding = '8px 12px';
+  previewGroup.style.borderRadius = '8px';
+  previewGroup.style.border = '1px solid #E5E5EA';
+  previewGroup.innerHTML = 
+    '<label style="color:#5856D6; font-size:11px; margin-bottom:2px;">도면 저장 제원 일괄 미리보기</label>' +
+    '<div id="sw-spec-preview" style="font-size:12px; color:#1C1C1E; word-break:break-all; min-height:16px; white-space:pre-line;"></div>';
+  content.appendChild(previewGroup);
 
-  var config = FACILITY_CONFIG[pendingFacilityType];
-  if (!config) {
-    config = {
-      title: pendingFacilityType || '일반시설물',
-      layer: (item && item.layer) ? item.layer : '기타_T',
-      prefix: pendingFacilityType || '시설물',
-      fields: [
-        { id: 'content', label: '내용 (직접 입력)', type: 'text', placeholder: '내용 입력', default: '내용' }
-      ]
-    };
-  }
+  // 실시간 다중 폼 전체 미리보기 업데이트 함수 정의
+  window.updateAllPreviews = function () {
+    var previewEl = document.getElementById('sw-spec-preview');
+    if (!previewEl) return;
+    var cards = formListContainer.querySelectorAll('.attr-card');
+    var previews = [];
+    cards.forEach(function (card) {
+      var type = card.getAttribute('data-type');
+      var prefixIdUnique = card.getAttribute('data-prefix-id');
+      var config = FACILITY_CONFIG[type] || { title: type, fields: [] };
+      var result = serializeFacilityForm(card.querySelector('div'), config, prefixIdUnique);
+      if (result) {
+        previews.push('[' + type + '] ' + result.specText + ' (' + result.layer + ')');
+      }
+    });
+    previewEl.textContent = previews.join('\n') || '추가된 속성이 없습니다.';
+  };
 
-  var cached = lastSpecs[config.title] || {};
-  renderFacilityForm(dynamicContainer, config, cached, 'sw');
+  // 동적 필드 카드들을 담을 수직 리스트 컨테이너 생성
+  var formListContainer = document.createElement('div');
+  formListContainer.id = 'sw-dynamic-form-list';
+  formListContainer.style.display = 'flex';
+  formListContainer.style.flexDirection = 'column';
+  formListContainer.style.gap = '15px';
+  content.appendChild(formListContainer);
 
-  // 저장 버튼
+  // 1. 최초 롱프레스로 자동 인식된 주(Primary) 시설물 카드 1개 자동 렌더링
+  var primaryType = pendingFacilityType || '일반시설물';
+  var cached = lastSpecs[primaryType] || {};
+  renderMultiAttributeCard(formListContainer, primaryType, cached, 'sw-primary');
+
+  // 속성 추가 선택기 UI (기본 노출 방식)
+  var addSelectorGroup = document.createElement('div');
+  addSelectorGroup.className = 'form-group';
+  addSelectorGroup.style.marginTop = '15px';
+  addSelectorGroup.innerHTML = '<label>➕ 속성 추가 입력</label>';
+  
+  var addSelect = document.createElement('select');
+  addSelect.id = 'sw-attribute-adder';
+  var addOpts = ['-- 추가할 속성 선택 --', '주의표지', '규제표지', '지시표지', '보조표지', '교통기타', 'CCTV', '새주소', '전광표지', '보안등', '신호등', '참고사항'];
+  addOpts.forEach(function (opt) {
+    var disabled = opt.indexOf('--') === 0 ? ' disabled selected' : '';
+    addSelect.innerHTML += '<option value="' + opt + '"' + disabled + '>' + opt + '</option>';
+  });
+  addSelectorGroup.appendChild(addSelect);
+  content.appendChild(addSelectorGroup);
+
+  // 추가 속성 선택 리스너: 선택 즉시 수직 하단 카드로 부착
+  addSelect.addEventListener('change', function () {
+    var selectedType = this.value;
+    if (!selectedType || selectedType.indexOf('--') === 0) return;
+    
+    // 이미 동일 속성이 카드 목록에 있으면 중복 추가 질문
+    var cards = formListContainer.querySelectorAll('.attr-card');
+    var isDuplicate = false;
+    cards.forEach(function (c) {
+      if (c.getAttribute('data-type') === selectedType) isDuplicate = true;
+    });
+    
+    if (isDuplicate && !confirm(selectedType + ' 속성이 이미 추가되어 있습니다. 중복해서 추가하시겠습니까?')) {
+      this.value = addOpts[0];
+      return;
+    }
+
+    var uniquePrefix = 'sw-add-' + Date.now();
+    var cardCached = lastSpecs[selectedType] || {};
+    renderMultiAttributeCard(formListContainer, selectedType, cardCached, uniquePrefix);
+    
+    // 입력 동기화 리스너 추가 바인딩하여 실시간 미리보기 갱신
+    var inputsAndSelects = formListContainer.querySelectorAll('input, select');
+    inputsAndSelects.forEach(function (el) {
+      el.addEventListener('input', window.updateAllPreviews);
+      el.addEventListener('change', window.updateAllPreviews);
+    });
+
+    window.updateAllPreviews();
+    this.value = addOpts[0]; // 셀렉트박스 리셋
+  });
+
+  // 버튼 컨테이너 생성 (저장 / 추가 버튼의 1:1 우측 수평 정렬)
+  var btnContainer = document.createElement('div');
+  btnContainer.style.cssText = 'display:flex; gap:10px; width:100%; margin-top:20px;';
+  
   var submitBtn = document.createElement('button');
   submitBtn.type = 'button';
   submitBtn.className = 'btn';
   submitBtn.id = 'sw-form-submit';
-  submitBtn.style.cssText = 'background:#34C759; margin-top:10px; width:100%; padding:12px; font-weight:bold;';
+  submitBtn.style.cssText = 'background:#34C759; flex:1; padding:15px; font-weight:bold; font-size:15px; border-radius:10px;';
   submitBtn.textContent = '제원 저장';
-  content.appendChild(submitBtn);
+  
+  btnContainer.appendChild(submitBtn);
+  content.appendChild(btnContainer);
 
+  // 초기 렌더링 후 실시간 미리보기 갱신
+  var inputsAndSelects = formListContainer.querySelectorAll('input, select');
+  inputsAndSelects.forEach(function (el) {
+    el.addEventListener('input', window.updateAllPreviews);
+    el.addEventListener('change', window.updateAllPreviews);
+  });
+  window.updateAllPreviews();
+
+  // 일괄 저장 버튼 클릭 이벤트 핸들러
   submitBtn.addEventListener('click', function () {
     var numEl = document.getElementById('sw-form-num');
     var numVal = numEl ? numEl.value.trim() : '';
     if (!numVal) { alert('사진 번호를 입력해 주세요.'); return; }
 
-    var result = serializeFacilityForm(dynamicContainer, config, 'sw');
-    if (!result) return;
+    // 중복 및 누락 감지 검증 실행
+    if (!validatePhotoNumber(numVal, null)) {
+      return; // 취소 시 저장 중단
+    }
 
-    var formData = {
+    var cards = formListContainer.querySelectorAll('.attr-card');
+    if (cards.length === 0) {
+      alert('최소 하나 이상의 시설물 속성을 추가해야 합니다.');
+      return;
+    }
+
+    var attributeDataList = [];
+    var serializeSuccess = true;
+
+    cards.forEach(function (card) {
+      var type = card.getAttribute('data-type');
+      var prefixIdUnique = card.getAttribute('data-prefix-id');
+      var config = FACILITY_CONFIG[type];
+      if (!config) return;
+
+      var result = serializeFacilityForm(card.querySelector('div'), config, prefixIdUnique);
+      if (!result) {
+        serializeSuccess = false;
+        return;
+      }
+
+      attributeDataList.push({
+        type: type,
+        layer: result.layer,
+        specText: result.specText,
+        values: result.values
+      });
+    });
+
+    if (!serializeSuccess) {
+      alert('일부 폼 직렬화에 실패했습니다. 입력값을 확인해 주세요.');
+      return;
+    }
+
+    var finalFormData = {
       num: numVal,
-      layer: result.layer,
-      specText: result.specText,
-      values: result.values
+      attributes: attributeDataList
     };
 
-    saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng);
+    saveStreetlightData(finalFormData, fileBlob, item, dxfCoords, latLng);
   });
 }
 
@@ -3280,8 +3614,11 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
   if (!dxfFileFullName || !window.localStore) return;
   showLoading(true);
 
-  if (pendingFacilityType) {
-    lastSpecs[pendingFacilityType] = formData.values;
+  // 1. 입력받은 모든 개별 속성들의 임시 폼 캐시(lastSpecs) 갱신
+  if (formData.attributes && formData.attributes.length > 0) {
+    formData.attributes.forEach(function (attr) {
+      lastSpecs[attr.type] = attr.values;
+    });
   }
 
   if (typeof localStorage !== 'undefined') {
@@ -3311,8 +3648,8 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
 
   var photoId = 'photo-' + Date.now();
   var numTextId = 'text-num-' + Date.now();
-  var specTextId = 'text-spec-' + (Date.now() + 1);
-
+  
+  // 사진 번호 텍스트 객체 생성 및 texts 배열 등록
   var numTextObj = {
     id: numTextId,
     x: insertionDxf.x,
@@ -3321,22 +3658,47 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
     fontSize: 12,
     layer: '사진번호'
   };
-
-  var specTextObj = {
-    id: specTextId,
-    x: insertionDxf.x,
-    y: insertionDxf.y,
-    text: formData.specText,
-    fontSize: 12,
-    layer: formData.layer || '일반_T'
-  };
-
   texts.push(numTextObj);
-  texts.push(specTextObj);
+
+  // 2. 다중 제원 텍스트 마커 생성 및 ID 목록 결합
+  var specTextIds = [];
+  var primarySpecTextId = null;
+
+  if (formData.attributes && formData.attributes.length > 0) {
+    formData.attributes.forEach(function (attr, index) {
+      var specTextId = 'text-spec-' + index + '-' + Date.now();
+      specTextIds.push(specTextId);
+      
+      // 첫 번째 속성을 주(Primary) 제원 텍스트 ID로 지정 (구버전 호환성용)
+      if (index === 0) {
+        primarySpecTextId = specTextId;
+      }
+
+      var specTextObj = {
+        id: specTextId,
+        x: insertionDxf.x,
+        y: insertionDxf.y,
+        text: attr.specText,
+        fontSize: 12,
+        layer: attr.layer || '일반_T'
+      };
+      texts.push(specTextObj);
+    });
+  }
 
   var targetSize = getImageTargetSize();
   function finishSave(blob) {
-    var descText = pendingFacilityType ? pendingFacilityType + ' 시설물 조사' : '일반 시설물 조사';
+    var primaryType = (formData.attributes && formData.attributes[0]) ? formData.attributes[0].type : (pendingFacilityType || '일반시설물');
+    var descText = primaryType + ' 시설물 조사';
+    
+    // 추가된 모든 부속 시설물 유형 목록 추출
+    var additionalTypes = [];
+    if (formData.attributes && formData.attributes.length > 1) {
+      for (var idx = 1; idx < formData.attributes.length; idx++) {
+        additionalTypes.push(formData.attributes[idx].type);
+      }
+    }
+
     var photo = {
       id: photoId,
       x: insertionDxf.x,
@@ -3348,8 +3710,10 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
       fileName: generatePhotoFileName(),
       createdAt: new Date().toISOString(),
       numTextId: numTextId,
-      specTextId: specTextId,
-      facilityType: pendingFacilityType
+      specTextId: primarySpecTextId, // 구버전 DB 호환성
+      specTextIds: specTextIds,      // 다중 속성 ID 배열 (신규)
+      facilityType: primaryType,     // 주 시설물 종류
+      additionalTypes: additionalTypes // 부속 시설물 종류 배열
     };
 
     photos.push(photo);
@@ -3362,11 +3726,11 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
       drawTextMarkers();
       showLoading(false);
       hideStreetlightBottomSheet();
-      alert('제원 저장이 완료되었습니다.');
+      showToast('제원 저장이 완료되었습니다.');
     }).catch(function (err) {
       showLoading(false);
       console.error('제원 저장 실패:', err);
-      alert('저장에 실패했습니다.');
+      alert('데이터 저장소에 기록하는 도중 오류가 발생해 저장하지 못했습니다.');
     });
   }
 
