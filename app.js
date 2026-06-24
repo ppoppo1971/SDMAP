@@ -3433,12 +3433,12 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
         html += '<option value="' + opt + '"' + selected + '>' + opt + '</option>';
       });
 
-      // 캐시값이 목록에 없거나 직접 입력한 것이었다면 '기타'로 자동 지정
+      // 캐시값이 목록에 없거나 직접 입력한 것이었다면 '기타'를 기본 선택 상태로 지정
       var showEtc = !isOptionMatched && val !== '' && val !== field.default;
       var etcSelected = showEtc ? ' selected' : '';
-      if (!isOptionMatched) {
-        html += '<option value="기타"' + etcSelected + '>기타</option>';
-      }
+      
+      // 버그 수정: 이력 매칭 유무와 관계없이 '기타' 옵션은 언제나 드롭다운 리스트의 마지막 옵션으로 상시 추가되어야 함
+      html += '<option value="기타"' + etcSelected + '>기타</option>';
       html += '</select>';
       
       var etcVal = showEtc ? val : '';
@@ -3489,8 +3489,17 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
 
       if (selEl && etcEl) {
         selEl.addEventListener('change', function () {
-          etcEl.style.display = (this.value === '기타') ? 'block' : 'none';
-          if (this.value !== '기타') etcEl.value = '';
+          var isEtc = this.value === '기타';
+          etcEl.style.display = isEtc ? 'block' : 'none';
+          if (!isEtc) {
+            etcEl.value = '';
+          } else {
+            // 버그 수정: 사용자가 기타를 고르면, 곧바로 입력창에 포커스를 주어 키보드가 즉시 올라오도록 보정
+            setTimeout(function () {
+              etcEl.focus();
+              etcEl.select();
+            }, 100);
+          }
           updatePreview();
         });
       }
