@@ -1447,6 +1447,12 @@ function deleteDataForProject() {
   window.localStore.deleteProjectData(dxfFileFullName).then(function (deletedPhotoCount) {
     texts = [];
     photos = [];
+    
+    // 로컬 스토리지에 남아있던 전역 사진번호 카운터 변수도 초기화
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('dmap:lastPhotoNumber');
+    }
+    
     drawPhotoMarkers();
     drawTextMarkers();
     hideDeleteDataModal();
