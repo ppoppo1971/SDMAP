@@ -3411,15 +3411,29 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
 
     var html = '<label>' + field.label + '</label>';
 
-    if (field.type === 'select') {
+    if (field.readonly) {
+      // 읽기전용 필드는 그대로 일반 텍스트 입력박스 유지
+      html += '<input type="text" readonly id="' + prefixId + '-' + field.id + '" value="' + val + '">';
+    } else {
+      // 일반 주관식/선택 필드는 모두 드롭다운(select) + 기타(etc) 입력창 구조로 통일
       html += '<select id="' + prefixId + '-' + field.id + '">';
+      
+      var opts = [];
+      if (field.type === 'select') {
+        opts = field.options || [];
+      } else {
+        // 주관식/숫자형 필드는 도면 내 과거 이력 상위 10개를 목록으로 채움
+        opts = getFieldSuggestions(field.id, config);
+      }
+
       var isOptionMatched = false;
-      field.options.forEach(function (opt) {
+      opts.forEach(function (opt) {
         var selected = opt === val ? ' selected' : '';
         if (opt === val) isOptionMatched = true;
         html += '<option value="' + opt + '"' + selected + '>' + opt + '</option>';
       });
-      // 캐시값이 기존 옵션에 없고 텍스트가 적혀있었다면 기타로 지정
+
+      // 캐시값이 목록에 없거나 직접 입력한 것이었다면 '기타'로 자동 지정
       var showEtc = !isOptionMatched && val !== '' && val !== field.default;
       var etcSelected = showEtc ? ' selected' : '';
       if (!isOptionMatched) {
@@ -3429,57 +3443,17 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       
       var etcVal = showEtc ? val : '';
       var etcDisplay = showEtc ? 'block' : 'none';
-      html += '<input type="text" id="' + prefixId + '-' + field.id + '-etc" style="display:' + etcDisplay + '; margin-top:5px;" value="' + etcVal + '" placeholder="직접 입력">';
-    } else if (field.type === 'number' || field.isNumber) {
-      // 소수점을 입력할 수 있도록 step="any" 및 inputmode="decimal" 설정
-      html += '<input type="number" step="any" inputmode="decimal" id="' + prefixId + '-' + field.id + '" value="' + val + '" placeholder="' + (field.placeholder || '') + '">';
-    } else {
-      var readOnlyAttr = field.readonly ? ' readonly' : '';
-      html += '<input type="text"' + readOnlyAttr + ' id="' + prefixId + '-' + field.id + '" value="' + val + '" placeholder="' + (field.placeholder || '') + '">';
+
+      // 숫자 필드인지 여부에 따라 숫자패드 호환성을 유지하여 etc 입력창 구성
+      if (field.type === 'number' || field.isNumber) {
+        html += '<input type="number" step="any" inputmode="decimal" id="' + prefixId + '-' + field.id + '-etc" style="display:' + etcDisplay + '; margin-top:5px;" value="' + etcVal + '" placeholder="' + (field.placeholder || '직접 입력') + '">';
+      } else {
+        html += '<input type="text" id="' + prefixId + '-' + field.id + '-etc" style="display:' + etcDisplay + '; margin-top:5px;" value="' + etcVal + '" placeholder="' + (field.placeholder || '직접 입력') + '">';
+      }
     }
 
     group.innerHTML = html;
     container.appendChild(group);
-
-    // 해당 필드(field.id)에 대한 과거 입력 히스토리 상위 10개 추천 단어(datalist) 적용
-    var suggestions = getFieldSuggestions(field.id, config);
-    if (suggestions.length > 0) {
-      // 1. 일반 입력창 (숫자 및 텍스트)
-      var inputEl = group.querySelector('input:not([id$="-etc"])');
-      if (inputEl && !inputEl.readOnly) {
-        var datalistId = prefixId + '-' + field.id + '-datalist';
-        var oldDl = document.getElementById(datalistId);
-        if (oldDl) oldDl.parentNode.removeChild(oldDl);
-
-        var dl = document.createElement('datalist');
-        dl.id = datalistId;
-        suggestions.forEach(function (s) {
-          var opt = document.createElement('option');
-          opt.value = s;
-          dl.appendChild(opt);
-        });
-        container.appendChild(dl);
-        inputEl.setAttribute('list', datalistId);
-      }
-
-      // 2. '기타' 선택 시 나타나는 주관식 입력창
-      var etcInputEl = group.querySelector('input[id$="-etc"]');
-      if (etcInputEl) {
-        var etcDatalistId = prefixId + '-' + field.id + '-etc-datalist';
-        var oldEtcDl = document.getElementById(etcDatalistId);
-        if (oldEtcDl) oldEtcDl.parentNode.removeChild(oldEtcDl);
-
-        var dl = document.createElement('datalist');
-        dl.id = etcDatalistId;
-        suggestions.forEach(function (s) {
-          var opt = document.createElement('option');
-          opt.value = s;
-          dl.appendChild(opt);
-        });
-        container.appendChild(dl);
-        etcInputEl.setAttribute('list', etcDatalistId);
-      }
-    }
 
     // 신호등 종류가 '차량'인 경우 보행등 필드들을 초기에 숨겨두기 위해 ID 속성을 부여하여 래핑하거나 스타일을 조절합니다.
     if (config.title === '신호등' && (field.id === 'pedestrianType' || field.id === 'pedestrianCount')) {
@@ -3499,31 +3473,19 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       }
     }
 
-    // input 포커스 이벤트 바인딩 (자동 전체 선택) 및 미리보기 동기화 + 포커스 시 비우기 및 아웃 시 복원 (datalist 힌트 최적화)
+    // input 포커스 이벤트 바인딩 (자동 전체 선택) 및 미리보기 동기화
     var inputs = group.querySelectorAll('input');
     inputs.forEach(function (inputEl) {
       inputEl.addEventListener('focus', function () {
-        if (!this.readOnly && this.getAttribute('list')) {
-          this._originalValue = this.value;
-          this.value = '';
-          updatePreview();
-        } else {
-          this.select();
-        }
-      });
-      inputEl.addEventListener('blur', function () {
-        if (!this.readOnly && this.getAttribute('list') && this.value === '') {
-          this.value = this._originalValue || '';
-          updatePreview();
-        }
+        this.select();
       });
       inputEl.addEventListener('input', updatePreview);
     });
 
     // select 체인지 이벤트 걸어서 '기타'일 때 주관식 입력 활성화
-    if (field.type === 'select') {
+    if (!field.readonly) {
       var selEl = group.querySelector('select');
-      var etcEl = group.querySelector('input[type="text"]');
+      var etcEl = group.querySelector('input');
 
       if (selEl && etcEl) {
         selEl.addEventListener('change', function () {
