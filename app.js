@@ -1834,7 +1834,7 @@ function getDxfBaseName() {
 }
 
 /** ADMAP과 동일: 사진 파일명 = 기준명_photo_MMDDHHmmss.jpg */
-function generatePhotoFileName() {
+function generatePhotoFileName(photoNum) {
   var baseName = getDxfBaseName();
   var now = new Date();
   var mm = String(now.getMonth() + 1).padStart(2, '0');
@@ -1842,7 +1842,8 @@ function generatePhotoFileName() {
   var hh = String(now.getHours()).padStart(2, '0');
   var min = String(now.getMinutes()).padStart(2, '0');
   var ss = String(now.getSeconds()).padStart(2, '0');
-  return baseName + '_photo_' + mm + dd + hh + min + ss + '.jpg';
+  var numStr = photoNum ? photoNum + '_' : '';
+  return baseName + '_photo_' + numStr + mm + dd + hh + min + ss + '.jpg';
 }
 
 function showImageSizeModal() {
@@ -2501,7 +2502,7 @@ function addPhotoAtPosition(xy, file) {
   function finish(blob) {
     var photo = {
       id: id, x: xy.x, y: xy.y, width: 1, height: 1,
-      blob: blob, memo: '', fileName: generatePhotoFileName(),
+      blob: blob, memo: '', fileName: generatePhotoFileName(nextPhotoNum),
       createdAt: new Date().toISOString(),
       numTextId: numTextId
     };
@@ -3739,7 +3740,7 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
       height: 1,
       blob: blob,
       memo: descText + ' (' + item.name + ')',
-      fileName: generatePhotoFileName(),
+      fileName: generatePhotoFileName(formData.num),
       createdAt: new Date().toISOString(),
       numTextId: numTextId,
       specTextId: primarySpecTextId, // 구버전 DB 호환성
@@ -4442,7 +4443,7 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
       height: 1,
       blob: blob,
       memo: descText + ' (' + item.name + ')',
-      fileName: generatePhotoFileName(),
+      fileName: generatePhotoFileName(formData.num),
       createdAt: new Date().toISOString(),
       numTextId: numTextId,
       specTextId: specTextId,
