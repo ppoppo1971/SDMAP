@@ -667,7 +667,7 @@
     (function() {
       if (new URLSearchParams(window.location.search).get('debug') !== '1') return;
       var s = document.createElement('script');
-      s.src = 'https://unpkg.com/vconsole@latest/dist/vconsole.min.js';
+      s.src = 'https://unpkg.com/vconsole@3.15.1/dist/vconsole.min.js';
       s.onload = function() {
         if (typeof window.VConsole === 'undefined') return;
         var vConsole = new window.VConsole({

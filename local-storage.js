@@ -86,6 +86,8 @@
           updatedAt: new Date().toISOString(),
           numTextId: photo.numTextId || null,
           specTextId: photo.specTextId || null,
+          specTextIds: photo.specTextIds || null,
+          additionalTypes: photo.additionalTypes || null,
           facilityType: photo.facilityType || null
         };
         var tx = db.transaction(PHOTO_STORE, 'readwrite');
@@ -369,6 +371,8 @@
     });
   }
 
+  // [참고] 이 함수는 현재 사용되지 않는 데드 코드(Dead Code)입니다.
+  // 실제 프로젝트를 단일 ZIP 파일로 통합해 내보내는 기능은 아래의 exportAsZipOnly() 함수를 사용합니다.
   function exportProjectZip(dxfFile, onProgress) {
     return exportProjectSequential(dxfFile, onProgress);
   }
@@ -388,6 +392,8 @@
             memo: p.memo || '', uploaded: true,
             numTextId: p.numTextId || null,
             specTextId: p.specTextId || null,
+            specTextIds: p.specTextIds || null,
+            additionalTypes: p.additionalTypes || null,
             facilityType: p.facilityType || null
           };
         }),

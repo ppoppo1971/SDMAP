@@ -36,6 +36,7 @@ var pendingStreetlightDxfCoords = null;
 var pendingStreetlightLatLng = null;
 var pendingFacilityType = null;
 var isNewPhotoPending = false; // 신규 촬영된 사진이 저장 대기 상태인지 여부
+var streetlightPreviewObjectUrl = null; // 이미지 프리뷰용 Object URL 캐시
 
 // 모든 시설물 통합 캐시 스펙 저장 객체
 var lastSpecs = {};
@@ -907,15 +908,22 @@ function updateScaleDisplay() {
 
 function bindScaleDisplay() {
   if (!map) return;
-  var scaleRafScheduled = false;
   google.maps.event.addListener(map, 'idle', updateScaleDisplay);
+  
+  var lastUpdateScaleTime = 0;
+  var scaleTimer = null;
+  
   google.maps.event.addListener(map, 'bounds_changed', function () {
-    if (!scaleRafScheduled) {
-      scaleRafScheduled = true;
-      requestAnimationFrame(function () {
-        scaleRafScheduled = false;
+    var now = Date.now();
+    if (now - lastUpdateScaleTime >= 200) {
+      lastUpdateScaleTime = now;
+      updateScaleDisplay();
+    } else {
+      if (scaleTimer) clearTimeout(scaleTimer);
+      scaleTimer = setTimeout(function () {
+        lastUpdateScaleTime = Date.now();
         updateScaleDisplay();
-      });
+      }, 200);
     }
   });
   updateScaleDisplay();
@@ -946,16 +954,7 @@ function bindDoubleTapZoom() {
   });
 }
 
-function getLatLngDistanceM(a, b) {
-  var lat1 = (a.lat && a.lat()) ? a.lat() : a.lat;
-  var lng1 = (a.lng && a.lng()) ? a.lng() : a.lng;
-  var lat2 = (b.lat && b.lat()) ? b.lat() : b.lat;
-  var lng2 = (b.lng && b.lng()) ? b.lng() : b.lng;
-  var latRad = (lat1 * Math.PI) / 180;
-  var dy = (lat2 - lat1) * 111320;
-  var dx = (lng2 - lng1) * 111320 * Math.cos(latRad);
-  return Math.sqrt(dx * dx + dy * dy);
-}
+
 
 function zoomMapTo50mAt(latLng) {
   if (!map || !latLng) return;
@@ -973,6 +972,11 @@ function zoomMapTo50mAt(latLng) {
 
 function showLoading(show) {
   if (loadingEl) loadingEl.classList.toggle('active', !!show);
+  if (show) {
+    document.body.style.pointerEvents = 'none';
+  } else {
+    document.body.style.pointerEvents = '';
+  }
 }
 
 function exportLocalData() {
@@ -1058,8 +1062,32 @@ function showViewer() {
  * DXF 원본 텍스트에서 constantWidth(그룹코드 43)를 추출하여 엔티티에 추가.
  * 파서가 constantWidth를 파싱하지 못하는 경우를 대비 (ADMAP 방식).
  */
-function extractConstantWidths(dxfData, lines) {
-  if (!dxfData || !dxfData.entities || !lines || !lines.length) return;
+function iterateDxfGroups(text, callback) {
+  var pos = 0;
+  var len = text.length;
+  var groupCode = null;
+  
+  while (pos < len) {
+    var nextNewline = text.indexOf('\n', pos);
+    var lineEnd = nextNewline === -1 ? len : nextNewline;
+    var line = text.substring(pos, lineEnd).trim();
+    pos = lineEnd + 1;
+    
+    if (line.charCodeAt(line.length - 1) === 13) {
+      line = line.substring(0, line.length - 1).trim();
+    }
+    
+    if (groupCode === null) {
+      groupCode = parseInt(line, 10);
+    } else {
+      callback(groupCode, line);
+      groupCode = null;
+    }
+  }
+}
+
+function extractConstantWidths(dxfData, text) {
+  if (!dxfData || !dxfData.entities || !text) return;
   var mapList = [];
   var inEntity = false;
   var currentLayer = '';
@@ -1067,7 +1095,7 @@ function extractConstantWidths(dxfData, lines) {
   var entityType = '';
   var firstX = null;
   var firstY = null;
-  var i, line, nextLine, j, val;
+
   function pushCurrent() {
     if (inEntity && constantWidth !== null && currentLayer) {
       mapList.push({
@@ -1078,47 +1106,38 @@ function extractConstantWidths(dxfData, lines) {
       });
     }
   }
-  for (i = 0; i < lines.length; i++) {
-    line = lines[i].trim();
-    if (line === 'LWPOLYLINE' || line === 'POLYLINE') {
-      pushCurrent();
-      inEntity = true;
-      entityType = line;
-      currentLayer = '';
-      constantWidth = null;
-      firstX = null;
-      firstY = null;
-    } else if (inEntity) {
-      if (line === '8' && i + 1 < lines.length) {
-        currentLayer = lines[i + 1].trim();
-      } else if (line === '100' && i + 1 < lines.length && lines[i + 1].trim() === 'AcDbPolyline') {
-        for (j = i + 2; j < Math.min(i + 20, lines.length); j++) {
-          nextLine = lines[j].trim();
-          if (nextLine === '43' && j + 1 < lines.length) {
-            val = parseFloat(lines[j + 1].trim());
-            if (!isNaN(val)) { constantWidth = val; break; }
-          } else if (nextLine === '10') break;
-        }
-      } else if (line === '43' && i + 1 < lines.length && constantWidth === null) {
-        val = parseFloat(lines[i + 1].trim());
-        if (!isNaN(val)) constantWidth = val;
-      } else if (line === '10' && i + 1 < lines.length && firstX === null) {
-        val = parseFloat(lines[i + 1].trim());
-        if (!isNaN(val)) firstX = val;
-      } else if (line === '20' && i + 1 < lines.length && firstX !== null && firstY === null) {
-        val = parseFloat(lines[i + 1].trim());
-        if (!isNaN(val)) firstY = val;
-      } else if (line === '0' || line === 'SEQEND') {
+
+  iterateDxfGroups(text, function (code, value) {
+    if (code === 0) {
+      if (value === 'LWPOLYLINE' || value === 'POLYLINE') {
         pushCurrent();
-        inEntity = false;
+        inEntity = true;
+        entityType = value;
         currentLayer = '';
         constantWidth = null;
         firstX = null;
         firstY = null;
+      } else {
+        pushCurrent();
+        inEntity = false;
+      }
+    } else if (inEntity) {
+      if (code === 8) {
+        currentLayer = value;
+      } else if (code === 43) {
+        var val = parseFloat(value);
+        if (!isNaN(val)) constantWidth = val;
+      } else if (code === 10 && firstX === null) {
+        var val = parseFloat(value);
+        if (!isNaN(val)) firstX = val;
+      } else if (code === 20 && firstX !== null && firstY === null) {
+        var val = parseFloat(value);
+        if (!isNaN(val)) firstY = val;
       }
     }
-  }
+  });
   pushCurrent();
+
   var mapListByLayerType = {};
   for (var idx = 0; idx < mapList.length; idx++) {
     var item = mapList[idx];
@@ -1137,25 +1156,42 @@ function extractConstantWidths(dxfData, lines) {
     if (!group || group.length === 0) return;
 
     var best = null;
-    var bestScore = -1;
-    for (var k = 0; k < group.length; k++) {
-      var item = group[k];
-      var score = 0;
-      if (entity.vertices && entity.vertices.length > 0 && item.firstVertex) {
-        var v0 = entity.vertices[0];
-        var th = 0.001;
-        if (Math.abs(v0.x - item.firstVertex.x) < th && Math.abs(v0.y - item.firstVertex.y) < th) {
-          score = 100;
+    if (entity.vertices && entity.vertices.length > 0) {
+      var v0 = entity.vertices[0];
+      var th = 0.001;
+      for (var k = 0; k < group.length; k++) {
+        var item = group[k];
+        if (item.firstVertex && Math.abs(v0.x - item.firstVertex.x) < th && Math.abs(v0.y - item.firstVertex.y) < th) {
           best = item;
-          bestScore = score;
           break;
         }
       }
-      if (score === 0) {
-        score = 100 - Math.abs(item.globalIndex - mapIndex);
-        if (score > bestScore) { best = item; bestScore = score; }
-      }
     }
+
+    if (!best) {
+      var low = 0;
+      var high = group.length - 1;
+      var closestIdx = 0;
+      var minDiff = Infinity;
+      while (low <= high) {
+        var mid = Math.floor((low + high) / 2);
+        var diff = Math.abs(group[mid].globalIndex - mapIndex);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestIdx = mid;
+        }
+        if (group[mid].globalIndex < mapIndex) {
+          low = mid + 1;
+        } else if (group[mid].globalIndex > mapIndex) {
+          high = mid - 1;
+        } else {
+          closestIdx = mid;
+          break;
+        }
+      }
+      best = group[closestIdx];
+    }
+
     if (best) {
       entity.constantWidth = best.constantWidth;
       mapIndex = best.globalIndex + 1;
@@ -1163,67 +1199,65 @@ function extractConstantWidths(dxfData, lines) {
   });
 }
 
-/**
- * DXF 원문에서 IMAGE 엔티티와 IMAGEDEF 객체를 파싱해 참조 이미지 목록 반환.
- * IMAGE: 10,20 (삽입점), 340 (IMAGEDEF 핸들). IMAGEDEF: 5 (핸들), 1 (파일명).
- */
-function extractDxfImageRefs(lines) {
-  if (!lines || !lines.length) return [];
+function extractDxfImageRefs(text) {
+  if (!text) return [];
   var handleToFilename = {};
-  var refs = [];
-  var i, j, code, val, section, x, y, handle, defHandle, defFile, fn;
+  var tempImages = [];
+  
+  var currentType = '';
+  var tempImg = null;
+  var tempDef = null;
 
-  for (i = 0; i < lines.length - 3; i++) {
-    if (lines[i] !== '0' || lines[i + 1] !== 'SECTION') continue;
-    section = lines[i + 3];
-    if (section === 'OBJECTS') {
-      for (j = i + 4; j < lines.length - 1; j++) {
-        code = lines[j];
-        val = lines[j + 1];
-        if (code === '0' && val === 'ENDSEC') break;
-        if (code === '0' && val === 'IMAGEDEF') {
-          defHandle = '';
-          defFile = '';
-          for (j = j + 2; j < lines.length - 1; j += 2) {
-            code = lines[j];
-            val = lines[j + 1];
-            if (code === '0') { j -= 2; break; }
-            if (code === '5') defHandle = val;
-            if (code === '1') defFile = val;
-          }
-          if (defHandle && defFile) handleToFilename[defHandle.toUpperCase()] = defFile.replace(/\\/g, '/');
+  iterateDxfGroups(text, function (code, value) {
+    if (code === 0) {
+      if (currentType === 'IMAGE' && tempImg) {
+        if (tempImg.x !== null && tempImg.y !== null) {
+          tempImages.push(tempImg);
+        }
+      } else if (currentType === 'IMAGEDEF' && tempDef) {
+        if (tempDef.handle && tempDef.file) {
+          handleToFilename[tempDef.handle.toUpperCase()] = tempDef.file.replace(/\\/g, '/');
         }
       }
-      break;
-    }
-  }
-  for (i = 0; i < lines.length - 3; i++) {
-    if (lines[i] !== '0' || lines[i + 1] !== 'SECTION') continue;
-    section = lines[i + 3];
-    if (section === 'ENTITIES') {
-      for (j = i + 4; j < lines.length - 1; j++) {
-        code = lines[j];
-        val = lines[j + 1];
-        if (code === '0' && val === 'ENDSEC') break;
-        if (code === '0' && val === 'IMAGE') {
-          x = y = handle = null;
-          for (j = j + 2; j < lines.length - 1; j += 2) {
-            code = lines[j];
-            val = lines[j + 1];
-            if (code === '0') { j -= 2; break; }
-            if (code === '10') x = parseFloat(val);
-            if (code === '20') y = parseFloat(val);
-            if (code === '340') handle = val ? String(val).toUpperCase() : '';
-          }
-          if (x != null && !isNaN(x) && y != null && !isNaN(y)) {
-            fn = (handle && handleToFilename[handle]) ? handleToFilename[handle] : '';
-            refs.push({ x: x, y: y, fileName: fn || '(이미지)', handle: handle });
-          }
-        }
+
+      currentType = value;
+      if (value === 'IMAGE') {
+        tempImg = { x: null, y: null, handle: '' };
+      } else if (value === 'IMAGEDEF') {
+        tempDef = { handle: '', file: '' };
+      } else {
+        tempImg = null;
+        tempDef = null;
       }
-      break;
+    } else {
+      if (currentType === 'IMAGE' && tempImg) {
+        if (code === 10) tempImg.x = parseFloat(value);
+        else if (code === 20) tempImg.y = parseFloat(value);
+        else if (code === 340) tempImg.handle = value;
+      } else if (currentType === 'IMAGEDEF' && tempDef) {
+        if (code === 5) tempDef.handle = value;
+        else if (code === 1) tempDef.file = value;
+      }
+    }
+  });
+
+  if (currentType === 'IMAGE' && tempImg) {
+    if (tempImg.x !== null && tempImg.y !== null) {
+      tempImages.push(tempImg);
+    }
+  } else if (currentType === 'IMAGEDEF' && tempDef) {
+    if (tempDef.handle && tempDef.file) {
+      handleToFilename[tempDef.handle.toUpperCase()] = tempDef.file.replace(/\\/g, '/');
     }
   }
+
+  var refs = [];
+  tempImages.forEach(function (img) {
+    var handleUpper = img.handle ? img.handle.toUpperCase() : '';
+    var fn = handleToFilename[handleUpper] || '';
+    refs.push({ x: img.x, y: img.y, fileName: fn || '(이미지)', handle: img.handle });
+  });
+
   return refs;
 }
 
@@ -1234,10 +1268,6 @@ function fileBasename(pathOrName) {
   return i >= 0 ? s.slice(i + 1) : s;
 }
 
-/**
- * DXF 원문을 1회만 파싱하고 constantWidth·IMAGE ref 추출까지 수행.
- * 반환: { dxfData, rawImageRefs }. 오류 시 throw.
- */
 function parseDxfTextAndBuildRefs(text) {
   if (!text || !text.includes('SECTION') || !text.includes('ENTITIES')) {
     throw new Error('올바른 DXF 파일 형식이 아닙니다.');
@@ -1251,9 +1281,8 @@ function parseDxfTextAndBuildRefs(text) {
   if (!data.entities || data.entities.length === 0) {
     console.warn('DXF 엔티티 없음');
   }
-  var lines = text.split(/\r?\n/).map(function (l) { return l.trim(); });
-  extractConstantWidths(data, lines);
-  var rawRefs = extractDxfImageRefs(lines);
+  extractConstantWidths(data, text);
+  var rawRefs = extractDxfImageRefs(text);
   return { dxfData: data, rawImageRefs: rawRefs };
 }
 
@@ -1275,6 +1304,35 @@ function applyDxfLoadResult(dxfFileNameStr, dxfDataResult, imageRefsWithFile) {
   });
 }
 
+function parseDxfWithWorker(text) {
+  return new Promise(function (resolve, reject) {
+    if (typeof Worker === 'undefined') {
+      try {
+        var res = parseDxfTextAndBuildRefs(text);
+        resolve(res);
+      } catch (err) {
+        reject(err);
+      }
+      return;
+    }
+    
+    var worker = new Worker('dxf-worker.js');
+    worker.onmessage = function (e) {
+      if (e.data.error) {
+        reject(new Error(e.data.error));
+      } else if (e.data.type === 'parse_dxf_success') {
+        resolve({ dxfData: e.data.dxfData, rawImageRefs: e.data.rawImageRefs });
+      }
+      worker.terminate();
+    };
+    worker.onerror = function (err) {
+      reject(err);
+      worker.terminate();
+    };
+    worker.postMessage({ type: 'parse_dxf', text: text });
+  });
+}
+
 function loadDxfFromFolder(files) {
   var arr = Array.from(files || []);
   var dxfFile = arr.filter(function (f) { return (f.name || '').toLowerCase().endsWith('.dxf'); })[0];
@@ -1290,19 +1348,18 @@ function loadDxfFromFolder(files) {
   });
   showLoading(true);
   dxfFile.text().then(function (text) {
-    try {
-      var result = parseDxfTextAndBuildRefs(text);
+    parseDxfWithWorker(text).then(function (result) {
       var imageRefsWithFile = result.rawImageRefs.map(function (r, idx) {
         var base = fileBasename(r.fileName).toLowerCase();
         var matched = fileMapByBasename[base] || fileMapByBasename[(r.fileName || '').toLowerCase()];
         return { id: 'dxfimg-' + idx, x: r.x, y: r.y, fileName: r.fileName, file: matched || null };
       });
       applyDxfLoadResult(dxfFile.name, result.dxfData, imageRefsWithFile);
-    } catch (err) {
+    }).catch(function (err) {
       console.error('DXF 로드 오류:', err);
       alert('DXF 파일을 여는데 실패했습니다: ' + (err.message || err));
       showLoading(false);
-    }
+    });
   }).catch(function (err) {
     showLoading(false);
     alert('파일을 읽을 수 없습니다.');
@@ -1314,17 +1371,16 @@ function loadDxfFile(file) {
   if (!file || !file.name) return;
   showLoading(true);
   file.text().then(function (text) {
-    try {
-      var result = parseDxfTextAndBuildRefs(text);
+    parseDxfWithWorker(text).then(function (result) {
       var imageRefsWithFile = result.rawImageRefs.map(function (r, idx) {
         return { id: 'dxfimg-' + idx, x: r.x, y: r.y, fileName: r.fileName, file: null };
       });
       applyDxfLoadResult(file.name, result.dxfData, imageRefsWithFile);
-    } catch (err) {
+    }).catch(function (err) {
       console.error('DXF 로드 오류:', err);
       alert('DXF 파일을 여는데 실패했습니다: ' + (err.message || err));
       showLoading(false);
-    }
+    });
   }).catch(function (err) {
     showLoading(false);
     alert('파일을 읽을 수 없습니다.');
@@ -1370,12 +1426,68 @@ function getDxfTextGrayCircleIcon() {
   return dxfTextGrayCircleIcon;
 }
 
+var spatialIndex = null;
+var spatialIndexCellSize = 0.0005; // ~50m 격자 크기
+
+function buildSpatialIndex() {
+  spatialIndex = {};
+  if (!map || !map.data) return;
+  map.data.forEach(function (feature) {
+    var geom = feature.getGeometry && feature.getGeometry();
+    if (!geom || !geom.getType) return;
+    var bounds = getFeatureLatLngBounds(feature);
+    if (!bounds) return;
+    var startLatCell = Math.floor(bounds.minLat / spatialIndexCellSize);
+    var endLatCell = Math.floor(bounds.maxLat / spatialIndexCellSize);
+    var startLngCell = Math.floor(bounds.minLng / spatialIndexCellSize);
+    var endLngCell = Math.floor(bounds.maxLng / spatialIndexCellSize);
+    for (var latCell = startLatCell; latCell <= endLatCell; latCell++) {
+      for (var lngCell = startLngCell; lngCell <= endLngCell; lngCell++) {
+        var key = latCell + ',' + lngCell;
+        if (!spatialIndex[key]) spatialIndex[key] = [];
+        spatialIndex[key].push(feature);
+      }
+    }
+  });
+}
+
+function getFeatureLatLngBounds(feature) {
+  var geom = feature.getGeometry();
+  var type = geom.getType();
+  var minLat = Infinity, maxLat = -Infinity;
+  var minLng = Infinity, maxLng = -Infinity;
+  function update(lat, lng) {
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+    if (lng < minLng) minLng = lng;
+    if (lng > maxLng) maxLng = lng;
+  }
+  if (type === 'Point') {
+    var pt = geom.get();
+    update(pt.lat(), pt.lng());
+  } else if (type === 'LineString') {
+    var arr = geom.getArray();
+    arr.forEach(function (pt) { update(pt.lat(), pt.lng()); });
+  } else if (type === 'Polygon') {
+    var path = geom.getAt(0);
+    if (path && path.getArray) {
+      var arr = path.getArray();
+      arr.forEach(function (pt) { update(pt.lat(), pt.lng()); });
+    }
+  } else {
+    return null;
+  }
+  return { minLat: minLat, maxLat: maxLat, minLng: minLng, maxLng: maxLng };
+}
+
 function applyDxfToMap() {
   if (!map || !dxfData || !window.DxfToGeoJSON) return;
+  spatialIndex = null; // 공간 인덱스 리셋
   var geoJson = window.DxfToGeoJSON.dxfToGeoJSON(dxfData);
   map.data.forEach(function (feature) { map.data.remove(feature); });
   if (geoJson.features && geoJson.features.length > 0) {
     map.data.addGeoJson(geoJson);
+    buildSpatialIndex(); // 공간 인덱스 구축
     map.data.setStyle(function (feature) {
       var geom = feature.getGeometry && feature.getGeometry();
       var geomType = geom && geom.getType ? geom.getType() : '';
@@ -2171,15 +2283,23 @@ function drawTextMarkers() {
     if (pane) (pane.floatPane || pane.overlayLayer).appendChild(this.div);
   };
   TextOnlyOverlay.prototype.draw = function () {
-    if (!this.div || !this.getProjection) return;
+    if (!this.div || !this.getProjection || !map) return;
     var proj = this.getProjection();
+    var bounds = map.getBounds();
     // Throttle(딜레이)를 제거하고 requestAnimationFrame이나 즉시 실행 수준으로 동작하게 함
     // 매번 innerHTML을 지우고 만드는 대신, 캐싱된 span 돔의 transform만 변경함 (GPU 가속)
+    // 뷰포트 영역 필터링(culling)을 적용하여 화면 밖에 있는 텍스트는 드로우 연산에서 배제하고 숨김 처리합니다.
     this.spans.forEach(function (span) {
-      var point = proj.fromLatLngToDivPixel(span._latLng);
-      if (point) {
-        var offsetY = span._offsetY || 0;
-        span.style.transform = 'translate(' + point.x + 'px, ' + (point.y - 8 + offsetY) + 'px)';
+      var inBounds = bounds ? bounds.contains(span._latLng) : true;
+      if (inBounds) {
+        var point = proj.fromLatLngToDivPixel(span._latLng);
+        if (point) {
+          span.style.display = '';
+          var offsetY = span._offsetY || 0;
+          span.style.transform = 'translate(' + point.x + 'px, ' + (point.y - 8 + offsetY) + 'px)';
+        }
+      } else {
+        span.style.display = 'none';
       }
     });
   };
@@ -2361,6 +2481,32 @@ function bindContextMenu() {
 }
 
 function compressImage(file, targetSize) {
+  return new Promise(function (resolve, reject) {
+    if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') {
+      compressImageFallback(file, targetSize).then(resolve).catch(reject);
+      return;
+    }
+
+    var worker = new Worker('dxf-worker.js');
+    worker.onmessage = function (e) {
+      if (e.data.error) {
+        console.warn('워커 이미지 압축 실패, 메인 스레드 폴백 실행:', e.data.error);
+        compressImageFallback(file, targetSize).then(resolve).catch(reject);
+      } else if (e.data.type === 'compress_image_success') {
+        resolve(e.data.blob);
+      }
+      worker.terminate();
+    };
+    worker.onerror = function (err) {
+      console.warn('워커 에러 발생, 메인 스레드 폴백 실행:', err);
+      compressImageFallback(file, targetSize).then(resolve).catch(reject);
+      worker.terminate();
+    };
+    worker.postMessage({ type: 'compress_image', file: file, targetSize: targetSize });
+  });
+}
+
+function compressImageFallback(file, targetSize) {
   // createImageBitmap 지원 시 직접 사용 (메모리 효율), 미지원 시 Image+FileReader 폴백
   var bitmapPromise;
   if (typeof createImageBitmap === 'function') {
@@ -3283,8 +3429,8 @@ function detectFacilityType(name, layer) {
 // 현재 도면 내 사진번호 레이어의 최대 숫자를 조회하고 일련번호로 가공하는 공통 함수
 function getNextPhotoNumber() {
   var maxNum = 0;
-  if (window.texts && window.texts.length > 0) {
-    window.texts.forEach(function (t) {
+  if (texts && texts.length > 0) {
+    texts.forEach(function (t) {
       if (t.layer === '사진번호' && t.text) {
         var num = parseInt(t.text, 10);
         if (!isNaN(num) && num > maxNum) {
@@ -3447,19 +3593,14 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
 
   var img = document.createElement('img');
   img.className = 'form-preview-img';
-  var objectUrl = URL.createObjectURL(fileBlob);
-  img.src = objectUrl;
+  if (streetlightPreviewObjectUrl) {
+    URL.revokeObjectURL(streetlightPreviewObjectUrl);
+  }
+  streetlightPreviewObjectUrl = URL.createObjectURL(fileBlob);
+  img.src = streetlightPreviewObjectUrl;
   content.appendChild(img);
 
-  var nextPhotoNum = '';
-  if (typeof localStorage !== 'undefined') {
-    var lastNumStr = localStorage.getItem('dmap:lastPhotoNumber');
-    if (lastNumStr) {
-      var parsed = parseInt(lastNumStr, 10);
-      if (!isNaN(parsed)) nextPhotoNum = String(parsed + 1);
-      else nextPhotoNum = lastNumStr;
-    }
-  }
+  var nextPhotoNum = getNextPhotoNumber();
 
   // 사진 번호 입력 필드 (공통)
   var numGroup = document.createElement('div');
@@ -4170,8 +4311,53 @@ function getLatLngDistanceM(p1, p2) {
 
 function findNearbyFacilities(latLng, maxDistM) {
   if (!map || !map.data) return [];
+  
   var list = [];
-  map.data.forEach(function (feature) {
+  var candidates = [];
+  
+  // 공간 인덱스가 아직 빌드되지 않은 경우 초기화
+  if (!spatialIndex) {
+    buildSpatialIndex();
+  }
+  
+  var lat = typeof latLng.lat === 'function' ? latLng.lat() : latLng.lat;
+  var lng = typeof latLng.lng === 'function' ? latLng.lng() : latLng.lng;
+  
+  // 검색 반경을 위경도 도(degree) 단위로 대략적 변환 (안전 마진 포함)
+  var latBuffer = maxDistM / 111320;
+  var lngBuffer = maxDistM / (111320 * Math.cos((lat * Math.PI) / 180));
+  
+  var startLatCell = Math.floor((lat - latBuffer) / spatialIndexCellSize);
+  var endLatCell = Math.floor((lat + latBuffer) / spatialIndexCellSize);
+  var startLngCell = Math.floor((lng - lngBuffer) / spatialIndexCellSize);
+  var endLngCell = Math.floor((lng + lngBuffer) / spatialIndexCellSize);
+  
+  // 중복 제거용 캐시
+  var seenIds = {};
+  for (var latCell = startLatCell; latCell <= endLatCell; latCell++) {
+    for (var lngCell = startLngCell; lngCell <= endLngCell; lngCell++) {
+      var key = latCell + ',' + lngCell;
+      var cellFeatures = spatialIndex[key];
+      if (cellFeatures) {
+        cellFeatures.forEach(function (feature) {
+          var fid = feature.getId ? feature.getId() : null;
+          if (fid === null) {
+            if (!feature._spatialId) {
+              feature._spatialId = Math.random() + '_' + Date.now();
+            }
+            fid = feature._spatialId;
+          }
+          if (!seenIds[fid]) {
+            seenIds[fid] = true;
+            candidates.push(feature);
+          }
+        });
+      }
+    }
+  }
+  
+  // 후보군에 대해서만 거리 연산 실행 (전체 순회 대비 속도 비약적 향상)
+  candidates.forEach(function (feature) {
     var geom = feature.getGeometry && feature.getGeometry();
     if (!geom || !geom.getType) return;
     var type = geom.getType();
@@ -4280,6 +4466,10 @@ function hideStreetlightBottomSheet() {
   pendingStreetlightDxfCoords = null;
   pendingStreetlightLatLng = null;
   pendingFacilityType = null;
+  if (streetlightPreviewObjectUrl) {
+    URL.revokeObjectURL(streetlightPreviewObjectUrl);
+    streetlightPreviewObjectUrl = null;
+  }
 }
 
 function triggerStreetlightCamera(item, dxfCoords, latLng) {
@@ -4294,185 +4484,27 @@ function triggerStreetlightCamera(item, dxfCoords, latLng) {
   }
 }
 
-function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
-  var content = document.getElementById('bottom-sheet-content');
-  var title = document.getElementById('bottom-sheet-title');
-  if (!content) return;
-
-  var typeText = pendingFacilityType || '시설물';
-  if (title) title.textContent = '📐 ' + typeText + ' 제원 입력';
-  content.innerHTML = '';
-
-  var img = document.createElement('img');
-  img.className = 'form-preview-img';
-  var objectUrl = URL.createObjectURL(fileBlob);
-  img.src = objectUrl;
-  content.appendChild(img);
-
-  var nextPhotoNum = getNextPhotoNumber();
-
-  // 사진 번호 입력 필드 (공통)
-  var numGroup = document.createElement('div');
-  numGroup.className = 'form-group';
-  numGroup.innerHTML = 
-    '<label>🔢 사진 번호 (직접 입력/수정 가능)</label>' +
-    '<input type="text" id="sw-form-num" value="' + nextPhotoNum + '" placeholder="예: 100">';
-  content.appendChild(numGroup);
-
-  // 동적 필드 컨테이너 추가
-  var dynamicContainer = document.createElement('div');
-  dynamicContainer.style.display = 'flex';
-  dynamicContainer.style.flexDirection = 'column';
-  dynamicContainer.style.gap = '8px';
-  content.appendChild(dynamicContainer);
-
-  var config = FACILITY_CONFIG[pendingFacilityType];
-  if (!config) {
-    config = {
-      title: pendingFacilityType || '일반시설물',
-      layer: (item && item.layer) ? item.layer : '기타_T',
-      prefix: pendingFacilityType || '시설물',
-      fields: [
-        { id: 'content', label: '📝 내용 (직접 입력)', type: 'text', placeholder: '내용 입력', default: '내용' }
-      ]
-    };
+// 주요 버튼 터치 시 미세 진동 반응 제공 (햅틱 피드백)
+document.addEventListener('click', function (e) {
+  var target = e.target;
+  if (!target) return;
+  
+  var isClickable = target.tagName === 'BUTTON' || 
+                    target.classList.contains('btn') || 
+                    target.classList.contains('close-btn') || 
+                    target.classList.contains('bottom-sheet-close') || 
+                    target.classList.contains('facility-list-item') || 
+                    target.classList.contains('hamburger-btn') || 
+                    target.classList.contains('zoom-btn') || 
+                    target.classList.contains('pmode-btn') ||
+                    target.closest('.facility-list-item') ||
+                    target.closest('button') ||
+                    target.closest('.btn');
+                    
+  if (isClickable && navigator.vibrate) {
+    navigator.vibrate(100); // 100ms(0.1초) 진동 피드백
   }
+}, { passive: true });
 
-  var cached = lastSpecs[config.title] || {};
-  renderFacilityForm(dynamicContainer, config, cached, 'sw');
 
-  // 저장 버튼
-  var submitBtn = document.createElement('button');
-  submitBtn.type = 'button';
-  submitBtn.className = 'btn';
-  submitBtn.id = 'sw-form-submit';
-  submitBtn.style.cssText = 'background:#34C759; margin-top:10px; width:100%; padding:12px; font-weight:bold;';
-  submitBtn.textContent = '제원 저장';
-  content.appendChild(submitBtn);
 
-  submitBtn.addEventListener('click', function () {
-    var numEl = document.getElementById('sw-form-num');
-    var numVal = numEl ? numEl.value.trim() : '';
-    if (!numVal) { alert('사진 번호를 입력해 주세요.'); return; }
-
-    // 중복 및 누락 감지 검증 실행
-    if (!validatePhotoNumber(numVal, null)) {
-      return; // 취소 시 저장 중단
-    }
-
-    var result = serializeFacilityForm(dynamicContainer, config, 'sw');
-    if (!result) return;
-
-    var formData = {
-      num: numVal,
-      layer: result.layer,
-      specText: result.specText,
-      values: result.values
-    };
-
-    saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng);
-  });
-}
-
-function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
-  if (!dxfFileFullName || !window.localStore) return;
-  showLoading(true);
-
-  if (pendingFacilityType) {
-    lastSpecs[pendingFacilityType] = formData.values;
-  }
-
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem('dmap:lastPhotoNumber', formData.num);
-  }
-
-  var insertionDxf = dxfCoords;
-  var feature = item.feature;
-  if (feature) {
-    var bx = feature.getProperty('blockInsertX');
-    var by = feature.getProperty('blockInsertY');
-    if (bx != null && by != null) {
-      insertionDxf = { x: parseFloat(bx), y: parseFloat(by) };
-    } else if (item.coord) {
-      // 선형 객체(폴리선)의 경우: 사용자가 터치한 점 대신, 선상에 계산된 최인접 투영점 좌표를 DXF 좌표계로 복원하여 마커의 삽입 위치로 사용
-      var backDxf = latLngToDxf(item.coord);
-      if (backDxf) insertionDxf = backDxf;
-    } else {
-      var geom = feature.getGeometry && feature.getGeometry();
-      if (geom && geom.getType() === 'Point') {
-        var geomLatLng = geom.get();
-        var backDxf = latLngToDxf(geomLatLng);
-        if (backDxf) insertionDxf = backDxf;
-      }
-    }
-  }
-
-  var photoId = 'photo-' + Date.now();
-  var numTextId = 'text-num-' + Date.now();
-  var specTextId = 'text-spec-' + (Date.now() + 1);
-
-  var numTextObj = {
-    id: numTextId,
-    x: insertionDxf.x,
-    y: insertionDxf.y,
-    text: formData.num,
-    fontSize: 12,
-    layer: '사진번호'
-  };
-
-  var specTextObj = {
-    id: specTextId,
-    x: insertionDxf.x,
-    y: insertionDxf.y,
-    text: formData.specText,
-    fontSize: 12,
-    layer: formData.layer || '일반_T'
-  };
-
-  texts.push(numTextObj);
-  texts.push(specTextObj);
-
-  var targetSize = getImageTargetSize();
-  function finishSave(blob) {
-    var descText = pendingFacilityType ? pendingFacilityType + ' 시설물 조사' : '일반 시설물 조사';
-    var photo = {
-      id: photoId,
-      x: insertionDxf.x,
-      y: insertionDxf.y,
-      width: 1,
-      height: 1,
-      blob: blob,
-      memo: descText + ' (' + item.name + ')',
-      fileName: generatePhotoFileName(formData.num),
-      createdAt: new Date().toISOString(),
-      numTextId: numTextId,
-      specTextId: specTextId,
-      facilityType: pendingFacilityType
-    };
-
-    photos.push(photo);
-
-    Promise.all([
-      window.localStore.savePhoto(dxfFileFullName, photo),
-      window.localStore.saveProject(dxfFileFullName, { texts: texts, lastModified: new Date().toISOString() })
-    ]).then(function () {
-      drawPhotoMarkers();
-      drawTextMarkers();
-      showLoading(false);
-      hideStreetlightBottomSheet();
-      showToast('제원 저장이 완료되었습니다.');
-    }).catch(function (err) {
-      showLoading(false);
-      console.error('제원 저장 실패:', err);
-      alert('데이터 저장소에 기록하는 도중 오류가 발생해 저장하지 못했습니다.');
-    });
-  }
-
-  if (targetSize != null) {
-    compressImage(fileBlob, targetSize).then(finishSave).catch(function () {
-      finishSave(fileBlob);
-    });
-  } else {
-    finishSave(fileBlob);
-  }
-}
