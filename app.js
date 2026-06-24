@@ -2194,12 +2194,28 @@ function bindContextMenuCloseOnMap() {
     hideContextMenu();
   });
   document.addEventListener('touchstart', function (e) {
-    if (!contextMenuEl.classList.contains('active')) return;
-    if (e.target && !contextMenuEl.contains(e.target)) hideContextMenu();
+    if (contextMenuEl && contextMenuEl.classList.contains('active')) {
+      if (e.target && !contextMenuEl.contains(e.target)) hideContextMenu();
+    }
+    
+    var sheet = document.getElementById('bottom-sheet-flow');
+    if (sheet && sheet.classList.contains('active')) {
+      if (e.target && !sheet.contains(e.target)) {
+        hideStreetlightBottomSheet();
+      }
+    }
   }, { passive: true });
   document.addEventListener('mousedown', function (e) {
-    if (!contextMenuEl.classList.contains('active')) return;
-    if (e.target && !contextMenuEl.contains(e.target)) hideContextMenu();
+    if (contextMenuEl && contextMenuEl.classList.contains('active')) {
+      if (e.target && !contextMenuEl.contains(e.target)) hideContextMenu();
+    }
+    
+    var sheet = document.getElementById('bottom-sheet-flow');
+    if (sheet && sheet.classList.contains('active')) {
+      if (e.target && !sheet.contains(e.target)) {
+        hideStreetlightBottomSheet();
+      }
+    }
   });
 }
 
@@ -2710,7 +2726,7 @@ function showDxfImageModal(ref) {
   var actionsEl = document.getElementById('photo-modal-actions');
   var noFileEl = document.getElementById('photo-modal-no-file');
   if (!modal || !img) return;
-  if (titleEl) titleEl.textContent = '🖼 참조 이미지';
+  if (titleEl) titleEl.textContent = '참조 이미지';
   if (actionsEl) actionsEl.style.display = 'none';
   memo.style.display = 'none';
   if (ref.file) {
@@ -2865,7 +2881,7 @@ function showTextModal(textId) {
     input.value = '';
     if (delBtn) delBtn.style.display = 'none';
   }
-  title.textContent = textId ? '📝 텍스트 편집' : '📝 텍스트 입력';
+  title.textContent = textId ? '텍스트 편집' : '텍스트 입력';
   modal.classList.add('active');
 }
 
@@ -3224,7 +3240,7 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
       layer: (item && item.layer) ? item.layer : '기타_T',
       prefix: pendingFacilityType || '시설물',
       fields: [
-        { id: 'content', label: '📝 내용 (직접 입력)', type: 'text', placeholder: '내용 입력', default: '내용' }
+        { id: 'content', label: '내용 (직접 입력)', type: 'text', placeholder: '내용 입력', default: '내용' }
       ]
     };
   }
@@ -3417,10 +3433,10 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
 
     var html = '<label>' + field.label + '</label>';
 
-    // 지능형 숫자형 필드 감지기: 설정상 타입뿐만 아니라 라벨명이나 필드 ID에 가로/세로/높이/수량 등의 키워드가 있으면 숫자로 간주
+    // 지능형 숫자형 필드 감지기: 설정상 타입뿐만 아니라 라벨명이나 필드 ID에 가로/세로/높이/수량/차선/차로 등의 키워드가 있으면 숫자로 간주
     var isNumericField = field.type === 'number' || field.isNumber || 
-      /수량|높이|가로|세로|폭|경사|규격|각도|개수|갯수/.test(field.label) ||
-      /count|width|height|gradient|angle|spec|num/.test(field.id);
+      /수량|높이|가로|세로|폭|경사|규격|각도|개수|갯수|차선|차로/.test(field.label) ||
+      /count|width|height|gradient|angle|spec|num|lane/.test(field.id);
 
     if (field.readonly) {
       // 읽기전용 필드는 그대로 일반 텍스트 입력박스 유지
