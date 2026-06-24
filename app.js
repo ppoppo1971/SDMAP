@@ -3499,11 +3499,23 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       }
     }
 
-    // input 포커스 이벤트 바인딩 (자동 전체 선택) 및 미리보기 동기화
+    // input 포커스 이벤트 바인딩 (자동 전체 선택) 및 미리보기 동기화 + 포커스 시 비우기 및 아웃 시 복원 (datalist 힌트 최적화)
     var inputs = group.querySelectorAll('input');
     inputs.forEach(function (inputEl) {
       inputEl.addEventListener('focus', function () {
-        this.select();
+        if (!this.readOnly && this.getAttribute('list')) {
+          this._originalValue = this.value;
+          this.value = '';
+          updatePreview();
+        } else {
+          this.select();
+        }
+      });
+      inputEl.addEventListener('blur', function () {
+        if (!this.readOnly && this.getAttribute('list') && this.value === '') {
+          this.value = this._originalValue || '';
+          updatePreview();
+        }
       });
       inputEl.addEventListener('input', updatePreview);
     });
