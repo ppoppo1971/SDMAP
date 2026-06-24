@@ -3432,13 +3432,17 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       var opts = [];
       if (field.type === 'select') {
         opts = (field.options || []).slice(); // 기존 고정 옵션 복사
-      } else {
-        // 주관식/숫자형 필드는 도면 내 과거 이력 상위 10개를 목록으로 채움
-        opts = getFieldSuggestions(field.id, config);
       }
+      
+      // 고정 옵션 유무와 관계없이 과거 저장 이력 상위 10개를 추출하여 드롭다운 리스트에 결합 (중복 방지)
+      var suggestions = getFieldSuggestions(field.id, config);
+      suggestions.forEach(function (sug) {
+        if (opts.indexOf(sug) === -1) {
+          opts.push(sug);
+        }
+      });
 
       // 현재 입력된 커스텀 실제값(val)을 드롭다운 옵션 후보군에 동적 병합 (중복 방지)
-      // 이 처리를 통해 기존에 직접 입력했던 값(예: '5')이 드롭다운 항목에 동적으로 들어가 폼을 다시 열었을 때 드롭다운에 바로 표시됩니다.
       if (val !== '' && val !== '기타' && val !== (field.default || '')) {
         var strVal = String(val).trim();
         if (opts.indexOf(strVal) === -1) {
@@ -3518,11 +3522,13 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
           if (!isEtc) {
             etcEl.value = '';
           } else {
-            // display 변경 후 브라우저 렌더 레이아웃 타이밍 대응 및 동기식 포커싱
-            etcEl.focus();
-            if (etcEl.type !== 'number') {
-              etcEl.select();
-            }
+            // 브라우저 렌더 레이아웃이 잡힐 수 있도록 20ms 미세 지연을 주어 포커싱 및 키보드 팝업 성공률 극대화
+            setTimeout(function () {
+              etcEl.focus();
+              if (etcEl.type !== 'number') {
+                etcEl.select();
+              }
+            }, 20);
           }
           updatePreview();
         });
