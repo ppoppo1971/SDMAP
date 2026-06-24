@@ -3411,6 +3411,11 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
 
     var html = '<label>' + field.label + '</label>';
 
+    // 지능형 숫자형 필드 감지기: 설정상 타입뿐만 아니라 라벨명이나 필드 ID에 가로/세로/높이/수량 등의 키워드가 있으면 숫자로 간주
+    var isNumericField = field.type === 'number' || field.isNumber || 
+      /수량|높이|가로|세로|폭|경사|규격|각도|개수|갯수/.test(field.label) ||
+      /count|width|height|gradient|angle|spec|num/.test(field.id);
+
     if (field.readonly) {
       // 읽기전용 필드는 그대로 일반 텍스트 입력박스 유지
       html += '<input type="text" readonly id="' + prefixId + '-' + field.id + '" value="' + val + '">';
@@ -3456,8 +3461,8 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       var etcDisplay = showEtc ? 'block' : 'none';
 
       // 숫자 필드인지 여부에 따라 숫자패드 호환성을 유지하여 etc 입력창 구성
-      if (field.type === 'number' || field.isNumber) {
-        html += '<input type="number" step="any" inputmode="decimal" id="' + prefixId + '-' + field.id + '-etc" style="display:' + etcDisplay + '; margin-top:5px;" value="' + etcVal + '" placeholder="' + (field.placeholder || '직접 입력') + '">';
+      if (isNumericField) {
+        html += '<input type="number" step="any" inputmode="decimal" id="' + prefixId + '-' + field.id + '-etc" style="display:' + etcDisplay + '; margin-top:5px;" value="' + etcVal + '" placeholder="' + (field.placeholder || '숫자 입력') + '">';
       } else {
         html += '<input type="text" id="' + prefixId + '-' + field.id + '-etc" style="display:' + etcDisplay + '; margin-top:5px;" value="' + etcVal + '" placeholder="' + (field.placeholder || '직접 입력') + '">';
       }
@@ -3488,7 +3493,9 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
     var inputs = group.querySelectorAll('input');
     inputs.forEach(function (inputEl) {
       inputEl.addEventListener('focus', function () {
-        this.select();
+        if (this.type !== 'number') {
+          this.select();
+        }
       });
       inputEl.addEventListener('input', updatePreview);
     });
@@ -3505,14 +3512,11 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
           if (!isEtc) {
             etcEl.value = '';
           } else {
-            // 버그 수정: 사용자가 기타를 고르면, 곧바로 입력창에 포커스를 주어 키보드가 즉시 올라오도록 보정
-            setTimeout(function () {
-              etcEl.focus();
-              // input type="number" 일 때는 select() 호출 시 iOS 브라우저 에러로 키보드 씹힘이 발생하므로 예외 처리
-              if (etcEl.type !== 'number') {
-                etcEl.select();
-              }
-            }, 100);
+            // display 변경 후 브라우저 렌더 레이아웃 타이밍 대응 및 동기식 포커싱
+            etcEl.focus();
+            if (etcEl.type !== 'number') {
+              etcEl.select();
+            }
           }
           updatePreview();
         });
@@ -3569,7 +3573,7 @@ function serializeFacilityForm(container, config, prefixId) {
     
     var val = '';
     if (el) {
-      if (field.type === 'select') {
+      if (el.tagName === 'SELECT') {
         if (el.value === '기타' && etcEl) {
           val = etcEl.value.trim();
         } else {
