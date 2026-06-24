@@ -2446,19 +2446,48 @@ function compressImage(file, targetSize) {
 function addPhotoAtPosition(xy, file) {
   if (!dxfFileFullName || !window.localStore) return;
   var id = 'photo-' + Date.now();
+  var numTextId = 'text-num-' + Date.now();
   var targetSize = getImageTargetSize();
+
+  // 기존 저장된 사진번호 + 1 계산
+  var nextPhotoNum = '';
+  if (typeof localStorage !== 'undefined') {
+    var lastNumStr = localStorage.getItem('dmap:lastPhotoNumber');
+    if (lastNumStr) {
+      var parsed = parseInt(lastNumStr, 10);
+      if (!isNaN(parsed)) nextPhotoNum = String(parsed + 1);
+      else nextPhotoNum = lastNumStr;
+    }
+  }
+
+  var numTextObj = {
+    id: numTextId,
+    x: xy.x,
+    y: xy.y,
+    text: nextPhotoNum,
+    fontSize: 12,
+    layer: '사진번호'
+  };
+  texts.push(numTextObj);
 
   function finish(blob) {
     var photo = {
       id: id, x: xy.x, y: xy.y, width: 1, height: 1,
       blob: blob, memo: '', fileName: generatePhotoFileName(),
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      numTextId: numTextId
     };
     photos.push(photo);
-    window.localStore.savePhoto(dxfFileFullName, photo).then(function () {
+
+    Promise.all([
+      window.localStore.savePhoto(dxfFileFullName, photo),
+      window.localStore.saveProject(dxfFileFullName, { texts: texts, lastModified: new Date().toISOString() })
+    ]).then(function () {
       drawPhotoMarkers();
+      drawTextMarkers();
       pendingAddPosition = null;
       showToast('사진이 추가되었습니다.');
+      showPhotoModal(id); // 저장 완료 즉시 사진 뷰어를 띄움
     }).catch(function (err) {
       console.error('사진 저장 실패:', err);
       alert('데이터 저장소에 기록하는 도중 오류가 발생해 사진을 저장하지 못했습니다.');
@@ -2633,6 +2662,27 @@ function showPhotoModal(photoId) {
 
         renderFacilityForm(formWrapper, config, parsedValues, 'pm');
       }
+    } else {
+      // 일반 사진인 경우에도 사진번호 필드를 표시하여 직접 번호를 보고 수정할 수 있게 함
+      if (numTextObj && dynamicFieldsContainer) {
+        dynamicFieldsContainer.style.display = 'flex';
+        dynamicFieldsContainer.style.flexDirection = 'column';
+        dynamicFieldsContainer.style.gap = '8px';
+
+        var numGroup = document.createElement('div');
+        numGroup.className = 'form-group';
+        numGroup.innerHTML = 
+          '<label>사진 번호 (직접 입력/수정 가능)</label>' +
+          '<input type="text" id="pm-form-num" value="' + numTextObj.text + '" placeholder="예: 100">';
+        dynamicFieldsContainer.appendChild(numGroup);
+
+        var numInput = numGroup.querySelector('input');
+        if (numInput) {
+          numInput.addEventListener('focus', function () {
+            this.select();
+          });
+        }
+      }
     }
   }
 
@@ -2714,13 +2764,16 @@ function bindPhotoModal() {
       var newSpec = '';
       var newLayer = '';
       
-      var fType = p.facilityType || (texts.filter(function (t) { return t.id === p.specTextId; })[0] ? detectFacilityType('', texts.filter(function (t) { return t.id === p.specTextId; })[0].layer) : null);
-      var config = FACILITY_CONFIG[fType];
+      var specTextObj = p.specTextId ? texts.filter(function (t) { return t.id === p.specTextId; })[0] : null;
+      var fType = p.facilityType || (specTextObj ? detectFacilityType('', specTextObj.layer) : null);
+      var config = fType ? FACILITY_CONFIG[fType] : null;
+
+      var pmNumInput = document.getElementById('pm-form-num');
+      if (pmNumInput) {
+        newNum = pmNumInput.value.trim();
+      }
 
       if (config) {
-        var pmNumInput = document.getElementById('pm-form-num');
-        newNum = pmNumInput ? pmNumInput.value.trim() : '';
-
         var container = document.getElementById('photo-modal-dynamic-fields');
         var formWrapper = container ? container.querySelector('div:last-child') : null;
         var result = serializeFacilityForm(formWrapper, config, 'pm');
@@ -2732,7 +2785,13 @@ function bindPhotoModal() {
 
       if (p.numTextId && newNum) {
         var numObj = texts.filter(function (x) { return x.id === p.numTextId; })[0];
-        if (numObj) numObj.text = newNum;
+        if (numObj) {
+          numObj.text = newNum;
+          // localStorage 에도 반영하여 다음 시설물 폼/사진촬영 시 일련번호 연동 보장
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('dmap:lastPhotoNumber', newNum);
+          }
+        }
       }
       if (p.specTextId && newSpec) {
         var specObj = texts.filter(function (x) { return x.id === p.specTextId; })[0];
