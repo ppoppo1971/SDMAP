@@ -3442,6 +3442,12 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
         }
       });
 
+      // 만약 고정 옵션도 없고 과거 이력도 전혀 없다면, 드롭다운에 '기타'만 들어가서 change 이벤트가 미발생하므로
+      // 첫 선택 유도를 위해 맨 첫 옵션으로 '기본' 또는 '선택' 필터를 추가해 줍니다.
+      if (opts.length === 0) {
+        opts.push(field.default || '선택');
+      }
+
       // 현재 입력된 커스텀 실제값(val)을 드롭다운 옵션 후보군에 동적 병합 (중복 방지)
       if (val !== '' && val !== '기타' && val !== (field.default || '')) {
         var strVal = String(val).trim();
@@ -3510,27 +3516,47 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       inputEl.addEventListener('input', updatePreview);
     });
 
-    // select 체인지 이벤트 걸어서 '기타'일 때 주관식 입력 활성화
+    // select 체인지 이벤트 및 포커스 이벤트 걸어서 '기타'일 때 주관식 입력 활성화
     if (!field.readonly) {
       var selEl = group.querySelector('select');
       var etcEl = group.querySelector('input');
 
       if (selEl && etcEl) {
-        selEl.addEventListener('change', function () {
-          var isEtc = this.value === '기타';
+        // 공통 포커스 트리거 함수: 동기+비동기 이중 트리거로 모바일 키보드 반응성 완전 확보
+        var triggerFocus = function () {
+          var isEtc = selEl.value === '기타';
           etcEl.style.display = isEtc ? 'block' : 'none';
           if (!isEtc) {
             etcEl.value = '';
           } else {
-            // 브라우저 렌더 레이아웃이 잡힐 수 있도록 20ms 미세 지연을 주어 포커싱 및 키보드 팝업 성공률 극대화
+            // 1차 포커스 시도 (동기식 - 유저 액션 스택 보호 목적)
+            etcEl.focus();
+            
+            // 2차 포커스 시도 (비동기식 - 브라우저 Reflow 레이아웃 지연 타이밍 대응 목적)
             setTimeout(function () {
               etcEl.focus();
               if (etcEl.type !== 'number') {
                 etcEl.select();
               }
-            }, 20);
+            }, 10);
           }
           updatePreview();
+        };
+
+        // 1. 값 자체가 변경될 때
+        selEl.addEventListener('change', triggerFocus);
+
+        // 2. 이미 기타가 선택된 상태에서 클릭이나 터치가 이루어질 때 (change 미발생 대비)
+        selEl.addEventListener('click', function () {
+          if (this.value === '기타') {
+            triggerFocus();
+          }
+        });
+        selEl.addEventListener('touchend', function () {
+          if (this.value === '기타') {
+            // 터치 단말기의 지연 방지를 위해 즉시 실행
+            triggerFocus();
+          }
         });
       }
       if (selEl) {
