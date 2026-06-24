@@ -3139,6 +3139,31 @@ function validatePhotoNumber(newNumStr, currentPhotoId) {
   return true;
 }
 
+// 특정 시설물 및 필드 ID에 매칭되는 이전 입력값들을 texts 이력에서 추출하여 빈도순 상위 10개 반환
+function getFieldSuggestions(fieldId, config) {
+  var counts = {};
+  if (window.texts && window.texts.length > 0 && config && config.layer) {
+    window.texts.forEach(function (t) {
+      if (t.layer === config.layer && t.text) {
+        var parsed = deserializeSpecText(t.text, config);
+        if (parsed && parsed[fieldId] !== undefined) {
+          var val = String(parsed[fieldId]).trim();
+          // 의미 없는 디폴트값 및 기타 등은 제외
+          if (val !== '' && val !== '기타' && val !== '내용' && val !== '종류' && val !== '형식') {
+            counts[val] = (counts[val] || 0) + 1;
+          }
+        }
+      }
+    });
+  }
+  
+  var list = Object.keys(counts).map(function (k) {
+    return { val: k, count: counts[k] };
+  });
+  list.sort(function (a, b) { return b.count - a.count; });
+  return list.slice(0, 10).map(function (item) { return item.val; });
+}
+
 function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
   var content = document.getElementById('bottom-sheet-content');
   var title = document.getElementById('bottom-sheet-title');
@@ -3415,6 +3440,46 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
 
     group.innerHTML = html;
     container.appendChild(group);
+
+    // 해당 필드(field.id)에 대한 과거 입력 히스토리 상위 10개 추천 단어(datalist) 적용
+    var suggestions = getFieldSuggestions(field.id, config);
+    if (suggestions.length > 0) {
+      // 1. 일반 입력창 (숫자 및 텍스트)
+      var inputEl = group.querySelector('input:not([id$="-etc"])');
+      if (inputEl && !inputEl.readOnly) {
+        var datalistId = prefixId + '-' + field.id + '-datalist';
+        var oldDl = document.getElementById(datalistId);
+        if (oldDl) oldDl.parentNode.removeChild(oldDl);
+
+        var dl = document.createElement('datalist');
+        dl.id = datalistId;
+        suggestions.forEach(function (s) {
+          var opt = document.createElement('option');
+          opt.value = s;
+          dl.appendChild(opt);
+        });
+        container.appendChild(dl);
+        inputEl.setAttribute('list', datalistId);
+      }
+
+      // 2. '기타' 선택 시 나타나는 주관식 입력창
+      var etcInputEl = group.querySelector('input[id$="-etc"]');
+      if (etcInputEl) {
+        var etcDatalistId = prefixId + '-' + field.id + '-etc-datalist';
+        var oldEtcDl = document.getElementById(etcDatalistId);
+        if (oldEtcDl) oldEtcDl.parentNode.removeChild(oldEtcDl);
+
+        var dl = document.createElement('datalist');
+        dl.id = etcDatalistId;
+        suggestions.forEach(function (s) {
+          var opt = document.createElement('option');
+          opt.value = s;
+          dl.appendChild(opt);
+        });
+        container.appendChild(dl);
+        etcInputEl.setAttribute('list', etcDatalistId);
+      }
+    }
 
     // 신호등 종류가 '차량'인 경우 보행등 필드들을 초기에 숨겨두기 위해 ID 속성을 부여하여 래핑하거나 스타일을 조절합니다.
     if (config.title === '신호등' && (field.id === 'pedestrianType' || field.id === 'pedestrianCount')) {
