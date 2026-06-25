@@ -58,6 +58,7 @@ var FACILITY_CONFIG = {
     fields: [
       { id: 'type1', label: '종류', type: 'select', options: ['기본', '2등형', '기타'], default: '기본' },
       { id: 'type2', label: '재질', type: 'select', options: ['강관', '강판', '기타'], default: '강관' },
+      { id: 'lightSource', label: '광원', type: 'select', options: ['LED', '고압나트륨', '기타'], default: 'LED' },
       { id: 'type3', label: '수량/높이', type: 'select', options: ['1', '2', '3', '4', '기타'], default: '1' }
     ]
   },
@@ -125,6 +126,7 @@ var FACILITY_CONFIG = {
     fields: [
       { id: 'spec', label: '규격', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
       { id: 'type', label: '재질', type: 'select', options: ['흄관', 'PE', 'PVC', 'CSP', '기타'], default: '흄관' },
+      { id: 'length', label: '연장', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
       { id: 'wing', label: '날개벽', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' },
       { id: 'sump', label: '집수정', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' }
     ]
@@ -238,7 +240,7 @@ var FACILITY_CONFIG = {
     layer: 'CCTV_T',
     prefix: 'CCTV',
     fields: [
-      { id: 'type', label: '종류', type: 'text', placeholder: '종류 입력', default: '종류' },
+      { id: 'type', label: '종류', type: 'select', options: ['무인단속카메라', '과속카메라', '기타'], default: '무인단속카메라' },
       { id: 'count', label: '수량', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' }
     ]
   },
@@ -268,6 +270,7 @@ var FACILITY_CONFIG = {
     fields: [
       { id: 'type1', label: '종류', type: 'select', options: ['기본', '2등형', '기타'], default: '기본' },
       { id: 'type2', label: '재질', type: 'select', options: ['강관', '강판', '기타'], default: '강관' },
+      { id: 'lightSource', label: '광원', type: 'select', options: ['LED', '고압나트륨', '기타'], default: 'LED' },
       { id: 'type3', label: '수량/높이', type: 'select', options: ['1', '2', '3', '4', '기타'], default: '1' }
     ]
   },
@@ -471,8 +474,9 @@ var FACILITY_CONFIG = {
     layer: '도로표지_T',
     prefix: '도로표지',
     fields: [
-      { id: 'direction', label: '방향 (이정, 안내, 예고, 기타)', type: 'select', options: ['이정', '안내', '예고', '기타'], default: '이정' },
-      { id: 'support', label: '지주형식 (단주, 복주, 측주, 편지, 부착, 현수식, 기타)', type: 'select', options: ['단주', '복주', '측주', '편지', '부착', '현수식', '기타'], default: '단주' }
+      { id: 'direction', label: '방향', type: 'select', options: ['방향', '이정', '안내', '예고', '기타'], default: '방향' },
+      { id: 'content', label: '내용', type: 'text', placeholder: '내용 직접 입력', default: '내용' },
+      { id: 'support', label: '지주형식', type: 'select', options: ['단주', '복주', '측주', '편지', '부착', '현수식', '기타'], default: '단주' }
     ]
   },
   '고가도로': {
@@ -2154,6 +2158,39 @@ function getPhotoIcon(color, sizePx) {
   };
   return photoIconCache[key];
 }
+function showPhotoSelectBottomSheet(list) {
+  var sheet = document.getElementById('bottom-sheet-flow');
+  var content = document.getElementById('bottom-sheet-content');
+  var title = document.getElementById('bottom-sheet-title');
+  var closeBtn = document.getElementById('bottom-sheet-close');
+  if (!sheet || !content) return;
+
+  if (title) title.textContent = '📷 사진 선택 (반경 2m 이내)';
+  content.innerHTML = '<p style="font-size:13px; color:#666; margin:0 0 10px 0;">수정할 사진을 선택하세요.</p>';
+
+  list.forEach(function (photoItem) {
+    // 사진번호 구하기
+    var numTextObj = photoItem.numTextId ? texts.filter(function (t) { return t.id === photoItem.numTextId; })[0] : null;
+    var numTextVal = numTextObj ? numTextObj.text : '번호없음';
+    var typeText = photoItem.facilityType || '일반사진';
+
+    var div = document.createElement('div');
+    div.className = 'facility-list-item';
+    div.textContent = '사진 ' + numTextVal + '번 (' + typeText + ')';
+    div.addEventListener('click', function () {
+      hideStreetlightBottomSheet();
+      showPhotoModal(photoItem.id);
+    });
+    content.appendChild(div);
+  });
+
+  if (closeBtn && !closeBtn._bound) {
+    closeBtn.addEventListener('click', hideStreetlightBottomSheet);
+    closeBtn._bound = true;
+  }
+
+  sheet.classList.add('active');
+}
 
 function drawPhotoMarkers() {
   clearPhotoMarkers();
@@ -2182,7 +2219,31 @@ function drawPhotoMarkers() {
     m.photoId = p.id;
     m.addListener('click', function () {
       if (Date.now() - lastLongPressEndTime < 600) return;
-      showPhotoModal(p.id);
+      
+      // 2m 이내의 중첩된 사진 마커들 찾기
+      var nearby = [];
+      photos.forEach(function (other) {
+        var dx = other.x - p.x;
+        var dy = other.y - p.y;
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist <= 2.0) {
+          nearby.push({
+            photo: other,
+            distance: dist
+          });
+        }
+      });
+
+      // 거리순 정렬
+      nearby.sort(function (a, b) { return a.distance - b.distance; });
+
+      if (nearby.length > 1) {
+        // 2개 이상 겹쳐 있는 경우 바텀시트로 선택 팝업 제공
+        showPhotoSelectBottomSheet(nearby.map(function (item) { return item.photo; }));
+      } else {
+        // 겹쳐진 사진이 없는 경우 직접 수정모달 호출
+        showPhotoModal(p.id);
+      }
     });
     photoMarkers.push(m);
   });
@@ -2757,6 +2818,42 @@ function deserializeSpecText(specText, config) {
     var dimParts = dim.split('*');
     values['width'] = dimParts[0] || '';
     values['height'] = dimParts[1] || '';
+  } else if (config.title === '도로표지') {
+    values['direction'] = parts[0] || '방향';
+    if (values['direction'] === '안내') {
+      if (parts.length >= 3) {
+        values['content'] = parts[1] || '';
+        values['support'] = parts[2] || '단주';
+      } else {
+        values['content'] = '';
+        values['support'] = parts[1] || '단주';
+      }
+    } else {
+      values['content'] = '';
+      values['support'] = parts[1] || '단주';
+    }
+  } else if (config.title === '배수관') {
+    values['spec'] = parts[0] || '';
+    values['type'] = parts[1] || '';
+    if (parts.length === 4) {
+      values['length'] = '';
+      values['wing'] = parts[2] || '';
+      values['sump'] = parts[3] || '';
+    } else {
+      values['length'] = parts[2] || '';
+      values['wing'] = parts[3] || '';
+      values['sump'] = parts[4] || '';
+    }
+  } else if (config.title === '가로등' || config.title === '보안등') {
+    values['type1'] = parts[0] || '';
+    values['type2'] = parts[1] || '';
+    if (parts.length === 3) {
+      values['lightSource'] = 'LED';
+      values['type3'] = parts[2] || '';
+    } else {
+      values['lightSource'] = parts[2] || '';
+      values['type3'] = parts[3] || '';
+    }
   } else {
     var valIdx = 0;
     config.fields.forEach(function (field) {
@@ -2895,7 +2992,7 @@ function showPhotoModal(photoId) {
     
     var addSelect = document.createElement('select');
     addSelect.id = 'pm-attribute-adder';
-    var addOpts = ['-- 추가할 속성 선택 --', '주의표지', '규제표지', '지시표지', '보조표지', '교통기타', 'CCTV', '새주소', '전광표지', '보안등', '신호등', '참고사항'];
+    var addOpts = ['-- 추가할 속성 선택 --', '주의표지', '규제표지', '지시표지', '보조표지', '도로표지', '교통기타', 'CCTV', '새주소', '전광표지', '보안등', '신호등', '참고사항'];
     addOpts.forEach(function (opt) {
       var disabled = opt.indexOf('--') === 0 ? ' disabled selected' : '';
       addSelect.innerHTML += '<option value="' + opt + '"' + disabled + '>' + opt + '</option>';
@@ -2941,14 +3038,20 @@ function showPhotoModal(photoId) {
     window.updateAllPreviewsPM();
   }
 
-  window.localStore.getPhotoById(photoId).then(function (record) {
-    if (editingPhotoId !== photoId) return;
-    if (record && record.blob) {
-      if (dxfImageObjectUrl) URL.revokeObjectURL(dxfImageObjectUrl);
-      dxfImageObjectUrl = URL.createObjectURL(record.blob);
-      img.src = dxfImageObjectUrl;
-    }
-  });
+  if (p && p.blob) {
+    if (dxfImageObjectUrl) URL.revokeObjectURL(dxfImageObjectUrl);
+    dxfImageObjectUrl = URL.createObjectURL(p.blob);
+    img.src = dxfImageObjectUrl;
+  } else {
+    window.localStore.getPhotoById(photoId).then(function (record) {
+      if (editingPhotoId !== photoId) return;
+      if (record && record.blob) {
+        if (dxfImageObjectUrl) URL.revokeObjectURL(dxfImageObjectUrl);
+        dxfImageObjectUrl = URL.createObjectURL(record.blob);
+        img.src = dxfImageObjectUrl;
+      }
+    });
+  }
   modal.classList.add('active');
 }
 
@@ -3555,9 +3658,14 @@ function renderMultiAttributeCard(container, type, cachedVals, prefixIdUnique) {
       // 전체 제원 미리보기 갱신 트리거
       var previewEl = document.getElementById('sw-spec-preview') || document.getElementById('pm-spec-preview');
       if (previewEl) {
-        // 전역 미리보기 업데이트 트리거
-        if (typeof updateAllPreviews === 'function') {
-          updateAllPreviews();
+        if (previewEl.id === 'pm-spec-preview') {
+          if (typeof updateAllPreviewsPM === 'function') {
+            updateAllPreviewsPM();
+          }
+        } else {
+          if (typeof updateAllPreviews === 'function') {
+            updateAllPreviews();
+          }
         }
       }
     }
@@ -3673,7 +3781,7 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
   
   var addSelect = document.createElement('select');
   addSelect.id = 'sw-attribute-adder';
-  var addOpts = ['-- 추가할 속성 선택 --', '주의표지', '규제표지', '지시표지', '보조표지', '교통기타', 'CCTV', '새주소', '전광표지', '보안등', '신호등', '참고사항'];
+  var addOpts = ['-- 추가할 속성 선택 --', '주의표지', '규제표지', '지시표지', '보조표지', '도로표지', '교통기타', 'CCTV', '새주소', '전광표지', '보안등', '신호등', '참고사항'];
   addOpts.forEach(function (opt) {
     var disabled = opt.indexOf('--') === 0 ? ' disabled selected' : '';
     addSelect.innerHTML += '<option value="' + opt + '"' + disabled + '>' + opt + '</option>';
@@ -3976,18 +4084,15 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
 
     var html = '<label>' + field.label + '</label>';
 
-    // 지능형 숫자형 필드 감지기: 설정상 타입뿐만 아니라 라벨명이나 필드 ID에 가로/세로/높이/수량/차선/차로 등의 키워드가 있으면 숫자로 간주
+    // 지능형 숫자형 필드 감지기: 설정상 타입뿐만 아니라 라벨명이나 필드 ID에 가로/세로/높이/수량/차선/차로/연장 등의 키워드가 있으면 숫자로 간주
     var isNumericField = field.type === 'number' || field.isNumber || 
-      /수량|높이|가로|세로|폭|경사|규격|각도|개수|갯수|차선|차로/.test(field.label) ||
-      /count|width|height|gradient|angle|spec|num|lane/.test(field.id);
+      /수량|높이|가로|세로|폭|경사|규격|각도|개수|갯수|차선|차로|연장/.test(field.label) ||
+      /count|width|height|gradient|angle|spec|num|lane|length/.test(field.id);
 
     if (field.readonly) {
       // 읽기전용 필드는 그대로 일반 텍스트 입력박스 유지
       html += '<input type="text" readonly id="' + prefixId + '-' + field.id + '" value="' + val + '">';
     } else {
-      // 일반 주관식/선택 필드는 모두 드롭다운(select) + 기타(etc) 입력창 구조로 통일
-      html += '<select id="' + prefixId + '-' + field.id + '">';
-      
       var opts = [];
       if (field.type === 'select') {
         opts = (field.options || []).slice(); // 기존 고정 옵션 복사
@@ -3995,51 +4100,74 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       
       // 고정 옵션 유무와 관계없이 과거 저장 이력 상위 10개를 추출하여 드롭다운 리스트에 결합 (중복 방지)
       var suggestions = getFieldSuggestions(field.id, config);
+      suggestions = suggestions.filter(function (s) {
+        return s !== '내용' && s !== '종류' && s !== '메모' && s !== '기타' && s !== '';
+      });
       suggestions.forEach(function (sug) {
         if (opts.indexOf(sug) === -1) {
           opts.push(sug);
         }
       });
 
-      // 만약 고정 옵션도 없고 과거 이력도 전혀 없다면, 드롭다운에 '기타'만 들어가서 change 이벤트가 미발생하므로
-      // 첫 선택 유도를 위해 맨 첫 옵션으로 '기본' 또는 '선택' 필터를 추가해 줍니다.
-      if (opts.length === 0) {
-        opts.push(field.default || '선택');
-      }
-
-      // 현재 입력된 커스텀 실제값(val)을 드롭다운 옵션 후보군에 동적 병합 (중복 방지)
-      if (val !== '' && val !== '기타' && val !== (field.default || '')) {
-        var strVal = String(val).trim();
-        if (opts.indexOf(strVal) === -1) {
-          opts.push(strVal);
-        }
-      }
-
-      var isOptionMatched = false;
-      opts.forEach(function (opt) {
-        var selected = opt === val ? ' selected' : '';
-        if (opt === val) isOptionMatched = true;
-        html += '<option value="' + opt + '"' + selected + '>' + opt + '</option>';
+      // 기존 옵션에서도 placeholder 명칭들 제거
+      opts = opts.filter(function (opt) {
+        return opt !== '내용' && opt !== '종류' && opt !== '메모';
       });
 
-      // 캐시값이 목록에 없거나 직접 입력한 것이었다면 '기타'를 기본 선택 상태로 지정
-      var showEtc = !isOptionMatched && val !== '' && val !== field.default;
-      var etcSelected = showEtc ? ' selected' : '';
-      
-      // 버그 수정: 이력 매칭 유무와 관계없이 '기타' 옵션은 상시 추가되나, 기존 옵션군(opts)에 '기타'가 원래 있는 경우에는 중복 생성을 방지합니다.
-      if (opts.indexOf('기타') === -1) {
-        html += '<option value="기타"' + etcSelected + '>기타</option>';
-      }
-      html += '</select>';
-      
-      var etcVal = showEtc ? val : '';
-      var etcDisplay = showEtc ? 'block' : 'none';
+      // 주관식/숫자형 필드이면서 이력 추천 목록이 0개인 경우 드롭다운을 그리지 않고 직접 입력창만 단일화 제공
+      var isDirectInputOnly = (field.type !== 'select') && (suggestions.length === 0);
 
-      // 숫자 필드인지 여부에 따라 숫자패드 호환성을 유지하여 etc 입력창 구성
-      if (isNumericField) {
-        html += '<input type="number" step="any" inputmode="decimal" id="' + prefixId + '-' + field.id + '-etc" style="display:' + etcDisplay + '; margin-top:5px;" value="' + etcVal + '" placeholder="' + (field.placeholder || '숫자 입력') + '">';
+      if (isDirectInputOnly) {
+        var inputVal = val;
+        if (inputVal === '내용' || inputVal === '종류' || inputVal === '메모' || inputVal === '기타') {
+          inputVal = '';
+        }
+        if (isNumericField) {
+          html += '<input type="number" step="any" inputmode="decimal" id="' + prefixId + '-' + field.id + '" value="' + inputVal + '" placeholder="' + (field.placeholder || '숫자 입력') + '">';
+        } else {
+          html += '<input type="text" id="' + prefixId + '-' + field.id + '" value="' + inputVal + '" placeholder="' + (field.placeholder || '직접 입력') + '">';
+        }
       } else {
-        html += '<input type="text" id="' + prefixId + '-' + field.id + '-etc" style="display:' + etcDisplay + '; margin-top:5px;" value="' + etcVal + '" placeholder="' + (field.placeholder || '직접 입력') + '">';
+        // 일반 주관식/선택 필드는 드롭다운(select) + 기타(etc) 입력창 구조
+        html += '<select id="' + prefixId + '-' + field.id + '">';
+        
+        if (opts.length === 0) {
+          opts.push('선택');
+        }
+
+        // 현재 입력된 실제값을 드롭다운 옵션 후보군에 동적 병합
+        if (val !== '' && val !== '기타' && val !== '내용' && val !== '종류' && val !== '메모' && val !== '선택') {
+          var strVal = String(val).trim();
+          if (opts.indexOf(strVal) === -1) {
+            opts.push(strVal);
+          }
+        }
+
+        var isOptionMatched = false;
+        opts.forEach(function (opt) {
+          var selected = opt === val ? ' selected' : '';
+          if (opt === val) isOptionMatched = true;
+          html += '<option value="' + opt + '"' + selected + '>' + opt + '</option>';
+        });
+
+        // 캐시값이 목록에 없거나 직접 입력한 것이었다면 '기타'를 기본 선택 상태로 지정
+        var showEtc = !isOptionMatched && val !== '' && val !== '선택';
+        var etcSelected = showEtc ? ' selected' : '';
+        
+        if (opts.indexOf('기타') === -1) {
+          html += '<option value="기타"' + etcSelected + '>기타</option>';
+        }
+        html += '</select>';
+        
+        var etcVal = showEtc ? val : '';
+        if (etcVal === '내용' || etcVal === '종류' || etcVal === '메모') etcVal = '';
+        var etcDisplay = showEtc ? 'block' : 'none';
+
+        if (isNumericField) {
+          html += '<input type="number" step="any" inputmode="decimal" id="' + prefixId + '-' + field.id + '-etc" style="display:' + etcDisplay + '; margin-top:5px;" value="' + etcVal + '" placeholder="' + (field.placeholder || '숫자 입력') + '">';
+        } else {
+          html += '<input type="text" id="' + prefixId + '-' + field.id + '-etc" style="display:' + etcDisplay + '; margin-top:5px;" value="' + etcVal + '" placeholder="' + (field.placeholder || '직접 입력') + '">';
+        }
       }
     }
 
@@ -4059,6 +4187,17 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
         } else {
           group.style.display = 'flex';
         }
+      } else {
+        group.style.display = 'none';
+      }
+    }
+
+    // 도로표지 방향이 '안내'가 아닌 경우 내용 필드를 초기에 숨겨두기 위해 ID 속성을 부여하여 스타일을 조절합니다.
+    if (config.title === '도로표지' && field.id === 'content') {
+      group.id = prefixId + '-group-content';
+      var dirVal = cachedVals && cachedVals['direction'] ? cachedVals['direction'] : '방향';
+      if (dirVal === '안내') {
+        group.style.display = 'flex';
       } else {
         group.style.display = 'none';
       }
@@ -4104,19 +4243,6 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
 
         // 1. 값 자체가 변경될 때
         selEl.addEventListener('change', triggerFocus);
-
-        // 2. 이미 기타가 선택된 상태에서 클릭이나 터치가 이루어질 때 (change 미발생 대비)
-        selEl.addEventListener('click', function () {
-          if (this.value === '기타') {
-            triggerFocus();
-          }
-        });
-        selEl.addEventListener('touchend', function () {
-          if (this.value === '기타') {
-            // 터치 단말기의 지연 방지를 위해 즉시 실행
-            triggerFocus();
-          }
-        });
       }
       if (selEl) {
         selEl.addEventListener('change', updatePreview);
@@ -4144,6 +4270,16 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
           if (pedCountGrp) {
             pedCountGrp.style.display = (this.value !== '보행등무') ? 'flex' : 'none';
           }
+          updatePreview();
+        });
+      }
+
+      // 도로표지 방향(direction) 선택값이 바뀔 때 내용 입력 필드 보이기/숨기기 처리 추가
+      if (config.title === '도로표지' && field.id === 'direction' && selEl) {
+        selEl.addEventListener('change', function () {
+          var showContent = this.value === '안내';
+          var contentGrp = document.getElementById(prefixId + '-group-content');
+          if (contentGrp) contentGrp.style.display = showContent ? 'flex' : 'none';
           updatePreview();
         });
       }
@@ -4211,6 +4347,12 @@ function serializeFacilityForm(container, config, prefixId) {
       specText = (prefixWord ? prefixWord + '/' : '') + vals.type + '/' + styleAndCount + '/' + vals.support + '/' + ped;
     } else {
       specText = (prefixWord ? prefixWord + '/' : '') + vals.type + '/' + styleAndCount + '/' + vals.support;
+    }
+  } else if (config.title === '도로표지') {
+    if (vals.direction === '안내') {
+      specText = (prefixWord ? prefixWord + '/' : '') + vals.direction + '/' + vals.content + '/' + vals.support;
+    } else {
+      specText = (prefixWord ? prefixWord + '/' : '') + vals.direction + '/' + vals.support;
     }
   } else if (config.joinFormat === 'dimension/type/wing/sump') {
     // 배수암거, 통로박스 등 (접두어/가로*세로/재질/날개벽/집수정 등)
@@ -4489,27 +4631,17 @@ function triggerStreetlightCamera(item, dxfCoords, latLng) {
   }
 }
 
-// 주요 버튼 터치 시 미세 진동 반응 제공 (햅틱 피드백)
-document.addEventListener('click', function (e) {
+// 입력란 포커스 시 키보드 가림 방지 스크롤 자동 조정
+document.addEventListener('focusin', function (e) {
   var target = e.target;
-  if (!target) return;
-  
-  var isClickable = target.tagName === 'BUTTON' || 
-                    target.classList.contains('btn') || 
-                    target.classList.contains('close-btn') || 
-                    target.classList.contains('bottom-sheet-close') || 
-                    target.classList.contains('facility-list-item') || 
-                    target.classList.contains('hamburger-btn') || 
-                    target.classList.contains('zoom-btn') || 
-                    target.classList.contains('pmode-btn') ||
-                    target.closest('.facility-list-item') ||
-                    target.closest('button') ||
-                    target.closest('.btn');
-                    
-  if (isClickable && navigator.vibrate) {
-    navigator.vibrate(100); // 100ms(0.1초) 진동 피드백
+  if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA')) {
+    setTimeout(function () {
+      if (typeof target.scrollIntoView === 'function') {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 300);
   }
-}, { passive: true });
+}, true);
 
 
 
