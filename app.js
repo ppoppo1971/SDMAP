@@ -3423,6 +3423,11 @@ function detectFacilityType(name, layer) {
     return '가로등';
   }
 
+  // 32. 참고사항
+  if (n.indexOf('참고사항') >= 0 || l.indexOf('참고사항') >= 0) {
+    return '참고사항';
+  }
+
   return null;
 }
 
