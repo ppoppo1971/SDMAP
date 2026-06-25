@@ -3183,9 +3183,7 @@ function bindPhotoModal() {
     if (!p) return;
 
     var promises = [];
-    promises.push(window.localStore.updatePhotoMemo(editingPhotoId, memo.value).then(function () {
-      p.memo = memo.value;
-    }));
+    p.memo = memo.value || ''; // 메모 객체 데이터에 즉시 반영 (중복 비동기 호출 제거)
 
     var newNum = '';
     var pmNumInput = document.getElementById('pm-form-num');
