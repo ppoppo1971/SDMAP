@@ -537,7 +537,13 @@ function initMap() {
   }
 
   if (window.localStore && window.localStore.init) {
-    window.localStore.init().catch(function () { });
+    window.localStore.init().then(function () {
+      tryAutoLoadLastProject();
+    }).catch(function () {
+      showFileList();
+    });
+  } else {
+    showFileList();
   }
   // 저장된 좌표계 적용
   if (currentCrs && window.DxfToGeoJSON && window.DxfToGeoJSON.setCrs) {
@@ -1044,6 +1050,9 @@ function exportAsIndividual() {
 }
 
 function showFileList() {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem('dmap:lastDxfFile');
+  }
   if (fileListScreen) fileListScreen.classList.remove('hidden');
   if (viewerScreen) viewerScreen.classList.add('hidden');
   if (viewerUI) viewerUI.classList.add('hidden');
@@ -1297,6 +1306,19 @@ function applyDxfLoadResult(dxfFileNameStr, dxfDataResult, imageRefsWithFile) {
   dxfData = dxfDataResult;
   dxfImageRefs = imageRefsWithFile;
   dxfFileName = dxfFileFullName = dxfFileNameStr;
+  
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('dmap:lastDxfFile', dxfFileNameStr);
+  }
+
+  if (window.localStore && window.localStore.saveDxfCache) {
+    window.localStore.saveDxfCache(dxfFileNameStr, dxfDataResult, imageRefsWithFile.map(function (r) {
+      return { id: r.id, x: r.x, y: r.y, fileName: r.fileName };
+    })).catch(function (err) {
+      console.warn('도면 캐시 저장 실패:', err);
+    });
+  }
+
   showViewer();
   applyDxfToMap();
   updateFileNameDisplay();
@@ -1573,9 +1595,10 @@ function deleteDataForProject() {
     texts = [];
     photos = [];
     
-    // 로컬 스토리지에 남아있던 전역 사진번호 카운터 변수도 초기화
+    // 로컬 스토리지에 남아있던 전역 사진번호 카운터 및 최근 도면 정보도 초기화
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem('dmap:lastPhotoNumber');
+      localStorage.removeItem('dmap:lastDxfFile');
     }
     
     drawPhotoMarkers();
@@ -4655,6 +4678,60 @@ document.addEventListener('focusin', function (e) {
     }, 300);
   }
 }, true);
+
+function tryAutoLoadLastProject() {
+  if (typeof localStorage === 'undefined') return;
+  var lastDxfFile = localStorage.getItem('dmap:lastDxfFile');
+  if (!lastDxfFile) return;
+
+  showLoading(true);
+  window.localStore.loadProject(lastDxfFile).then(function (project) {
+    if (project && project.dxfData) {
+      // 데이터베이스에 저장되어 있는 도면 캐시 데이터로 복원
+      var restoredImageRefs = (project.dxfImageRefs || []).map(function (r) {
+        return { id: r.id, x: r.x, y: r.y, fileName: r.fileName, file: null };
+      });
+      
+      dxfData = project.dxfData;
+      dxfImageRefs = restoredImageRefs;
+      dxfFileName = dxfFileFullName = lastDxfFile;
+      
+      showViewer();
+      applyDxfToMap();
+      updateFileNameDisplay();
+      drawDxfImageMarkers();
+      
+      // 사진 및 텍스트 데이터 로딩
+      texts = project.texts || [];
+      return window.localStore.loadPhotos(lastDxfFile).then(function (loadedPhotos) {
+        photos = [];
+        loadedPhotos.forEach(function (p) {
+          photos.push({
+            id: p.id, x: p.x, y: p.y, width: p.width, height: p.height,
+            blob: p.blob, memo: p.memo || '', fileName: p.fileName || '',
+            createdAt: p.createdAt, updatedAt: p.updatedAt,
+            numTextId: p.numTextId,
+            specTextId: p.specTextId,
+            specTextIds: p.specTextIds || null,
+            facilityType: p.facilityType,
+            additionalTypes: p.additionalTypes || null
+          });
+        });
+        drawPhotoMarkers();
+        drawTextMarkers();
+        fitDxfToView();
+      });
+    } else {
+      // 도면 캐시가 비어있거나 수동 삭제되어 도면을 찾을 수 없는 경우
+      localStorage.removeItem('dmap:lastDxfFile');
+    }
+  }).catch(function (err) {
+    console.warn('이전 도면 자동 로드 실패:', err);
+    localStorage.removeItem('dmap:lastDxfFile');
+  }).finally(function () {
+    setTimeout(function () { showLoading(false); }, 100);
+  });
+}
 
 
 

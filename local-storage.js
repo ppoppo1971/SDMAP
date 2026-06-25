@@ -49,11 +49,33 @@
     return getDb().then(function (db) {
       return new Promise(function (resolve, reject) {
         var tx = db.transaction(PROJECT_STORE, 'readwrite');
-        tx.objectStore(PROJECT_STORE).put({
-          dxfFile: dxfFile,
-          texts: data.texts || [],
-          lastModified: data.lastModified || new Date().toISOString()
-        });
+        var store = tx.objectStore(PROJECT_STORE);
+        var req = store.get(dxfFile);
+        req.onsuccess = function () {
+          var record = req.result || { dxfFile: dxfFile };
+          record.texts = data.texts || [];
+          record.lastModified = data.lastModified || new Date().toISOString();
+          store.put(record);
+        };
+        tx.oncomplete = function () { resolve(true); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+
+  function saveDxfCache(dxfFile, dxfData, dxfImageRefs) {
+    return getDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(PROJECT_STORE, 'readwrite');
+        var store = tx.objectStore(PROJECT_STORE);
+        var req = store.get(dxfFile);
+        req.onsuccess = function () {
+          var record = req.result || { dxfFile: dxfFile, texts: [] };
+          record.dxfData = dxfData;
+          record.dxfImageRefs = dxfImageRefs;
+          record.lastModified = new Date().toISOString();
+          store.put(record);
+        };
         tx.oncomplete = function () { resolve(true); };
         tx.onerror = function () { reject(tx.error); };
       });
@@ -160,12 +182,14 @@
           // 사진 일괄 삭제
           photos.forEach(function (p) { photoStore.delete(String(p.id)); });
 
-          // 프로젝트 텍스트 배열 비우기
+          // 프로젝트 텍스트 배열 비우기 및 도면 캐시 삭제
           var req = projStore.get(dxfFile);
           req.onsuccess = function () {
             var project = req.result;
             if (project) {
               project.texts = [];
+              if (project.dxfData) delete project.dxfData;
+              if (project.dxfImageRefs) delete project.dxfImageRefs;
               project.lastModified = new Date().toISOString();
               projStore.put(project);
             }
@@ -445,6 +469,7 @@
     exportProjectZip: exportProjectZip,
     exportProjectSequential: exportProjectSequential,
     exportAsZipOnly: exportAsZipOnly,
-    getPhotoDataUrl: getPhotoDataUrl
+    getPhotoDataUrl: getPhotoDataUrl,
+    saveDxfCache: saveDxfCache
   };
 })();
