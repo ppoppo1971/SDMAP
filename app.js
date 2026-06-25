@@ -2114,7 +2114,9 @@ function loadMetadataAndDisplay(dxfFile) {
         createdAt: p.createdAt, updatedAt: p.updatedAt,
         numTextId: p.numTextId,
         specTextId: p.specTextId,
-        facilityType: p.facilityType
+        specTextIds: p.specTextIds || null,
+        facilityType: p.facilityType,
+        additionalTypes: p.additionalTypes || null
       });
     });
     drawPhotoMarkers();
@@ -2871,10 +2873,16 @@ function deserializeSpecText(specText, config) {
 
 function showPhotoModal(photoId) {
   editingDxfImageRef = null;
-  if (dxfImageObjectUrl) {
-    URL.revokeObjectURL(dxfImageObjectUrl);
-    dxfImageObjectUrl = null;
+  
+  // 동일한 사진을 다시 여는 경우 기존 이미지 객체 URL을 해제하지 않고 유지하여 깜빡임 및 비동기 중단 버그 방지
+  var isSamePhoto = (editingPhotoId === photoId);
+  if (!isSamePhoto) {
+    if (dxfImageObjectUrl) {
+      URL.revokeObjectURL(dxfImageObjectUrl);
+      dxfImageObjectUrl = null;
+    }
   }
+  
   editingPhotoId = photoId;
   var modal = document.getElementById('photo-modal');
   var img = document.getElementById('photo-modal-img');
@@ -2891,7 +2899,10 @@ function showPhotoModal(photoId) {
   memo.style.display = 'block';
   memo.value = p.memo || '';
   img.style.display = 'block';
-  img.src = '';
+  
+  if (!isSamePhoto) {
+    img.src = '';
+  }
 
   var dynamicFieldsContainer = document.getElementById('photo-modal-dynamic-fields');
   if (dynamicFieldsContainer) {
@@ -3038,19 +3049,21 @@ function showPhotoModal(photoId) {
     window.updateAllPreviewsPM();
   }
 
-  if (p && p.blob) {
-    if (dxfImageObjectUrl) URL.revokeObjectURL(dxfImageObjectUrl);
-    dxfImageObjectUrl = URL.createObjectURL(p.blob);
-    img.src = dxfImageObjectUrl;
-  } else {
-    window.localStore.getPhotoById(photoId).then(function (record) {
-      if (editingPhotoId !== photoId) return;
-      if (record && record.blob) {
-        if (dxfImageObjectUrl) URL.revokeObjectURL(dxfImageObjectUrl);
-        dxfImageObjectUrl = URL.createObjectURL(record.blob);
-        img.src = dxfImageObjectUrl;
-      }
-    });
+  if (!isSamePhoto || !img.src) {
+    if (p && p.blob) {
+      if (dxfImageObjectUrl) URL.revokeObjectURL(dxfImageObjectUrl);
+      dxfImageObjectUrl = URL.createObjectURL(p.blob);
+      img.src = dxfImageObjectUrl;
+    } else {
+      window.localStore.getPhotoById(photoId).then(function (record) {
+        if (editingPhotoId !== photoId) return;
+        if (record && record.blob) {
+          if (dxfImageObjectUrl) URL.revokeObjectURL(dxfImageObjectUrl);
+          dxfImageObjectUrl = URL.createObjectURL(record.blob);
+          img.src = dxfImageObjectUrl;
+        }
+      });
+    }
   }
   modal.classList.add('active');
 }
