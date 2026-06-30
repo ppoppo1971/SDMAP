@@ -2102,6 +2102,10 @@ function applyObjectVisibility() {
       if (m && m.setMap) m.setMap(dxfImageMarkersVisible ? map : null);
     });
   }
+  // 사진번호 및 제원 텍스트 마커 가시성 제어
+  if (textOverlay) {
+    textOverlay.setMap(dxfTextVisible ? map : null);
+  }
   if (map && map.data) {
     try {
       map.data.setStyle(map.data.getStyle());
@@ -2404,6 +2408,9 @@ function drawTextMarkers() {
     this.spans = [];
   };
   textOverlay = new TextOnlyOverlay(texts);
+  if (textOverlay && typeof dxfTextVisible !== 'undefined') {
+    textOverlay.setMap(dxfTextVisible ? map : null);
+  }
 }
 
 function hideContextMenu() {
@@ -2739,21 +2746,16 @@ function addPhotoAtPosition(xy, file) {
   };
   texts.push(numTextObj);
 
-  // 다음 촬영 연속 갱신을 위해 localStorage에 즉시 반영
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem('dmap:lastPhotoNumber', nextPhotoNum);
-  }
-
   function finish(blob) {
-    // 파일명을 사진번호_1.jpg 형식으로 생성 (다중 사진 첫 번째)
-    var firstFileName = generatePhotoFileName(nextPhotoNum + '_1');
+    // 메인 사진은 접미사 없이 원래의 사진번호 네이밍으로 생성
+    var mainFileName = generatePhotoFileName(nextPhotoNum);
     var photo = {
       id: id, x: xy.x, y: xy.y, width: 1, height: 1,
-      blob: blob, memo: '', fileName: firstFileName,
+      blob: blob, memo: '', fileName: mainFileName,
       createdAt: new Date().toISOString(),
       numTextId: numTextId,
       subPhotos: [
-        { subIndex: 1, fileName: firstFileName, blob: blob }
+        { subIndex: 0, fileName: mainFileName, blob: blob }
       ]
     };
     photos.push(photo);
@@ -3344,7 +3346,11 @@ function bindPhotoModal() {
         // 서브 사진 파일명 일괄 변경
         if (p.subPhotos && p.subPhotos.length > 0) {
           p.subPhotos.forEach(function (sp, idx) {
-            sp.fileName = generatePhotoFileName(newNum + '_' + (idx + 1));
+            if (idx === 0) {
+              sp.fileName = generatePhotoFileName(newNum);
+            } else {
+              sp.fileName = generatePhotoFileName(newNum + '_' + idx);
+            }
           });
           p.fileName = p.subPhotos[0].fileName;
         } else {
@@ -4120,6 +4126,7 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
       }
     }
 
+    var mainFileName = generatePhotoFileName(formData.num);
     var photo = {
       id: photoId,
       x: insertionDxf.x,
@@ -4128,13 +4135,16 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
       height: 1,
       blob: blob,
       memo: descText + ' (' + item.name + ')',
-      fileName: generatePhotoFileName(formData.num),
+      fileName: mainFileName,
       createdAt: new Date().toISOString(),
       numTextId: numTextId,
       specTextId: primarySpecTextId, // 구버전 DB 호환성
       specTextIds: specTextIds,      // 다중 속성 ID 배열 (신규)
       facilityType: primaryType,     // 주 시설물 종류
-      additionalTypes: additionalTypes // 부속 시설물 종류 배열
+      additionalTypes: additionalTypes, // 부속 시설물 종류 배열
+      subPhotos: [
+        { subIndex: 0, fileName: mainFileName, blob: blob }
+      ]
     };
 
     photos.push(photo);
@@ -4148,6 +4158,9 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
       showLoading(false);
       hideStreetlightBottomSheet();
       showToast('제원 저장이 완료되었습니다.');
+      // 객체감지 저장 후 추가 사진 수집 지원을 위해 상세 팝업 오픈
+      isNewPhotoPending = false; // 객체감지 완료이므로 취소 대상이 아님
+      showPhotoModal(photoId);
     }).catch(function (err) {
       showLoading(false);
       console.error('제원 저장 실패:', err);
@@ -4848,19 +4861,19 @@ function addSubPhotoToCurrentPhoto(file) {
     p.subPhotos = [];
     if (p.blob) {
       p.subPhotos.push({
-        subIndex: 1,
-        fileName: p.fileName || generatePhotoFileName(numTextVal + '_1'),
+        subIndex: 0,
+        fileName: p.fileName || generatePhotoFileName(numTextVal),
         blob: p.blob
       });
     }
   }
 
-  var newSubIndex = p.subPhotos.length + 1;
-  var newFileName = generatePhotoFileName(numTextVal + '_' + newSubIndex);
+  var nextSubSuffix = p.subPhotos.length;
+  var newFileName = generatePhotoFileName(numTextVal + '_' + nextSubSuffix);
 
   function finish(blob) {
     p.subPhotos.push({
-      subIndex: newSubIndex,
+      subIndex: nextSubSuffix,
       fileName: newFileName,
       blob: blob
     });
