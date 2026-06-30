@@ -4255,9 +4255,6 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
       showLoading(false);
       hideStreetlightBottomSheet();
       showToast('제원 저장이 완료되었습니다.');
-      // 객체감지 저장 후 추가 사진 수집 지원을 위해 상세 팝업 오픈
-      isNewPhotoPending = false; // 객체감지 완료이므로 취소 대상이 아님
-      showPhotoModal(photoId);
     }).catch(function (err) {
       showLoading(false);
       console.error('제원 저장 실패:', err);
