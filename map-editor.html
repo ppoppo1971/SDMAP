@@ -1,0 +1,1479 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NDMAP 도로대장 웹 편집기 (PC)</title>
+  <!-- 구글 폰트 Inter 로드 -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-main: #121214;
+      --bg-card: rgba(30, 30, 38, 0.7);
+      --bg-sidebar: #1e1e24;
+      --primary: #6366f1; /* Indigo */
+      --primary-hover: #4f46e5;
+      --accent: #10b981; /* Emerald */
+      --danger: #ef4444; /* Red */
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    body {
+      background: var(--bg-main);
+      color: var(--text);
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 상단 헤더 */
+    header {
+      background: #18181c;
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 64px;
+      z-index: 10;
+    }
+
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-area h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #a78bfa, #6366f1);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .logo-area span {
+      font-size: 11px;
+      background: rgba(99, 102, 241, 0.2);
+      color: #a5b4fc;
+      padding: 2px 8px;
+      border-radius: 20px;
+      border: 1px solid rgba(99, 102, 241, 0.3);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* 공통 버튼 (리퀴드 스타일: 배경색 없음, 미니멀 아웃라인) */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: all 0.15s ease-in-out;
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .btn:active {
+      background: rgba(255, 255, 255, 0.12);
+      transform: scale(0.98);
+    }
+
+    /* 작업 폴더 열기 (보라색 아웃라인 리퀴드) */
+    #open-folder-btn {
+      border-color: rgba(99, 102, 241, 0.4);
+      background: rgba(99, 102, 241, 0.03);
+    }
+    #open-folder-btn:hover {
+      border-color: rgba(99, 102, 241, 0.7);
+      background: rgba(99, 102, 241, 0.08);
+    }
+    #open-folder-btn:active {
+      background: rgba(99, 102, 241, 0.15);
+    }
+
+    /* 수정사항 저장 (초록색 아웃라인 리퀴드) */
+    #photo-save-btn {
+      border-color: rgba(16, 185, 129, 0.4);
+      background: rgba(16, 185, 129, 0.03);
+    }
+    #photo-save-btn:hover {
+      border-color: rgba(16, 185, 129, 0.7);
+      background: rgba(16, 185, 129, 0.08);
+    }
+    #photo-save-btn:active {
+      background: rgba(16, 185, 129, 0.15);
+    }
+
+    .file-input-wrapper {
+      position: relative;
+      overflow: hidden;
+      display: inline-block;
+    }
+
+    .file-input-wrapper input[type="file"] {
+      position: absolute;
+      left: 0;
+      top: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* 메인 컨테이너 */
+    .main-container {
+      display: flex;
+      flex: 1;
+      height: calc(100vh - 64px);
+      position: relative;
+    }
+
+    /* 좌측 캔버스 (도면 & 맵) */
+    .canvas-container {
+      flex: 1;
+      height: 100%;
+      position: relative;
+      background: #f5f5f5; /* 구글 맵 배경과 맞춤 */
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* 우측 사이드바 (제원 입력 패널) */
+    .sidebar {
+      width: 480px;
+      background: var(--bg-sidebar);
+      border-left: 1px solid var(--border);
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      box-shadow: -4px 0 24px rgba(0, 0, 0, 0.25);
+      z-index: 5;
+    }
+
+    .sidebar-header {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .sidebar-header h2 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .sidebar-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    .photo-preview-box {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      min-height: 200px;
+    }
+
+    .photo-preview-box img {
+      max-width: 100%;
+      max-height: 280px;
+      object-fit: contain;
+      cursor: pointer;
+    }
+
+    .photo-info-overlay {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #a5b4fc;
+    }
+
+    .no-photo-selected {
+      color: var(--text-muted);
+      font-size: 14px;
+      text-align: center;
+      padding: 40px 20px;
+    }
+
+    /* 제원 입력 폼 그룹 */
+    .form-group {
+      margin-bottom: 16px;
+      position: relative;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: var(--text-muted);
+    }
+
+    .form-control {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: var(--text);
+      font-size: 14px;
+      transition: border-color 0.2s;
+    }
+
+    .form-control:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    /* 드롭다운 옵션 가독성 확보: 흰색 배경에 검은 글자 */
+    select.form-control {
+      color: #ffffff;
+      background-color: rgba(0, 0, 0, 0.2);
+    }
+    select.form-control option {
+      color: #000000;
+      background-color: #ffffff;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    /* 다중 속성 카드 스타일 (기존 앱 스타일 차용) */
+    .attribute-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+      position: relative;
+    }
+
+    .attribute-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      border-bottom: 1px dashed var(--border);
+      padding-bottom: 8px;
+    }
+
+    .attribute-card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #a5b4fc;
+    }
+
+    .attribute-card-del-btn {
+      color: var(--danger);
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .preview-spec-box {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #6ee7b7;
+      font-weight: 600;
+      margin-top: 10px;
+      word-break: break-all;
+    }
+
+    .sidebar-actions {
+      padding: 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 12px;
+      background: #18181c;
+    }
+
+    /* 커스텀 오버레이 마커 디자인 (기본 썸네일 카드 모드) */
+    .photo-overlay-card {
+      position: absolute;
+      background: rgba(24, 24, 28, 0.9);
+      border: 1.5px solid var(--primary);
+      border-radius: 8px;
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+      cursor: pointer;
+      transform: translate(-50%, -100%); /* 좌표 정중앙 아래를 기준으로 배치 */
+      margin-top: -10px;
+      transition: transform 0.15s ease-out, border-color 0.15s, width 0.15s, height 0.15s;
+      width: 110px;
+      height: auto;
+      overflow: visible;
+    }
+
+    .photo-overlay-card:hover {
+      transform: translate(-50%, -100%) scale(1.08);
+      border-color: #a5b4fc;
+      z-index: 9999;
+    }
+
+    .photo-overlay-card.selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.5);
+      z-index: 10000;
+    }
+
+    .photo-overlay-card.multiple::before {
+      content: '＋';
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      width: 16px;
+      height: 16px;
+      background: var(--danger);
+      color: white;
+      border-radius: 50%;
+      font-size: 10px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      z-index: 2;
+    }
+
+    .photo-overlay-num {
+      font-size: 11px;
+      font-weight: 700;
+      color: #a5b4fc;
+      align-self: flex-start;
+      background: rgba(99, 102, 241, 0.2);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+
+    .photo-overlay-thumb {
+      width: 96px;
+      height: 70px;
+      background: #27272a;
+      border-radius: 4px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .photo-overlay-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .photo-overlay-text {
+      font-size: 10px;
+      color: var(--text);
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      width: 100%;
+      font-weight: 500;
+      margin-top: 2px;
+    }
+
+    /* -------------------------------------------------------------
+     * [고도화 추가] 보라색 원 마커 모드 스타일 (토글 시 적용)
+     * ------------------------------------------------------------- */
+    .photo-overlay-card.marker-dot-mode {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #8b5cf6; /* 보라색 (Purple) */
+      border: 2px solid #ffffff;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform: translate(-50%, -50%); /* 중심 정렬 */
+      margin-top: 0;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    }
+
+    /* 보라색 원 상태에서는 내부 썸네일/텍스트 모두 강제 숨김 */
+    .photo-overlay-card.marker-dot-mode > * {
+      display: none;
+    }
+
+    /* 보라색 마커 위에 [마우스를 갖다 대면(Hover) 썸네일 카드로 변신] */
+    .photo-overlay-card.marker-dot-mode:hover {
+      width: 110px;
+      height: auto;
+      border-radius: 8px;
+      background: rgba(24, 24, 28, 0.95);
+      border: 1.5px solid var(--primary);
+      padding: 6px;
+      transform: translate(-50%, -100%); /* 카드 형태처럼 위로 띄움 */
+      margin-top: -10px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    }
+
+    /* hover 시 내부 모든 서브요소 표시 활성화 */
+    .photo-overlay-card.marker-dot-mode:hover > * {
+      display: block !important;
+    }
+    
+    /* 겹침 빨간 뱃지 표시 조절 */
+    .photo-overlay-card.marker-dot-mode.multiple::before {
+      top: -4px;
+      right: -4px;
+    }
+    .photo-overlay-card.marker-dot-mode:hover.multiple::before {
+      top: -6px;
+      right: -6px;
+    }
+
+    /* 드래그 앤 드롭 영역 안내 */
+    .drag-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(18, 18, 20, 0.9);
+      border: 3px dashed var(--primary);
+      z-index: 99999;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 20px;
+      pointer-events: none;
+    }
+
+    .drag-overlay.active {
+      display: flex;
+    }
+
+    .drag-overlay h2 {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .drag-overlay p {
+      color: var(--text-muted);
+      font-size: 15px;
+    }
+
+    /* 팝업 모달 */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 2000;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: var(--bg-sidebar);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      width: 90%;
+      max-width: 800px;
+      max-height: 90vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: var(--shadow);
+    }
+
+    .modal-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-header h3 {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .close-btn {
+      font-size: 24px;
+      color: var(--text-muted);
+      cursor: pointer;
+      background: transparent;
+      border: none;
+    }
+    .close-btn:hover {
+      color: white;
+    }
+
+    /* -------------------------------------------------------------
+     * [고도화 추가] 드래그 및 리사이즈 가능한 플로팅 윈도우 스타일 (Modeless)
+     * ------------------------------------------------------------- */
+    .floating-window {
+      position: fixed;
+      top: 100px;
+      left: 100px;
+      width: 580px;
+      height: 480px;
+      min-width: 320px;
+      min-height: 260px;
+      background: #1e1e24;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow), 0 20px 45px rgba(0, 0, 0, 0.5);
+      z-index: 1005;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .window-header {
+      padding: 12px 18px;
+      background: #18181c;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: move; /* 드래그 가능 아이콘 */
+      user-select: none;
+    }
+
+    .window-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .window-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .window-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: color 0.15s;
+    }
+    .window-btn:hover {
+      color: white;
+    }
+
+    .window-body {
+      flex: 1;
+      background: #09090b;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      cursor: grab;
+    }
+    .window-body:active {
+      cursor: grabbing;
+    }
+
+    .window-body img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      transition: transform 0.05s ease-out;
+      transform-origin: center center;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+
+    .window-resize-handle {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 16px;
+      height: 16px;
+      cursor: se-resize;
+      background: linear-gradient(135deg, transparent 50%, rgba(255,255,255,0.15) 50%);
+      border-bottom-right-radius: 12px;
+      z-index: 10;
+    }
+
+    /* 겹침 사진 팝업 항목 */
+    .overlap-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+      width: 100%;
+      text-align: left;
+    }
+    .overlap-item:hover {
+      background: rgba(99, 102, 241, 0.1);
+      border-color: var(--primary);
+    }
+    .overlap-item-thumb {
+      width: 60px;
+      height: 45px;
+      background: #27272a;
+      border-radius: 4px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .overlap-item-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .overlap-item-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .overlap-item-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #a5b4fc;
+    }
+    .overlap-item-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 240px;
+    }
+
+    /* 진행 바 */
+    .progress-container {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+      height: 6px;
+      margin-bottom: 15px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    .progress-text {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    /* 로딩 인디케이터 */
+    .loading-spinner {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.85);
+      padding: 24px 48px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      z-index: 100000;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      color: white;
+      box-shadow: var(--shadow);
+    }
+    .loading-spinner.active {
+      display: flex;
+    }
+    .spinner {
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-top: 3px solid var(--primary);
+      border-radius: 50%;
+      width: 36px;
+      height: 36px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* 안내 메시지 카드 */
+    .welcome-card {
+      padding: 30px;
+      background: rgba(99, 102, 241, 0.05);
+      border: 1.5px dashed rgba(99, 102, 241, 0.2);
+      border-radius: 16px;
+      text-align: center;
+      margin-top: 20px;
+    }
+    .welcome-card h3 {
+      font-size: 16px;
+      color: #a5b4fc;
+      margin-bottom: 10px;
+    }
+    .welcome-card p {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 15px;
+    }
+    
+    /* 줌 및 리셋 콘트롤러 */
+    .map-controls {
+      position: absolute;
+      bottom: 24px;
+      left: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 10;
+    }
+    .map-ctrl-btn {
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: 6px;
+      background: rgba(30, 30, 38, 0.85);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      transition: all 0.15s ease-in-out;
+      user-select: none;
+    }
+    .map-ctrl-btn:hover {
+      color: white;
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+    .map-ctrl-btn:active {
+      transform: scale(0.96);
+    }
+    
+    /* 활성화 상태 (Active) 일 때 하이라이트 피드백 */
+    .map-ctrl-btn.active {
+      color: white;
+      background: rgba(99, 102, 241, 0.2);
+      border-color: #6366f1;
+      font-weight: 600;
+    }
+
+    /* 3중 테마 배경 스타일 */
+    .canvas-container.theme-light {
+      background: #f5f5f5 !important;
+    }
+    .canvas-container.theme-dark {
+      background: #000000 !important;
+    }
+    .canvas-container.theme-gray {
+      background: #212124 !important;
+    }
+
+    /* 지도 상 사진 정보 상시노출 라벨 패널 */
+    .photo-overlay-label-panel {
+      margin-top: 6px;
+      padding: 6px 8px;
+      background: rgba(18, 18, 20, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 6px;
+      color: #f3f4f6;
+      font-size: 10px;
+      line-height: 1.4;
+      text-align: left;
+      min-width: 140px;
+      max-width: 220px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      pointer-events: none; /* 클릭 방해 금지 */
+      transition: background-color 0.12s;
+    }
+
+    .label-photo-num {
+      font-weight: 700;
+      color: #a5b4fc;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 3px;
+      margin-bottom: 4px;
+    }
+
+    .label-photo-specs {
+      color: #e5e7eb;
+      font-family: monospace;
+      word-break: break-all;
+      white-space: pre-wrap; /* 줄바꿈 형태 지원 */
+      margin-bottom: 4px;
+    }
+
+    .label-photo-memo {
+      color: #10b981;
+      font-style: italic;
+      word-break: break-all;
+      border-top: 1px dashed rgba(255, 255, 255, 0.08);
+      padding-top: 3px;
+    }
+
+    /* 텍스트 단독 표시 모드 스타일링 (마커 숨김, 텍스트 둥둥 뜨게) */
+    .photo-overlay-card.text-only-mode {
+      background: transparent !important;
+      border: 1px solid transparent !important;
+      box-shadow: none !important;
+      pointer-events: none !important;
+      overflow: visible !important;
+      padding: 0 !important;
+      width: auto !important;
+      height: auto !important;
+    }
+    .photo-overlay-card.text-only-mode > .photo-overlay-num,
+    .photo-overlay-card.text-only-mode > .photo-overlay-thumb,
+    .photo-overlay-card.text-only-mode > .photo-overlay-text {
+      display: none !important;
+    }
+    .photo-overlay-card.text-only-mode > .photo-overlay-label-panel {
+      background: rgba(18, 18, 20, 0.8) !important;
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4) !important;
+      pointer-events: auto !important; /* 글자 박스 클릭 및 호버 연동 */
+      cursor: pointer;
+    }
+    .photo-overlay-card.text-only-mode > .photo-overlay-label-panel:hover {
+      background: rgba(99, 102, 241, 0.85) !important;
+      border-color: #6366f1 !important;
+    }
+    .photo-overlay-card.text-only-mode.selected > .photo-overlay-label-panel {
+      border-color: var(--accent) !important;
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.4) !important;
+    }
+
+    /* 클러스터링 그룹 마커 스타일 */
+    .photo-overlay-card.cluster-mode {
+      width: 32px !important;
+      height: 32px !important;
+      border-radius: 50% !important;
+      background: rgba(59, 130, 246, 0.8) !important; /* Blue */
+      border: 2px solid #ffffff !important;
+      padding: 0 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      transform: translate(-50%, -50%) !important;
+      margin-top: 0 !important;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+    }
+    .photo-overlay-card.cluster-mode > * {
+      display: none !important;
+    }
+    .photo-overlay-card.cluster-mode::after {
+      content: attr(data-count);
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .photo-overlay-card.cluster-mode:hover {
+      background: rgba(37, 99, 235, 0.95) !important;
+      transform: translate(-50%, -50%) scale(1.08) !important;
+    }
+
+    /* [방안 3 추가] 중첩 그룹 ＋N 뱃지 스타일 */
+    .label-photo-plus-badge {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      background: #ef4444;
+      color: white;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 1px 4px;
+      border-radius: 8px;
+      border: 1px solid white;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+      z-index: 10;
+    }
+    
+    /* [방안 3 추가] 호버 시 쫘르륵 노출될 하위 서브 패널 */
+    .photo-overlay-sub-panel {
+      position: absolute;
+      top: 102%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 170px;
+      max-height: 240px;
+      overflow-y: auto;
+      background: rgba(30, 41, 59, 0.95); /* 어두운 슬레이트 반투명 */
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 6px;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      z-index: 99999;
+      pointer-events: none; /* 오버레이 카드의 호버를 끊지 않도록 방어 */
+    }
+    
+    /* 각 서브 카드 스타일 */
+    .sub-label-card {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+      padding: 5px;
+      text-align: left;
+      font-size: 10px;
+      color: #e2e8f0;
+      line-height: 1.3;
+    }
+    .sub-label-num {
+      font-weight: 600;
+      color: #60a5fa; /* 푸른빛 번호 */
+      margin-bottom: 2px;
+      border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+      padding-bottom: 1px;
+    }
+    .sub-label-specs {
+      color: #f1f5f9;
+    }
+    .sub-label-memo {
+      margin-top: 2px;
+      font-style: italic;
+      color: #94a3b8;
+    }
+    
+    /* 라이트 테마 대응 */
+    .canvas-container.theme-light .photo-overlay-sub-panel {
+      background: rgba(255, 255, 255, 0.98);
+      border: 1px solid #cbd5e1;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+    }
+    .canvas-container.theme-light .sub-label-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      color: #334155;
+    }
+    .canvas-container.theme-light .sub-label-num {
+      color: #2563eb;
+      border-bottom: 1px dashed #cbd5e1;
+    }
+    .canvas-container.theme-light .sub-label-specs {
+      color: #1e293b;
+    }
+    .canvas-container.theme-light .sub-label-memo {
+      color: #64748b;
+    }
+
+    /* [고도화 추가] 작업 완료(저장됨) 파란색 원 마커 스타일 */
+    .photo-overlay-card.is-saved.marker-dot-mode {
+      background: #2563eb !important; /* 보라색 대신 진한 파란색 원 */
+      border-color: #ffffff !important;
+      box-shadow: 0 0 0 1.5px #2563eb, 0 2px 6px rgba(0,0,0,0.3) !important;
+    }
+    
+    /* 카드 모드 또는 텍스트 모드인 경우에도 작업 완료 상태임을 나타내는 파란색 도트 표시 및 테두리 */
+    .photo-overlay-card.is-saved {
+      border-color: #2563eb !important;
+    }
+    .photo-overlay-card.is-saved::before {
+      content: '';
+      position: absolute;
+      top: -4px;
+      left: -4px;
+      width: 7px;
+      height: 7px;
+      background: #2563eb;
+      border: 1.5px solid white;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+      z-index: 11;
+    }
+
+    /* [고도화 추가] 입력 필드 포커스 시 일시적인 흐리게(투명) 처리 스타일 */
+    .form-control.input-focus-fade, textarea.input-focus-fade {
+      color: #94a3b8 !important; /* 흐린 slate 그레이 */
+      opacity: 0.55 !important;
+      background-color: rgba(255, 255, 255, 0.04) !important;
+    }
+    
+    /* [커스텀 드롭다운 추가] */
+    .custom-dropdown-panel {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      width: 100%;
+      background: rgba(30, 30, 38, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      margin-top: 4px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 1000;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(10px);
+      display: none;
+    }
+    .custom-dropdown-panel.active {
+      display: block;
+    }
+    .custom-dropdown-item {
+      padding: 8px 12px;
+      font-size: 13px;
+      color: #f3f4f6;
+      cursor: pointer;
+      transition: background-color 0.15s, color 0.15s;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      word-break: break-all;
+    }
+    .custom-dropdown-item:last-child {
+      border-bottom: none;
+    }
+    .custom-dropdown-item:hover, .custom-dropdown-item.active {
+      background: rgba(99, 102, 241, 0.2);
+      color: #a5b4fc;
+    }
+
+    /* 라이트 테마 대응 */
+    .canvas-container.theme-light ~ .sidebar .custom-dropdown-panel {
+      background: rgba(255, 255, 255, 0.98) !important;
+      border-color: #cbd5e1 !important;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
+    }
+    .canvas-container.theme-light ~ .sidebar .custom-dropdown-item {
+      color: #334155 !important;
+      border-bottom-color: #f1f5f9 !important;
+    }
+    .canvas-container.theme-light ~ .sidebar .custom-dropdown-item:hover,
+    .canvas-container.theme-light ~ .sidebar .custom-dropdown-item.active {
+      background: rgba(99, 102, 241, 0.1) !important;
+      color: #4f46e5 !important;
+    }
+    
+    /* 구글 맵 워터마크 및 저작권 텍스트 영역 제거 */
+    .gm-style-cc {
+      display: none !important;
+    }
+    a[href^="https://maps.google.com/maps"] {
+      display: none !important;
+    }
+    a[href^="https://www.google.com/maps"] {
+      display: none !important;
+    }
+    .gmnoprint a, .gmnoprint span {
+      display: none !important;
+    }
+    .gmnoprint div {
+      display: none !important;
+    }
+    img[src^="https://maps.gstatic.com/mapfiles/api-3/images/google_white"] {
+      display: none !important;
+    }
+    img[src^="https://www.google.com/images/branding/googlelogo"] {
+      display: none !important;
+    }
+
+    /* 다중 사진 썸네일 리스트 */
+    .photo-thumbnail-list {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 8px 0;
+      width: 100%;
+      -webkit-overflow-scrolling: touch;
+      margin-bottom: 12px;
+    }
+    .photo-thumbnail-list:empty { display: none; }
+    .photo-thumb-item {
+      width: 60px;
+      height: 60px;
+      min-width: 60px;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 2px solid transparent;
+      cursor: pointer;
+      position: relative;
+      background: #1e1e24;
+    }
+    .photo-thumb-item.active { border-color: #6366f1; }
+    .photo-thumb-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .photo-thumb-item .thumb-index {
+      position: absolute;
+      bottom: 2px;
+      right: 2px;
+      background: rgba(0,0,0,0.6);
+      color: white;
+      font-size: 10px;
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+
+    /* 풀스크린 이미지 슬라이드 뷰어 */
+    .image-viewer-modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.92);
+      z-index: 2000;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+    }
+    .image-viewer-modal.active { display: flex; }
+    .image-viewer-header {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px;
+      color: white;
+      z-index: 2;
+    }
+    .image-viewer-header .viewer-title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .image-viewer-close {
+      font-size: 32px;
+      color: white;
+      cursor: pointer;
+      line-height: 1;
+      background: none;
+      border: none;
+      padding: 4px 12px;
+      transition: color 0.15s;
+    }
+    .image-viewer-close:hover {
+      color: #cbd5e1;
+    }
+    .image-viewer-body {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      position: relative;
+      overflow: hidden;
+    }
+    .image-viewer-body img {
+      max-width: 95%;
+      max-height: 85vh;
+      object-fit: contain;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+    .viewer-nav-btn {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(255,255,255,0.1);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 48px;
+      height: 48px;
+      font-size: 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 3;
+      transition: background 0.15s;
+    }
+    .viewer-nav-btn:hover { background: rgba(255,255,255,0.2); }
+    .viewer-nav-prev { left: 20px; }
+    .viewer-nav-next { right: 20px; }
+    .viewer-indicator {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+    }
+    .viewer-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.3);
+    }
+    .viewer-dot.active { background: white; }
+  </style>
+</head>
+<body>
+
+  <!-- 상단 헤더 -->
+  <header>
+    <div class="logo-area">
+      <h1>NDMAP</h1>
+      <span>도로대장 웹 편집기</span>
+      <span id="loaded-filename-badge" style="display: none; background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.3);"></span>
+    </div>
+    
+    <div class="header-actions">
+      <!-- 1단계: 작업 폴더 열기 (ShowDirectoryPicker API 사용) -->
+      <button class="btn" id="open-folder-btn">작업 폴더 열기</button>
+
+      <!-- 2단계: DXF 단독 로드 -->
+      <div class="file-input-wrapper">
+        <button class="btn">DXF 파일 열기</button>
+        <input type="file" id="dxf-file-input" accept=".dxf">
+      </div>
+    </div>
+  </header>
+
+  <!-- 메인 작업 컨테이너 -->
+  <div class="main-container" id="drop-zone">
+    <!-- 드래그 오버 레이아웃 -->
+    <div class="drag-overlay" id="drag-overlay">
+      <h2>드롭하여 파일 로드</h2>
+      <p>수행한 NDMAP 내보내기 ZIP 또는 도면 DXF 파일을 여기에 드래그 앤 드롭 하세요.</p>
+    </div>
+
+    <!-- 좌측 구글 지도 (배경 없음, CAD선 렌더링용) -->
+    <div class="canvas-container">
+      <div id="map"></div>
+      
+      <!-- 맵 컨트롤러 (텍스트 위주 리퀴드 스타일) -->
+      <div class="map-controls">
+        <button class="map-ctrl-btn" id="map-theme-toggle" title="배경 테마 전환 (라이트 ↔ 다크 ↔ 그레이)">테마: 라이트</button>
+        <button class="map-ctrl-btn" id="map-label-toggle" title="사진 정보 텍스트 상시 표시 토글">텍스트: 끔</button>
+        <button class="map-ctrl-btn" id="map-marker-toggle" title="마커 모드 전환 (보라색 원 ↔ 큰 사진)">마커: 끔</button>
+        <div class="map-ctrl-btn" id="map-zoom-level" style="cursor: default; pointer-events: none; font-weight: 600;">Zoom: 16</div>
+      </div>
+    </div>
+
+    <!-- 우측 사이드바 (편집 폼) -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <h2 id="sidebar-photo-title">제원 편집</h2>
+          <span id="sidebar-photo-filename" style="font-size: 11px; color: var(--text-muted); font-weight: normal; display: block;"></span>
+        </div>
+        <span id="sidebar-photo-index" style="font-size: 13px; color: var(--text-muted); white-space: nowrap;">선택된 사진 없음</span>
+      </div>
+
+      <div class="sidebar-scroll" id="sidebar-scroll">
+        <!-- 파일 미선택 시 기본 웰컴 카드 -->
+        <div id="welcome-panel">
+          <div class="welcome-card">
+            <h3>작업 시작하기</h3>
+            <p>모바일 앱에서 내보낸 후 압축을 해제한 <strong>[현장조사 폴더]</strong>를 상단의 <strong>📁 작업 폴더 열기</strong> 버튼을 통해 로드해 주세요.</p>
+            <p style="font-size: 12px; color: var(--text-muted);">※ 선택하신 폴더 내의 메타데이터 JSON, 도면 DXF, 촬영 사진들이 원터치로 자동 감지되어 지도와 편집창에 정렬됩니다. 수정 후 저장 시 해당 폴더 내에 원본 보존 복사본인 <strong>'_수정.json'</strong> 파일로 실시간 안전 저장됩니다.</p>
+          </div>
+        </div>
+
+        <!-- 사진 상세 내용 패널 (선택 시 활성화) -->
+        <div id="detail-panel" style="display: none;">
+          <!-- 진행률 정보 -->
+          <div class="progress-text">
+            <span>속성 작업 진행도</span>
+            <span id="progress-percent">0% (0/0장 완료)</span>
+          </div>
+          <div class="progress-container">
+            <div class="progress-bar" id="progress-bar-fill"></div>
+          </div>
+
+          <!-- 사진 미리보기 박스 -->
+          <div class="photo-preview-box">
+            <div class="photo-info-overlay" id="preview-photo-number">#1</div>
+            <img id="preview-img" src="" alt="선택한 사진" title="클릭하여 원본 보기 (드래그 가능한 플로팅 창으로 팝업)">
+          </div>
+
+          <!-- 다중 사진 썸네일 리스트 -->
+          <div class="photo-thumbnail-list" id="sidebar-thumbnails"></div>
+
+          <!-- 기본 정보 영역 -->
+          <div class="form-group">
+            <label for="photo-memo">메모</label>
+            <input type="text" id="photo-memo" class="form-control" placeholder="현장 메모 입력">
+          </div>
+
+          <!-- 시설물 유형 관리 (속성 카드 리스트가 올 곳) -->
+          <div style="margin-top: 24px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 14px; font-weight: 600; color: var(--text-muted);">시설물 속성 정보</span>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <select id="add-facility-select" class="form-control" style="width: auto; padding: 4px 8px; font-size: 12px;">
+                <option value="" disabled selected>시설물 종류 추가...</option>
+                <!-- 동적으로 채워짐 (인기순 정렬) -->
+              </select>
+            </div>
+          </div>
+
+          <!-- 다중 시설물 속성 카드 리스트 랩 -->
+          <div id="attribute-cards-container"></div>
+        </div>
+      </div>
+
+      <!-- 하단 액션 버튼들 -->
+      <div class="sidebar-actions" id="sidebar-actions" style="display: none;">
+        <button class="btn" id="photo-save-btn" style="flex: 1;">수정사항 저장</button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- 겹침 사진 목록 선택 모달 -->
+  <div class="modal" id="overlap-photos-modal">
+    <div class="modal-content" style="max-width: 420px; border-radius: 12px;">
+      <div class="modal-header">
+        <h3>📍 이 위치의 사진 목록 (겹침)</h3>
+        <button class="close-btn" id="overlap-modal-close">&times;</button>
+      </div>
+      <div class="modal-body" style="flex-direction: column; gap: 10px; max-height: 60vh; overflow-y: auto; padding: 20px; align-items: flex-start; background: var(--bg-sidebar); cursor: default; min-height: auto;">
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">동일 위치에 찍힌 아래 사진들 중 편집할 대상을 선택하세요.</p>
+        <div id="overlap-photos-list" style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+          <!-- 동적으로 겹친 사진 항목들이 렌더링됨 -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- -------------------------------------------------------------
+   * [고도화 추가] 드래그 가능한 이미지 윈도우 (Modeless)
+   * ------------------------------------------------------------- -->
+  <div class="floating-window" id="floating-image-window" style="display: none;">
+    <div class="window-header" id="window-drag-handle">
+      <span class="window-title" id="floating-window-title">사진 원본 보기</span>
+      <div class="window-controls">
+        <button class="window-btn" id="window-reset-zoom" title="배율 초기화">⛶</button>
+        <button class="window-btn" id="window-close-btn" title="창 닫기">&times;</button>
+      </div>
+    </div>
+    <div class="window-body" id="zoom-container" title="마우스 휠: 확대/축소 | 이미지 드래그: 사진 이동">
+      <img id="image-modal-src" src="" alt="원본 사진">
+    </div>
+    <!-- 리사이즈 손잡이 -->
+    <div class="window-resize-handle"></div>
+  </div>
+
+  <!-- 풀스크린 이미지 슬라이드 뷰어 -->
+  <div class="image-viewer-modal" id="image-viewer-modal">
+    <div class="image-viewer-header">
+      <span class="viewer-title" id="image-viewer-title">1 / 1</span>
+      <button class="image-viewer-close" id="image-viewer-close">&times;</button>
+    </div>
+    <div class="image-viewer-body">
+      <button class="viewer-nav-btn viewer-nav-prev" id="image-viewer-prev">‹</button>
+      <img id="image-viewer-img" src="" alt="사진 뷰어">
+      <button class="viewer-nav-btn viewer-nav-next" id="image-viewer-next">›</button>
+    </div>
+    <div class="viewer-indicator" id="image-viewer-dots"></div>
+  </div>
+
+  <!-- 처리 중 로딩 링 -->
+  <div class="loading-spinner" id="loading-spinner">
+    <div class="spinner"></div>
+    <div id="loading-text" style="font-size: 14px; font-weight: 500;">파일 처리 중...</div>
+  </div>
+
+  <!-- 설정 및 데이터 변환 스크립트 로드 -->
+  <script src="config.js"></script>
+  <!-- 좌표계 변환 라이브러리 (Proj4js) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+  <!-- DXF 파서 및 GeoJSON 변환 엔진 -->
+  <script src="libs/dxf-parser.min.js"></script>
+  <script src="dxf-to-geojson.js"></script>
+  <!-- JSZip 라이브러리 (ZIP 파일 해제 및 생성용) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <!-- 메인 웹 편집기 비즈니스 로직 -->
+  <script src="map-editor.js?v=20260626_v10"></script>
+  
+  <!-- 구글 맵 동적 로딩 -->
+  <script>
+    (function() {
+      var key = window.DMAP_CONFIG && window.DMAP_CONFIG.GMAPS_API_KEY;
+      if (!key) {
+        console.error('DMAP_CONFIG.GMAPS_API_KEY가 존재하지 않습니다.');
+        alert('Google Maps API 키가 설정되지 않았습니다. config.js를 확인하세요.');
+        return;
+      }
+      var s = document.createElement('script');
+      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + key + '&libraries=geometry&callback=initMap&loading=async';
+      s.async = true;
+      s.defer = true;
+      document.head.appendChild(s);
+    })();
+  </script>
+</body>
+</html>

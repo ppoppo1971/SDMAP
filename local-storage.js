@@ -110,7 +110,8 @@
           specTextId: photo.specTextId || null,
           specTextIds: photo.specTextIds || null,
           additionalTypes: photo.additionalTypes || null,
-          facilityType: photo.facilityType || null
+          facilityType: photo.facilityType || null,
+          subPhotos: photo.subPhotos || null
         };
         var tx = db.transaction(PHOTO_STORE, 'readwrite');
         tx.objectStore(PHOTO_STORE).put(record);
@@ -354,12 +355,26 @@
       var project = res[0] || {};
       var photos = res[1] || [];
       var baseName = normalizeBaseName(dxfFile);
-      var totalFiles = photos.length + 1;
-      var current = 0;
-      var metadata = {
-        dxfFile: dxfFile,
-        photos: photos.map(function (p) {
-          return {
+
+      // subPhotos flatten: 개별 파일 목록 및 메타데이터 photos 배열 확장
+      var flatPhotos = [];
+      var downloadList = [];
+      photos.forEach(function (p) {
+        if (p.subPhotos && p.subPhotos.length > 0) {
+          p.subPhotos.forEach(function (sp) {
+            flatPhotos.push({
+              id: p.id + '_sub_' + (sp.subIndex || flatPhotos.length), fileName: sp.fileName,
+              position: { x: p.x, y: -p.y },
+              size: { width: p.width, height: p.height },
+              memo: p.memo || '', uploaded: true,
+              numTextId: p.numTextId || null,
+              specTextId: p.specTextId || null,
+              facilityType: p.facilityType || null
+            });
+            if (sp.blob && sp.fileName) downloadList.push({ blob: sp.blob, fileName: sp.fileName });
+          });
+        } else {
+          flatPhotos.push({
             id: p.id, fileName: p.fileName,
             position: { x: p.x, y: -p.y },
             size: { width: p.width, height: p.height },
@@ -367,8 +382,16 @@
             numTextId: p.numTextId || null,
             specTextId: p.specTextId || null,
             facilityType: p.facilityType || null
-          };
-        }),
+          });
+          if (p.blob && p.fileName) downloadList.push({ blob: p.blob, fileName: p.fileName });
+        }
+      });
+
+      var totalFiles = downloadList.length + 1;
+      var current = 0;
+      var metadata = {
+        dxfFile: dxfFile,
+        photos: flatPhotos,
         texts: (project.texts || []).map(function (t) {
           var out = {}; for (var k in t) if (Object.prototype.hasOwnProperty.call(t, k)) out[k] = t[k];
           out.y = typeof t.y === 'number' ? -t.y : t.y; return out;
@@ -380,12 +403,11 @@
       if (onProgress) onProgress(current, totalFiles, baseName + '_metadata.json');
       return downloadFile(metaBlob, baseName + '_metadata.json').then(function () {
         var chain = Promise.resolve();
-        photos.forEach(function (p) {
-          if (!p.blob || !p.fileName) return;
+        downloadList.forEach(function (item) {
           chain = chain.then(function () {
             current++;
-            if (onProgress) onProgress(current, totalFiles, p.fileName);
-            return downloadFile(p.blob, p.fileName).then(function () {
+            if (onProgress) onProgress(current, totalFiles, item.fileName);
+            return downloadFile(item.blob, item.fileName).then(function () {
               return new Promise(function (r) { setTimeout(r, 300); });
             });
           });
@@ -406,10 +428,30 @@
       var project = res[0] || {};
       var photos = res[1] || [];
       var baseName = normalizeBaseName(dxfFile);
-      var metadata = {
-        dxfFile: dxfFile,
-        photos: photos.map(function (p) {
-          return {
+
+      // subPhotos flatten: 메타데이터 photos 배열 확장 및 ZIP 엔트리 수집
+      var flatPhotos = [];
+      var entries = [];
+      photos.forEach(function (p) {
+        if (p.subPhotos && p.subPhotos.length > 0) {
+          p.subPhotos.forEach(function (sp) {
+            flatPhotos.push({
+              id: p.id + '_sub_' + (sp.subIndex || flatPhotos.length), fileName: sp.fileName,
+              position: { x: p.x, y: -p.y },
+              size: { width: p.width, height: p.height },
+              memo: p.memo || '', uploaded: true,
+              numTextId: p.numTextId || null,
+              specTextId: p.specTextId || null,
+              specTextIds: p.specTextIds || null,
+              additionalTypes: p.additionalTypes || null,
+              facilityType: p.facilityType || null
+            });
+            if (sp.blob && sp.fileName) {
+              entries.push({ name: sp.fileName, blob: sp.blob, modifiedAt: new Date(p.updatedAt || Date.now()) });
+            }
+          });
+        } else {
+          flatPhotos.push({
             id: p.id, fileName: p.fileName,
             position: { x: p.x, y: -p.y },
             size: { width: p.width, height: p.height },
@@ -419,8 +461,16 @@
             specTextIds: p.specTextIds || null,
             additionalTypes: p.additionalTypes || null,
             facilityType: p.facilityType || null
-          };
-        }),
+          });
+          if (p.blob && p.fileName) {
+            entries.push({ name: p.fileName, blob: p.blob, modifiedAt: new Date(p.updatedAt || Date.now()) });
+          }
+        }
+      });
+
+      var metadata = {
+        dxfFile: dxfFile,
+        photos: flatPhotos,
         texts: (project.texts || []).map(function (t) {
           var out = {}; for (var k in t) if (Object.prototype.hasOwnProperty.call(t, k)) out[k] = t[k];
           out.y = typeof t.y === 'number' ? -t.y : t.y; return out;
@@ -428,18 +478,8 @@
         lastModified: project.lastModified || new Date().toISOString()
       };
       var metadataBlob = new Blob([JSON.stringify(metadata, null, 2)], { type: 'application/json' });
-      var entries = [
-        { name: baseName + '_metadata.json', blob: metadataBlob, modifiedAt: new Date() }
-      ];
-      photos.forEach(function (p) {
-        if (p.blob && p.fileName) {
-          entries.push({
-            name: p.fileName,
-            blob: p.blob,
-            modifiedAt: new Date(p.updatedAt || Date.now())
-          });
-        }
-      });
+      entries.unshift({ name: baseName + '_metadata.json', blob: metadataBlob, modifiedAt: new Date() });
+
       return createZip(entries).then(function (zipBlob) {
         var zipName = baseName + '_export.zip';
         return downloadFile(zipBlob, zipName).then(function () {

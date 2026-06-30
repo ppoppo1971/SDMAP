@@ -515,6 +515,15 @@ var dxfImageObjectUrl = null; // 참조 이미지 object URL (닫을 때 revoke)
 var currentLocationMarker = null; // 현재위치 버튼으로 표시한 마커 (지도 터치 시 제거)
 var currentLocationClickListener = null; // 지도 클릭 시 마커 제거용 리스너
 
+// 다중 사진(subPhotos) 관련 전역 변수
+var isAddingSubPhoto = false; // 사진추가 모드 여부 (true이면 camera-input change 시 서브 사진 추가)
+var subPhotoObjectUrls = []; // 썸네일 표시용 object URL 캐시
+
+// 이미지 뷰어 상태
+var imageViewerPhotos = []; // [{ blob, fileName }] 현재 뷰어에 표시할 이미지 목록
+var imageViewerIndex = 0; // 현재 표시 중인 인덱스
+var imageViewerObjectUrl = null; // 현재 뷰어에 표시 중인 object URL
+
 /**
  * Google Maps API 로드 후 콜백. 지도는 생성하지 않고 DOM/UI만 준비 (지도는 뷰어 표시 시 ensureMap에서 생성).
  */
@@ -2556,13 +2565,17 @@ function bindContextMenu() {
   document.getElementById('camera-input').addEventListener('change', function (e) {
     var file = e.target && e.target.files[0];
     if (file) {
-      if (pendingStreetlightItem) {
+      if (isAddingSubPhoto && editingPhotoId) {
+        // 사진추가 모드: 서브 사진 추가
+        addSubPhotoToCurrentPhoto(file);
+      } else if (pendingStreetlightItem) {
         showStreetlightInputForm(file, pendingStreetlightItem, pendingStreetlightDxfCoords, pendingStreetlightLatLng);
       } else if (pendingAddPosition) {
         addPhotoAtPosition(pendingAddPosition, file);
       }
     }
     e.target.value = '';
+    isAddingSubPhoto = false;
   });
 }
 
@@ -2732,11 +2745,16 @@ function addPhotoAtPosition(xy, file) {
   }
 
   function finish(blob) {
+    // 파일명을 사진번호_1.jpg 형식으로 생성 (다중 사진 첫 번째)
+    var firstFileName = generatePhotoFileName(nextPhotoNum + '_1');
     var photo = {
       id: id, x: xy.x, y: xy.y, width: 1, height: 1,
-      blob: blob, memo: '', fileName: generatePhotoFileName(nextPhotoNum),
+      blob: blob, memo: '', fileName: firstFileName,
       createdAt: new Date().toISOString(),
-      numTextId: numTextId
+      numTextId: numTextId,
+      subPhotos: [
+        { subIndex: 1, fileName: firstFileName, blob: blob }
+      ]
     };
     photos.push(photo);
 
@@ -2922,6 +2940,53 @@ function showPhotoModal(photoId) {
   memo.style.display = 'block';
   memo.value = p.memo || '';
   img.style.display = 'block';
+
+  // 사진추가 버튼 표시 (촬영 사진일 때만)
+  var addBtn = document.getElementById('photo-modal-add-btn');
+  if (addBtn) addBtn.style.display = 'inline-block';
+
+  // 기존 subPhoto object URL 해제
+  subPhotoObjectUrls.forEach(function (u) { URL.revokeObjectURL(u); });
+  subPhotoObjectUrls = [];
+  isAddingSubPhoto = false;
+
+  // subPhotos 썸네일 렌더링
+  var thumbContainer = document.getElementById('photo-modal-thumbnails');
+  if (thumbContainer) {
+    thumbContainer.innerHTML = '';
+    var subs = p.subPhotos || [];
+    if (subs.length > 1) {
+      subs.forEach(function (sp, idx) {
+        var thumbDiv = document.createElement('div');
+        thumbDiv.className = 'photo-thumb-item' + (idx === 0 ? ' active' : '');
+        var thumbImg = document.createElement('img');
+        if (sp.blob) {
+          var objUrl = URL.createObjectURL(sp.blob);
+          subPhotoObjectUrls.push(objUrl);
+          thumbImg.src = objUrl;
+        }
+        thumbDiv.appendChild(thumbImg);
+        var indexLabel = document.createElement('span');
+        indexLabel.className = 'thumb-index';
+        indexLabel.textContent = String(idx + 1);
+        thumbDiv.appendChild(indexLabel);
+        thumbDiv.addEventListener('click', function () {
+          openImageViewer(subs, idx);
+        });
+        thumbContainer.appendChild(thumbDiv);
+      });
+    }
+  }
+
+  // 메인 이미지 클릭 시 이미지 뷰어 열기
+  img.onclick = function () {
+    var subs = p.subPhotos || [];
+    if (subs.length > 0) {
+      openImageViewer(subs, 0);
+    } else if (p.blob) {
+      openImageViewer([{ blob: p.blob, fileName: p.fileName }], 0);
+    }
+  };
   
   if (!isSamePhoto) {
     img.src = '';
@@ -3103,6 +3168,11 @@ function showDxfImageModal(ref) {
   if (!modal || !img) return;
   if (titleEl) titleEl.textContent = '참조 이미지';
   if (actionsEl) actionsEl.style.display = 'none';
+  var addBtn = document.getElementById('photo-modal-add-btn');
+  if (addBtn) addBtn.style.display = 'none';
+  var thumbContainer = document.getElementById('photo-modal-thumbnails');
+  if (thumbContainer) thumbContainer.innerHTML = '';
+  img.onclick = null;
   memo.style.display = 'none';
   if (ref.file) {
     if (dxfImageObjectUrl) URL.revokeObjectURL(dxfImageObjectUrl);
@@ -3160,9 +3230,17 @@ function hidePhotoModal() {
   var modal = document.getElementById('photo-modal');
   var img = document.getElementById('photo-modal-img');
   if (modal) modal.classList.remove('active');
-  if (img) img.src = '';
+  if (img) { img.src = ''; img.onclick = null; }
   editingPhotoId = null;
   editingDxfImageRef = null;
+  isAddingSubPhoto = false;
+  // subPhoto object URL 정리
+  subPhotoObjectUrls.forEach(function (u) { URL.revokeObjectURL(u); });
+  subPhotoObjectUrls = [];
+  var addBtn = document.getElementById('photo-modal-add-btn');
+  if (addBtn) addBtn.style.display = 'none';
+  var thumbContainer = document.getElementById('photo-modal-thumbnails');
+  if (thumbContainer) thumbContainer.innerHTML = '';
   if (dxfImageObjectUrl) {
     URL.revokeObjectURL(dxfImageObjectUrl);
     dxfImageObjectUrl = null;
@@ -3175,6 +3253,18 @@ function bindPhotoModal() {
   var saveBtn = document.getElementById('photo-modal-save');
   var delBtn = document.getElementById('photo-modal-delete');
   var memo = document.getElementById('photo-modal-memo');
+  var addBtn = document.getElementById('photo-modal-add-btn');
+
+  if (addBtn) {
+    addBtn.addEventListener('click', function () {
+      if (!editingPhotoId) return;
+      isAddingSubPhoto = true;
+      var cameraInput = document.getElementById('camera-input');
+      if (cameraInput) {
+        cameraInput.click();
+      }
+    });
+  }
 
   if (closeBtn) closeBtn.addEventListener('click', hidePhotoModal);
   if (saveBtn) saveBtn.addEventListener('click', function () {
@@ -3249,6 +3339,16 @@ function bindPhotoModal() {
         numObj.text = newNum;
         if (typeof localStorage !== 'undefined') {
           localStorage.setItem('dmap:lastPhotoNumber', newNum);
+        }
+
+        // 서브 사진 파일명 일괄 변경
+        if (p.subPhotos && p.subPhotos.length > 0) {
+          p.subPhotos.forEach(function (sp, idx) {
+            sp.fileName = generatePhotoFileName(newNum + '_' + (idx + 1));
+          });
+          p.fileName = p.subPhotos[0].fileName;
+        } else {
+          p.fileName = generatePhotoFileName(newNum);
         }
       }
     }
@@ -4712,7 +4812,8 @@ function tryAutoLoadLastProject() {
             specTextId: p.specTextId,
             specTextIds: p.specTextIds || null,
             facilityType: p.facilityType,
-            additionalTypes: p.additionalTypes || null
+            additionalTypes: p.additionalTypes || null,
+            subPhotos: p.subPhotos || null
           });
         });
         drawPhotoMarkers();
@@ -4730,6 +4831,197 @@ function tryAutoLoadLastProject() {
     setTimeout(function () { showLoading(false); }, 100);
   });
 }
+
+/** 서브 사진을 현재 편집 중인 메인 사진에 추가 */
+function addSubPhotoToCurrentPhoto(file) {
+  if (!editingPhotoId || !window.localStore || !dxfFileFullName) return;
+  var p = photos.filter(function (x) { return x.id === editingPhotoId; })[0];
+  if (!p) return;
+
+  var targetSize = getImageTargetSize();
+
+  // 사진 번호 텍스트에서 번호를 가져와 새 파일명 생성
+  var numTextObj = p.numTextId ? texts.filter(function (t) { return t.id === p.numTextId; })[0] : null;
+  var numTextVal = numTextObj ? numTextObj.text : getNextPhotoNumber();
+
+  if (!p.subPhotos) {
+    p.subPhotos = [];
+    if (p.blob) {
+      p.subPhotos.push({
+        subIndex: 1,
+        fileName: p.fileName || generatePhotoFileName(numTextVal + '_1'),
+        blob: p.blob
+      });
+    }
+  }
+
+  var newSubIndex = p.subPhotos.length + 1;
+  var newFileName = generatePhotoFileName(numTextVal + '_' + newSubIndex);
+
+  function finish(blob) {
+    p.subPhotos.push({
+      subIndex: newSubIndex,
+      fileName: newFileName,
+      blob: blob
+    });
+    
+    // 메인 blob 및 파일명은 유지
+    p.updatedAt = new Date().toISOString();
+
+    window.localStore.savePhoto(dxfFileFullName, p).then(function () {
+      showToast('추가 사진이 저장되었습니다.');
+      // 모달창 갱신
+      showPhotoModal(p.id);
+    }).catch(function (err) {
+      console.error('서브 사진 저장 실패:', err);
+      alert('추가 사진을 저장하지 못했습니다.');
+    });
+  }
+
+  if (targetSize != null) {
+    compressImage(file, targetSize).then(finish).catch(function () {
+      finish(file);
+    });
+  } else {
+    finish(file);
+  }
+}
+
+/** 이미지 슬라이드 뷰어 열기 */
+function openImageViewer(subs, startIndex) {
+  imageViewerPhotos = subs || [];
+  imageViewerIndex = startIndex >= 0 && startIndex < imageViewerPhotos.length ? startIndex : 0;
+  
+  var viewer = document.getElementById('image-viewer-modal');
+  if (!viewer) return;
+
+  // 네비게이션 버튼 표시 여부
+  var prevBtn = document.getElementById('image-viewer-prev');
+  var nextBtn = document.getElementById('image-viewer-next');
+  if (prevBtn && nextBtn) {
+    if (imageViewerPhotos.length <= 1) {
+      prevBtn.style.display = 'none';
+      nextBtn.style.display = 'none';
+    } else {
+      prevBtn.style.display = 'block';
+      nextBtn.style.display = 'block';
+    }
+  }
+
+  viewer.classList.add('active');
+  showImageViewerSlide(imageViewerIndex);
+}
+
+/** 이미지 슬라이더 닫기 */
+function closeImageViewer() {
+  var viewer = document.getElementById('image-viewer-modal');
+  if (viewer) viewer.classList.remove('active');
+  if (imageViewerObjectUrl) {
+    URL.revokeObjectURL(imageViewerObjectUrl);
+    imageViewerObjectUrl = null;
+  }
+  imageViewerPhotos = [];
+}
+
+/** 특정 슬라이드 이미지 출력 및 인디케이터 갱신 */
+function showImageViewerSlide(index) {
+  if (index < 0 || index >= imageViewerPhotos.length) return;
+  imageViewerIndex = index;
+
+  var img = document.getElementById('image-viewer-img');
+  var title = document.getElementById('image-viewer-title');
+  var dots = document.getElementById('image-viewer-dots');
+  if (!img) return;
+
+  var item = imageViewerPhotos[index];
+  if (imageViewerObjectUrl) {
+    URL.revokeObjectURL(imageViewerObjectUrl);
+    imageViewerObjectUrl = null;
+  }
+
+  if (item.blob) {
+    imageViewerObjectUrl = URL.createObjectURL(item.blob);
+    img.src = imageViewerObjectUrl;
+  }
+
+  if (title) {
+    title.textContent = (imageViewerIndex + 1) + ' / ' + imageViewerPhotos.length;
+  }
+
+  // 인디케이터 생성
+  if (dots) {
+    dots.innerHTML = '';
+    imageViewerPhotos.forEach(function (_, i) {
+      var dot = document.createElement('div');
+      dot.className = 'viewer-dot' + (i === imageViewerIndex ? ' active' : '');
+      dots.appendChild(dot);
+    });
+  }
+  
+  // 모달 썸네일 액티브 상태 동기화
+  var thumbContainer = document.getElementById('photo-modal-thumbnails');
+  if (thumbContainer) {
+    var thumbs = thumbContainer.querySelectorAll('.photo-thumb-item');
+    thumbs.forEach(function (t, i) {
+      if (i === index) {
+        t.classList.add('active');
+        t.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      } else {
+        t.classList.remove('active');
+      }
+    });
+  }
+}
+
+// 뷰어 이벤트 리스너 초기화
+document.addEventListener('DOMContentLoaded', function () {
+  var closeBtn = document.getElementById('image-viewer-close');
+  if (closeBtn) closeBtn.addEventListener('click', closeImageViewer);
+
+  var prevBtn = document.getElementById('image-viewer-prev');
+  if (prevBtn) prevBtn.addEventListener('click', function () {
+    if (imageViewerPhotos.length <= 1) return;
+    var nextIdx = imageViewerIndex - 1;
+    if (nextIdx < 0) nextIdx = imageViewerPhotos.length - 1;
+    showImageViewerSlide(nextIdx);
+  });
+
+  var nextBtn = document.getElementById('image-viewer-next');
+  if (nextBtn) nextBtn.addEventListener('click', function () {
+    if (imageViewerPhotos.length <= 1) return;
+    var nextIdx = imageViewerIndex + 1;
+    if (nextIdx >= imageViewerPhotos.length) nextIdx = 0;
+    showImageViewerSlide(nextIdx);
+  });
+
+  // 터치 스와이프 지원 (모바일 슬라이드)
+  var startX = 0;
+  var endX = 0;
+  var viewer = document.getElementById('image-viewer-modal');
+  if (viewer) {
+    viewer.addEventListener('touchstart', function (e) {
+      startX = e.touches[0].clientX;
+    }, { passive: true });
+    viewer.addEventListener('touchend', function (e) {
+      endX = e.changedTouches[0].clientX;
+      var diff = startX - endX;
+      if (Math.abs(diff) > 50) { // 50px 이상 쓸었을 때
+        if (imageViewerPhotos.length <= 1) return;
+        if (diff > 0) {
+          // 왼쪽으로 쓸기 -> 다음 이미지
+          var nextIdx = imageViewerIndex + 1;
+          if (nextIdx >= imageViewerPhotos.length) nextIdx = 0;
+          showImageViewerSlide(nextIdx);
+        } else {
+          // 오른쪽으로 쓸기 -> 이전 이미지
+          var nextIdx = imageViewerIndex - 1;
+          if (nextIdx < 0) nextIdx = imageViewerPhotos.length - 1;
+          showImageViewerSlide(nextIdx);
+        }
+      }
+    }, { passive: true });
+  }
+});
 
 
 
