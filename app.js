@@ -2954,6 +2954,49 @@ function showPhotoModal(photoId) {
   if (titleEl) titleEl.textContent = '사진';
   if (actionsEl) actionsEl.style.display = 'flex';
   if (noFileEl) noFileEl.style.display = 'none';
+  
+  // 메모 추천 드롭다운 연동
+  var memoSuggest = document.getElementById('photo-modal-memo-suggest');
+  if (memoSuggest) {
+    memoSuggest.innerHTML = '';
+    var memoSuggs = getMemoSuggestions();
+    if (memoSuggs.length > 0) {
+      memoSuggest.style.display = 'block';
+      
+      var defaultOpt = document.createElement('option');
+      defaultOpt.value = '';
+      defaultOpt.textContent = '✏️ 자주 쓰는 메모 선택 (직접입력 가능)';
+      defaultOpt.disabled = true;
+      defaultOpt.selected = true;
+      memoSuggest.appendChild(defaultOpt);
+      
+      memoSuggs.forEach(function (sug) {
+        var opt = document.createElement('option');
+        opt.value = sug;
+        opt.textContent = sug;
+        memoSuggest.appendChild(opt);
+      });
+      
+      memoSuggest.onchange = function () {
+        if (this.value) {
+          memo.value = this.value;
+          // 변경 시 미리보기 업데이트 트리거
+          var previewEl = document.getElementById('sw-spec-preview') || document.getElementById('pm-spec-preview');
+          if (previewEl) {
+            if (previewEl.id === 'pm-spec-preview') {
+              if (typeof updateAllPreviewsPM === 'function') updateAllPreviewsPM();
+            } else {
+              if (typeof updateAllPreviews === 'function') updateAllPreviews();
+            }
+          }
+          this.value = ''; // 초기 상태로 복구
+        }
+      };
+    } else {
+      memoSuggest.style.display = 'none';
+    }
+  }
+
   memo.style.display = 'block';
   memo.value = p.memo || '';
   img.style.display = 'block';
@@ -3778,6 +3821,25 @@ function getFieldSuggestions(fieldId, config) {
             counts[val] = (counts[val] || 0) + 1;
           }
         }
+      }
+    });
+  }
+  
+  var list = Object.keys(counts).map(function (k) {
+    return { val: k, count: counts[k] };
+  });
+  list.sort(function (a, b) { return b.count - a.count; });
+  return list.slice(0, 10).map(function (item) { return item.val; });
+}
+
+// 과거 사진 메모 이력에서 빈도순 상위 10개 추출
+function getMemoSuggestions() {
+  var counts = {};
+  if (window.photos && window.photos.length > 0) {
+    window.photos.forEach(function (p) {
+      if (p.memo && String(p.memo).trim() !== '') {
+        var val = String(p.memo).trim();
+        counts[val] = (counts[val] || 0) + 1;
       }
     });
   }
