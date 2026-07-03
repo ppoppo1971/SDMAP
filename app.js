@@ -181,6 +181,15 @@ var FACILITY_CONFIG = {
       { id: 'support', label: '지주형식', type: 'select', options: ['단주', '복주', '측주', '편지', '부착', '복합', '문형식', '현수식', '기타'], default: '단주' }
     ]
   },
+  '기타표지': {
+    title: '기타표지',
+    layer: '기타표지_T',
+    prefix: '기타표지',
+    fields: [
+      { id: 'content', label: '내용', type: 'text', placeholder: '내용 입력', default: '내용' },
+      { id: 'support', label: '지주형식', type: 'select', options: ['단주', '복주', '측주', '편지', '부착', '복합', '문형식', '현수식', '기타'], default: '단주' }
+    ]
+  },
   '규제표지': {
     title: '규제표지',
     layer: '규제표지_T',
