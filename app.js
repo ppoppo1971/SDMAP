@@ -3005,7 +3005,7 @@ function showPhotoModal(photoId) {
       
       var defaultOpt = document.createElement('option');
       defaultOpt.value = '';
-      defaultOpt.textContent = '✏️ 자주 쓰는 메모 선택 (직접입력 가능)';
+      defaultOpt.textContent = '자주 쓰는 메모';
       defaultOpt.disabled = true;
       defaultOpt.selected = true;
       memoSuggest.appendChild(defaultOpt);
@@ -4099,23 +4099,37 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
     });
   }
 
-  // 사진 메모 입력 필드 (공통 - Datalist 자동완성 바인딩)
+  // 사진 메모 입력 필드 (공통 - 입력창 + 추천 선택 드롭다운 연계)
   var memoGroup = document.createElement('div');
   memoGroup.className = 'form-group';
-  var memoListId = 'sw-form-memo-list';
   var memoSuggestions = getMemoSuggestions();
   
   var memoHtml = '<label>메모 (사진메모)</label>' +
-                 '<input type="text" id="sw-form-memo" list="' + memoListId + '" value="" placeholder="예: 메모 입력">';
+                 '<input type="text" id="sw-form-memo" value="" placeholder="예: 메모 입력">';
   
-  memoHtml += '<datalist id="' + memoListId + '">';
-  memoSuggestions.forEach(function (sug) {
-    memoHtml += '<option value="' + sug + '">';
-  });
-  memoHtml += '</datalist>';
+  if (memoSuggestions.length > 0) {
+    memoHtml += '<select id="sw-form-memo-suggest" style="margin-top: 5px;">';
+    memoHtml += '<option value="" disabled selected>자주 쓰는 메모</option>';
+    memoSuggestions.forEach(function (sug) {
+      memoHtml += '<option value="' + sug + '">' + sug + '</option>';
+    });
+    memoHtml += '</select>';
+  }
 
   memoGroup.innerHTML = memoHtml;
   content.appendChild(memoGroup);
+
+  // 드롭다운 변경 시 인풋창에 값 매핑
+  var memoSuggestEl = memoGroup.querySelector('#sw-form-memo-suggest');
+  var memoInputEl = memoGroup.querySelector('#sw-form-memo');
+  if (memoSuggestEl && memoInputEl) {
+    memoSuggestEl.addEventListener('change', function () {
+      if (this.value) {
+        memoInputEl.value = this.value;
+        if (typeof updateAllPreviews === 'function') updateAllPreviews();
+      }
+    });
+  }
 
   // 실시간 전체 제원 미리보기 필드 삽입 (가시성 확보용)
   var previewGroup = document.createElement('div');
@@ -4727,6 +4741,11 @@ function serializeFacilityForm(container, config, prefixId) {
     specText = parts.join('/');
   }
 
+  // 통신주 및 전력주(체신주)는 오해 방지를 위해 미리보기 텍스트를 전개 제외로 표시
+  if (config.title === '통신주' || config.title === '전력주') {
+    specText = '도면 전개 제외 (시설물 정보만 저장)';
+  }
+
   // 폼 캐시에 최신 입력값 저장
   lastSpecs[config.title] = vals;
 
@@ -4935,13 +4954,22 @@ function showStreetlightBottomSheet(list, dxfCoords, latLng) {
   if (title) title.textContent = '📍 기능 선택 및 시설물 감지';
   content.innerHTML = '<p style="font-size:13px; color:#666; margin:0 0 10px 0;">수행할 기능 또는 사진을 추가할 시설물을 선택하세요.</p>';
 
-  // 1. 일반사진 촬영 고정 메뉴 추가 (상단 고정)
+  // 가로 정렬을 위한 컨테이너 생성 (일반사진 촬영 / 텍스트 삽입 버튼 가로 평행 배치)
+  var btnRow = document.createElement('div');
+  btnRow.style.display = 'flex';
+  btnRow.style.gap = '8px';
+  btnRow.style.marginBottom = '12px';
+
+  // 1. 일반사진 촬영 고정 메뉴 추가
   var generalPhotoDiv = document.createElement('div');
   generalPhotoDiv.className = 'facility-list-item';
+  generalPhotoDiv.style.flex = '1';
+  generalPhotoDiv.style.margin = '0';
   generalPhotoDiv.style.background = '#e3f2fd';
   generalPhotoDiv.style.fontWeight = 'bold';
   generalPhotoDiv.style.color = '#0d47a1';
-  generalPhotoDiv.innerHTML = '📸 일반사진 촬영';
+  generalPhotoDiv.style.textAlign = 'center';
+  generalPhotoDiv.innerHTML = '일반사진 촬영';
   generalPhotoDiv.addEventListener('click', function () {
     pendingAddPosition = { x: dxfCoords.x, y: dxfCoords.y };
     pendingStreetlightItem = null;
@@ -4954,21 +4982,26 @@ function showStreetlightBottomSheet(list, dxfCoords, latLng) {
     if (input) { input.click(); }
     hideStreetlightBottomSheet();
   });
-  content.appendChild(generalPhotoDiv);
+  btnRow.appendChild(generalPhotoDiv);
 
-  // 2. 텍스트 삽입 고정 메뉴 추가 (상단 고정)
+  // 2. 텍스트 삽입 고정 메뉴 추가
   var generalTextDiv = document.createElement('div');
   generalTextDiv.className = 'facility-list-item';
+  generalTextDiv.style.flex = '1';
+  generalTextDiv.style.margin = '0';
   generalTextDiv.style.background = '#efebe9';
   generalTextDiv.style.fontWeight = 'bold';
   generalTextDiv.style.color = '#4e342e';
-  generalTextDiv.innerHTML = '📝 텍스트(글자) 삽입';
+  generalTextDiv.style.textAlign = 'center';
+  generalTextDiv.innerHTML = '텍스트 삽입';
   generalTextDiv.addEventListener('click', function () {
     pendingAddPosition = { x: dxfCoords.x, y: dxfCoords.y };
     hideStreetlightBottomSheet();
     showTextModal(null);
   });
-  content.appendChild(generalTextDiv);
+  btnRow.appendChild(generalTextDiv);
+
+  content.appendChild(btnRow);
 
   // 구분선 추가
   if (list && list.length > 0) {
