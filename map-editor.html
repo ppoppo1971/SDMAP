@@ -440,7 +440,7 @@
       width: 16px;
       height: 16px;
       border-radius: 50%;
-      background: #8b5cf6; /* 보라색 (Purple) */
+      background: #8b5cf6; /* 기본: 보라색 (Purple) */
       border: 2px solid #ffffff;
       padding: 0;
       display: flex;
@@ -449,6 +449,15 @@
       transform: translate(-50%, -50%); /* 중심 정렬 */
       margin-top: 0;
       box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    }
+    .photo-overlay-card.marker-dot-mode.no-memo {
+      background: #008000 !important; /* 진한 초록색 (Green) */
+    }
+    .photo-overlay-card.marker-dot-mode.has-memo {
+      background: #8b5cf6 !important; /* 보라색 (Purple) */
+    }
+    .photo-overlay-card.marker-dot-mode.is-red-marker {
+      background: #ff0000 !important; /* 빨간색 (Red) */
     }
 
     /* 보라색 원 상태에서는 내부 썸네일/텍스트 모두 강제 숨김 */
@@ -1279,6 +1288,121 @@
       background: rgba(255,255,255,0.3);
     }
     .viewer-dot.active { background: white; }
+
+    /* 선택된 도트 마커 초록 광채 및 크기 확대 하이라이트 */
+    .photo-overlay-card.marker-dot-mode.selected {
+      border-color: var(--accent) !important;
+      box-shadow: 0 0 14px 4px rgba(16, 185, 129, 0.6) !important;
+      transform: translate(-50%, -50%) scale(1.2) !important;
+    }
+
+    /* 사진 뷰어 내 실시간 제원 오버레이 스타일 */
+    .floating-specs-overlay {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(18, 18, 20, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: #f3f4f6;
+      font-size: 14px;
+      line-height: 1.6;
+      pointer-events: none;
+      z-index: 15;
+      font-family: 'Inter', monospace;
+      white-space: pre-wrap;
+      max-width: 80%;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+      text-align: left;
+    }
+    
+    /* 사진 뷰어 우하단 고정 저장 버튼 */
+    .window-save-btn {
+      position: absolute;
+      bottom: 15px;
+      right: 15px;
+      z-index: 20;
+      padding: 9px 16px;
+      background-color: var(--primary);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+      transition: all 0.15s ease-in-out;
+      font-size: 12px;
+    }
+    .window-save-btn:hover {
+      background-color: #4f46e5;
+      transform: scale(1.03);
+    }
+    .window-save-btn:active {
+      transform: scale(0.97);
+    }
+    
+    /* 사진 뷰어 하단 멀티 썸네일 슬라이더 스타일 */
+    .floating-thumb-slider {
+      display: flex;
+      gap: 12px;
+      padding: 12px 20px;
+      background: rgba(18, 18, 22, 0.95);
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      overflow-x: auto;
+      align-items: center;
+      max-height: 85px;
+      min-height: 85px;
+      z-index: 10;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+    }
+    .floating-thumb-slider::-webkit-scrollbar {
+      height: 4px;
+    }
+    .floating-thumb-slider::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.25);
+      border-radius: 2px;
+    }
+    .floating-thumb-item {
+      width: 55px;
+      height: 55px;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 2px solid transparent;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: border-color 0.2s, transform 0.2s;
+      position: relative;
+      background: #000;
+    }
+    .floating-thumb-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .floating-thumb-item:hover {
+      transform: scale(1.05);
+      border-color: rgba(255, 255, 255, 0.4);
+    }
+    .floating-thumb-item.active {
+      border-color: var(--accent) !important; /* 초록색 활성화 */
+      transform: scale(1.08);
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+    }
+    .floating-thumb-item .thumb-num {
+      position: absolute;
+      bottom: 2px;
+      right: 3px;
+      background: rgba(0, 0, 0, 0.75);
+      color: #e5e7eb;
+      font-size: 9px;
+      font-weight: bold;
+      padding: 1px 3px;
+      border-radius: 3px;
+      font-family: monospace;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
@@ -1294,6 +1418,12 @@
     <div class="header-actions">
       <!-- 1단계: 작업 폴더 열기 (ShowDirectoryPicker API 사용) -->
       <button class="btn" id="open-folder-btn">작업 폴더 열기</button>
+
+      <!-- 참조 파일 열기 (자동완성 단어 누적용) -->
+      <div class="file-input-wrapper">
+        <button class="btn" id="ref-file-btn" style="border-color: rgba(99, 102, 241, 0.4); background: rgba(99, 102, 241, 0.03);">참조 파일 열기</button>
+        <input type="file" id="ref-file-input" multiple accept=".json">
+      </div>
 
       <!-- 2단계: DXF 단독 로드 -->
       <div class="file-input-wrapper">
@@ -1326,69 +1456,86 @@
 
     <!-- 우측 사이드바 (편집 폼) -->
     <aside class="sidebar">
-      <div class="sidebar-header">
-        <div style="display: flex; flex-direction: column; gap: 4px;">
-          <h2 id="sidebar-photo-title">제원 편집</h2>
-          <span id="sidebar-photo-filename" style="font-size: 11px; color: var(--text-muted); font-weight: normal; display: block;"></span>
-        </div>
-        <span id="sidebar-photo-index" style="font-size: 13px; color: var(--text-muted); white-space: nowrap;">선택된 사진 없음</span>
+      <!-- 탭 선택 헤더 -->
+      <div class="sidebar-tabs" style="display: flex; border-bottom: 1px solid var(--border); background: #18181c; min-height: 48px; align-items: center; padding-right: 10px; gap: 8px;">
+        <button class="tab-btn active" id="tab-edit-btn" style="flex: 1; padding: 12px; background: transparent; border: none; border-bottom: 2px solid var(--primary); color: var(--text); font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 14px; white-space: nowrap;">제원 편집</button>
+        <button class="tab-btn" id="tab-search-btn" style="flex: 1; padding: 12px; background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--text-muted); font-weight: 500; cursor: pointer; transition: all 0.2s; font-size: 14px; white-space: nowrap;">제원 검색</button>
+        
+        <!-- 시설물 종류 추가 드롭다운을 탭 검색 옆에 고정 배치 -->
+        <select id="add-facility-select" class="form-control" style="width: 140px; padding: 6px 8px; font-size: 12px; border-radius: 6px; border: 1px solid var(--border); background: #202024; color: var(--text); cursor: pointer; height: 32px;" disabled>
+          <option value="" disabled selected>시설물 종류 추가...</option>
+        </select>
       </div>
 
-      <div class="sidebar-scroll" id="sidebar-scroll">
-        <!-- 파일 미선택 시 기본 웰컴 카드 -->
-        <div id="welcome-panel">
-          <div class="welcome-card">
-            <h3>작업 시작하기</h3>
-            <p>모바일 앱에서 내보낸 후 압축을 해제한 <strong>[현장조사 폴더]</strong>를 상단의 <strong>📁 작업 폴더 열기</strong> 버튼을 통해 로드해 주세요.</p>
-            <p style="font-size: 12px; color: var(--text-muted);">※ 선택하신 폴더 내의 메타데이터 JSON, 도면 DXF, 촬영 사진들이 원터치로 자동 감지되어 지도와 편집창에 정렬됩니다. 수정 후 저장 시 해당 폴더 내에 원본 보존 복사본인 <strong>'_수정.json'</strong> 파일로 실시간 안전 저장됩니다.</p>
+      <!-- 제원 편집 탭 콘텐츠 -->
+      <div id="tab-edit-content" style="display: flex; flex-direction: column; flex: 1; overflow: hidden; height: calc(100% - 48px);">
+        <div class="sidebar-header">
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <h2 id="sidebar-photo-title">제원 편집</h2>
+            <span id="sidebar-photo-filename" style="font-size: 11px; color: var(--text-muted); font-weight: normal; display: block;"></span>
           </div>
+          <span id="sidebar-photo-index" style="font-size: 13px; color: var(--text-muted); white-space: nowrap;">선택된 사진 없음</span>
         </div>
 
-        <!-- 사진 상세 내용 패널 (선택 시 활성화) -->
-        <div id="detail-panel" style="display: none;">
-          <!-- 진행률 정보 -->
-          <div class="progress-text">
-            <span>속성 작업 진행도</span>
-            <span id="progress-percent">0% (0/0장 완료)</span>
-          </div>
-          <div class="progress-container">
-            <div class="progress-bar" id="progress-bar-fill"></div>
-          </div>
-
-          <!-- 사진 미리보기 박스 -->
-          <div class="photo-preview-box">
-            <div class="photo-info-overlay" id="preview-photo-number">#1</div>
-            <img id="preview-img" src="" alt="선택한 사진" title="클릭하여 원본 보기 (드래그 가능한 플로팅 창으로 팝업)">
-          </div>
-
-          <!-- 다중 사진 썸네일 리스트 -->
-          <div class="photo-thumbnail-list" id="sidebar-thumbnails"></div>
-
-          <!-- 기본 정보 영역 -->
-          <div class="form-group">
-            <label for="photo-memo">메모</label>
-            <input type="text" id="photo-memo" class="form-control" placeholder="현장 메모 입력">
-          </div>
-
-          <!-- 시설물 유형 관리 (속성 카드 리스트가 올 곳) -->
-          <div style="margin-top: 24px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 14px; font-weight: 600; color: var(--text-muted);">시설물 속성 정보</span>
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <select id="add-facility-select" class="form-control" style="width: auto; padding: 4px 8px; font-size: 12px;">
-                <option value="" disabled selected>시설물 종류 추가...</option>
-                <!-- 동적으로 채워짐 (인기순 정렬) -->
-              </select>
+        <div class="sidebar-scroll" id="sidebar-scroll">
+          <!-- 파일 미선택 시 기본 웰컴 카드 -->
+          <div id="welcome-panel">
+            <div class="welcome-card">
+              <h3>작업 시작하기</h3>
+              <p>모바일 앱에서 내보낸 후 압축을 해제한 <strong>[현장조사 폴더]</strong>를 상단의 <strong>📁 작업 폴더 열기</strong> 버튼을 통해 로드해 주세요.</p>
+              <p style="font-size: 12px; color: var(--text-muted);">※ 선택하신 폴더 내의 메타데이터 JSON, 도면 DXF, 촬영 사진들이 원터치로 자동 감지되어 지도와 편집창에 정렬됩니다. 수정 후 저장 시 해당 폴더 내에 원본 보존 복사본인 <strong>'_수정.json'</strong> 파일로 실시간 안전 저장됩니다.</p>
             </div>
           </div>
 
-          <!-- 다중 시설물 속성 카드 리스트 랩 -->
-          <div id="attribute-cards-container"></div>
+          <!-- 사진 상세 내용 패널 (선택 시 활성화) -->
+          <div id="detail-panel" style="display: none;">
+
+            <!-- 사진 미리보기 박스 (뷰어로 확인 가능하므로 가림) -->
+            <div class="photo-preview-box" style="display: none;">
+              <div class="photo-info-overlay" id="preview-photo-number">#1</div>
+              <img id="preview-img" src="" alt="선택한 사진" title="클릭하여 원본 보기 (드래그 가능한 플로팅 창으로 팝업)">
+            </div>
+
+            <!-- 다중 사진 썸네일 리스트 (가림) -->
+            <div class="photo-thumbnail-list" id="sidebar-thumbnails" style="display: none;"></div>
+
+            <!-- 기본 정보 영역 -->
+            <div class="form-group">
+              <label for="photo-memo">메모</label>
+              <input type="text" id="photo-memo" class="form-control" placeholder="현장 메모 입력" autocomplete="off">
+            </div>
+
+            <!-- 시설물 유형 관리 (속성 카드 리스트가 올 곳) -->
+            <div style="margin-top: 24px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 14px; font-weight: 600; color: var(--text-muted);">시설물 속성 정보</span>
+            </div>
+
+            <!-- 다중 시설물 속성 카드 리스트 랩 -->
+            <div id="attribute-cards-container"></div>
+          </div>
+        </div>
+
+        <!-- 하단 액션 버튼들 -->
+        <div class="sidebar-actions" id="sidebar-actions" style="display: none;">
+          <button class="btn" id="photo-save-btn" style="flex: 1;">수정사항 저장</button>
         </div>
       </div>
 
-      <!-- 하단 액션 버튼들 -->
-      <div class="sidebar-actions" id="sidebar-actions" style="display: none;">
-        <button class="btn" id="photo-save-btn" style="flex: 1;">수정사항 저장</button>
+      <!-- 제원 검색 탭 콘텐츠 (1번 방안) -->
+      <div id="tab-search-content" style="display: none; flex-direction: column; flex: 1; overflow: hidden; height: calc(100% - 48px);">
+        <div style="padding: 20px; border-bottom: 1px solid var(--border); background: #18181c; display: flex; flex-direction: column; gap: 6px;">
+          <h2 style="font-size: 15px; font-weight: 600; color: var(--text);">🔍 양방향 제원 검색</h2>
+          <span style="font-size: 11px; color: var(--text-muted);">단어(예: 주정차금지) 또는 시설물 분류명(예: 교통기타)을 입력하세요.</span>
+          <input type="text" id="search-input" class="form-control" placeholder="검색어 입력..." autocomplete="off" style="margin-top: 8px;">
+        </div>
+
+        <div class="sidebar-scroll" id="search-scroll" style="flex: 1; overflow-y: auto; padding: 20px;">
+          <div id="search-results-placeholder" style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 60px 20px; font-style: italic; line-height: 1.6;">
+            검색어를 입력하시면 관련 시설물 분류 정보나 기입력된 속성 단어 목록을 찾아드립니다.<br>
+            <span style="font-size: 11px; color: rgba(99, 102, 241, 0.7); display: block; margin-top: 8px;">※ 검색된 단어를 클릭하면 마지막에 활성화되어 있던 편집 칸에 자동으로 채워집니다.</span>
+          </div>
+          <div id="search-results-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+        </div>
       </div>
     </aside>
   </div>
@@ -1409,6 +1556,27 @@
     </div>
   </div>
 
+  <!-- 데이터 파일(JSON) 선택 모달 -->
+  <div class="modal" id="json-select-modal">
+    <div class="modal-content" style="max-width: 420px; border-radius: 12px;">
+      <div class="modal-header">
+        <h3>📄 불러올 데이터 파일(JSON) 선택</h3>
+        <button class="close-btn" id="json-modal-close">&times;</button>
+      </div>
+      <div class="modal-body" style="flex-direction: column; gap: 10px; max-height: 70vh; overflow-y: auto; padding: 20px; align-items: flex-start; background: var(--bg-sidebar); cursor: default; min-height: auto;">
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">폴더 내에 여러 개의 데이터 파일이 감지되었습니다. 작업할 파일을 다중 선택하여 병합할 수 있습니다. (개별 항목 더블클릭 시 단일 로드)</p>
+        <div id="json-file-list" style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+          <!-- 동적으로 JSON 파일 항목들이 렌더링됨 -->
+        </div>
+        <div style="display: flex; gap: 8px; width: 100%; margin-top: 12px;">
+          <button class="btn" id="json-select-all" style="flex: 1; font-size: 12px; padding: 8px 12px;">전체 선택</button>
+          <button class="btn" id="json-deselect-all" style="flex: 1; font-size: 12px; padding: 8px 12px;">전체 해제</button>
+        </div>
+        <button class="btn" id="json-merge-load" style="width: 100%; margin-top: 8px; border-color: rgba(99, 102, 241, 0.5); background: rgba(99, 102, 241, 0.05); font-weight: 600; padding: 10px; color: #a5b4fc;">선택 파일 병합하여 열기</button>
+      </div>
+    </div>
+  </div>
+
   <!-- -------------------------------------------------------------
    * [고도화 추가] 드래그 가능한 이미지 윈도우 (Modeless)
    * ------------------------------------------------------------- -->
@@ -1417,12 +1585,17 @@
       <span class="window-title" id="floating-window-title">사진 원본 보기</span>
       <div class="window-controls">
         <button class="window-btn" id="window-reset-zoom" title="배율 초기화">⛶</button>
+        <button class="window-btn" id="window-maximize-btn" title="도면 영역 크기로 최대화">🗖</button>
         <button class="window-btn" id="window-close-btn" title="창 닫기">&times;</button>
       </div>
     </div>
     <div class="window-body" id="zoom-container" title="마우스 휠: 확대/축소 | 이미지 드래그: 사진 이동">
       <img id="image-modal-src" src="" alt="원본 사진">
+      <div id="floating-window-specs" class="floating-specs-overlay" style="display: none;"></div>
+      <button type="button" class="window-save-btn" id="window-save-btn">저장하고 닫기</button>
     </div>
+    <!-- [신규] 사진 뷰어 하단 멀티 썸네일 영역 -->
+    <div id="floating-window-thumbnails" class="floating-thumb-slider" style="display: none;"></div>
     <!-- 리사이즈 손잡이 -->
     <div class="window-resize-handle"></div>
   </div>
@@ -1457,7 +1630,7 @@
   <!-- JSZip 라이브러리 (ZIP 파일 해제 및 생성용) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <!-- 메인 웹 편집기 비즈니스 로직 -->
-  <script src="map-editor.js?v=20260626_v10"></script>
+  <script src="map-editor.js?v=20260703_dropdown_fix"></script>
   
   <!-- 구글 맵 동적 로딩 -->
   <script>

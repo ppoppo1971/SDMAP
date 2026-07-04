@@ -362,14 +362,16 @@
       photos.forEach(function (p) {
         if (p.subPhotos && p.subPhotos.length > 0) {
           p.subPhotos.forEach(function (sp) {
+            var isPrimary = (sp.subIndex === 0);
             flatPhotos.push({
               id: p.id + '_sub_' + (sp.subIndex || flatPhotos.length), fileName: sp.fileName,
               position: { x: p.x, y: -p.y },
               size: { width: p.width, height: p.height },
               memo: p.memo || '', uploaded: true,
-              numTextId: p.numTextId || null,
-              specTextId: p.specTextId || null,
-              facilityType: p.facilityType || null
+              numTextId: isPrimary ? (p.numTextId || null) : null,
+              specTextId: isPrimary ? (p.specTextId || null) : null,
+              specTextIds: isPrimary ? (p.specTextIds || null) : null,
+              facilityType: isPrimary ? (p.facilityType || null) : null
             });
             if (sp.blob && sp.fileName) downloadList.push({ blob: sp.blob, fileName: sp.fileName });
           });
@@ -435,16 +437,17 @@
       photos.forEach(function (p) {
         if (p.subPhotos && p.subPhotos.length > 0) {
           p.subPhotos.forEach(function (sp) {
+            var isPrimary = (sp.subIndex === 0);
             flatPhotos.push({
               id: p.id + '_sub_' + (sp.subIndex || flatPhotos.length), fileName: sp.fileName,
               position: { x: p.x, y: -p.y },
               size: { width: p.width, height: p.height },
               memo: p.memo || '', uploaded: true,
-              numTextId: p.numTextId || null,
-              specTextId: p.specTextId || null,
-              specTextIds: p.specTextIds || null,
-              additionalTypes: p.additionalTypes || null,
-              facilityType: p.facilityType || null
+              numTextId: isPrimary ? (p.numTextId || null) : null,
+              specTextId: isPrimary ? (p.specTextId || null) : null,
+              specTextIds: isPrimary ? (p.specTextIds || null) : null,
+              additionalTypes: isPrimary ? (p.additionalTypes || null) : null,
+              facilityType: isPrimary ? (p.facilityType || null) : null
             });
             if (sp.blob && sp.fileName) {
               entries.push({ name: sp.fileName, blob: sp.blob, modifiedAt: new Date(p.updatedAt || Date.now()) });

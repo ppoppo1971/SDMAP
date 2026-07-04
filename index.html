@@ -99,32 +99,6 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.2);
       background: rgba(142, 36, 170, 0.1);
     }
-    .pmode-btn {
-      position: fixed; top: 20px; left: 20px; z-index: 12;
-      background: #ffffff;
-      color: #8e24aa;
-      border: none;
-      border-radius: 50%;
-      width: 45px;
-      height: 45px;
-      font-size: 1.5rem;
-      font-weight: bold;
-      cursor: pointer;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      -webkit-tap-highlight-color: transparent;
-      transition: all 0.2s ease;
-    }
-    .pmode-btn:active {
-      transform: scale(0.95);
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    }
-    .pmode-btn.active {
-      background: #8e24aa;
-      color: #ffffff;
-    }
     .zoom-controls-fixed { position: fixed; bottom: 20px; left: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 12; }
     .zoom-btn {
       background: transparent;
@@ -556,7 +530,6 @@
   <!-- 뷰어 UI -->
   <div id="viewer-ui" class="hidden">
     <div class="file-name-display" id="file-name-display"><span id="file-name-text">도면 로딩 중...</span></div>
-    <button class="pmode-btn" id="pmode-btn" type="button">P</button>
     <button class="hamburger-btn" id="hamburger-btn" type="button">☰</button>
     <div class="zoom-controls-fixed">
       <button class="zoom-btn" id="zoom-fit" type="button" title="전체보기">⊡</button>
