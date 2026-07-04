@@ -4446,20 +4446,7 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
   container.style.flexDirection = 'column';
   container.style.gap = '8px';
 
-  // 1. 커스텀 레이어명 입력 필드 제공 (선택사항)
-  var layerGroup = document.createElement('div');
-  layerGroup.className = 'form-group';
-  layerGroup.innerHTML = 
-    '<label>레이어명 수동 지정 (필요시에만 변경)</label>' +
-    '<input type="text" id="' + prefixId + '-custom-layer" value="' + (config.layer || '') + '" placeholder="기본: ' + (config.layer || '') + '">';
-  container.appendChild(layerGroup);
-  
-  var customLayerInput = layerGroup.querySelector('input');
-  if (customLayerInput) {
-    customLayerInput.addEventListener('focus', function () { this.select(); });
-  }
-
-  // 1-2. 보라색 마커에 입력될 전체 제원 미리보기 필드 삽입
+  // 1-2. 보라색 마커에 입력될 전체 제원 미리보기 필드 삽입 (수동 레이어 입력 필드는 제거됨)
   var previewGroup = document.createElement('div');
   previewGroup.className = 'form-group';
   previewGroup.style.background = '#F2F2F7';
@@ -4500,35 +4487,55 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       /수량|높이|가로|세로|폭|경사|규격|각도|개수|갯수|차선|차로|연장/.test(field.label) ||
       /count|width|height|gradient|angle|spec|num|lane|length/.test(field.id);
 
-    var inputVal = val;
-    if (inputVal === '내용' || inputVal === '종류' || inputVal === '메모' || inputVal === '기타') {
-      inputVal = '';
-    }
-
     if (field.readonly) {
-      html += '<input type="text" readonly id="' + prefixId + '-' + field.id + '" value="' + inputVal + '">';
+      html += '<input type="text" readonly id="' + prefixId + '-' + field.id + '" value="' + val + '">';
     } else {
-      var listId = prefixId + '-' + field.id + '-list';
+      // 빈도순 + 기본설정 목록 결합 정렬
       var opts = getFieldSuggestions(field.id, config, field.options);
 
-      // 옵션 중 디폴트 명칭 정제
+      // 옵션 중 기본 텍스트 찌꺼기 정제
       opts = opts.filter(function (opt) {
         return opt !== '내용' && opt !== '종류' && opt !== '메모' && opt !== '기타' && opt !== '';
       });
 
+      // 선택(드롭다운) 상자 생성
+      html += '<select id="' + prefixId + '-' + field.id + '">';
+      if (opts.length === 0) {
+        opts.push('선택');
+      }
+
+      // 현재 직전 입력된 실제값을 드롭다운 옵션 후보군에 동적 병합 (없으면 추가)
+      var strVal = String(val).trim();
+      if (strVal !== '' && strVal !== '기타' && strVal !== '내용' && strVal !== '종류' && strVal !== '메모' && strVal !== '선택') {
+        if (opts.indexOf(strVal) === -1) {
+          opts.push(strVal);
+        }
+      }
+
+      var isOptionMatched = false;
+      opts.forEach(function (opt) {
+        var selected = opt === strVal ? ' selected' : '';
+        if (opt === strVal) isOptionMatched = true;
+        html += '<option value="' + opt + '"' + selected + '>' + opt + '</option>';
+      });
+
+      // 옵션에 매칭되지 않거나, 직접 입력이 필요한 경우 '기타'를 기본 선택 처리
+      var showEtc = !isOptionMatched && strVal !== '' && strVal !== '선택';
+      var etcSelected = showEtc ? ' selected' : '';
+      if (opts.indexOf('기타') === -1) {
+        html += '<option value="기타"' + etcSelected + '>기타</option>';
+      }
+      html += '</select>';
+
+      // 직접 입력 필드 추가 (display: none/block 분기)
+      var etcVal = showEtc ? strVal : '';
+      if (etcVal === '내용' || etcVal === '종류' || etcVal === '메모') etcVal = '';
+      var etcDisplay = showEtc ? 'block' : 'none';
       var inputType = isNumericField ? 'number' : 'text';
       var stepAttr = isNumericField ? ' step="any" inputmode="decimal"' : '';
       var placeholder = field.placeholder || (isNumericField ? '숫자 입력' : '직접 입력');
 
-      // input 태그 생성 시 list 연계
-      html += '<input type="' + inputType + '"' + stepAttr + ' id="' + prefixId + '-' + field.id + '" list="' + listId + '" value="' + inputVal + '" placeholder="' + placeholder + '">';
-
-      // datalist 생성
-      html += '<datalist id="' + listId + '">';
-      opts.forEach(function (opt) {
-        html += '<option value="' + opt + '">';
-      });
-      html += '</datalist>';
+      html += '<input type="' + inputType + '"' + stepAttr + ' id="' + prefixId + '-' + field.id + '-etc" style="display:' + etcDisplay + '; margin-top:5px;" value="' + etcVal + '" placeholder="' + placeholder + '">';
     }
 
     group.innerHTML = html;
@@ -4562,21 +4569,42 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       }
     }
 
-    // 포커스/인풋 리스너 바인딩
-    var inputEl = group.querySelector('input');
-    if (inputEl && !field.readonly) {
-      inputEl.addEventListener('focus', function () {
-        if (this.type !== 'number') {
-          this.select();
-        }
-      });
-      inputEl.addEventListener('input', updatePreview);
-      inputEl.addEventListener('change', updatePreview);
+    // 이벤트 리스너 바인딩
+    if (!field.readonly) {
+      var selEl = group.querySelector('select');
+      var etcEl = group.querySelector('input');
+
+      if (selEl && etcEl) {
+        var triggerFocus = function () {
+          var isEtc = selEl.value === '기타';
+          etcEl.style.display = isEtc ? 'block' : 'none';
+          if (!isEtc) {
+            etcEl.value = '';
+          } else {
+            // 포커스 자동 활성화
+            etcEl.focus();
+            setTimeout(function () {
+              etcEl.focus();
+              if (etcEl.type !== 'number') {
+                etcEl.select();
+              }
+            }, 10);
+          }
+          updatePreview();
+        };
+
+        selEl.addEventListener('change', triggerFocus);
+        etcEl.addEventListener('focus', function () {
+          if (this.type !== 'number') this.select();
+        });
+        etcEl.addEventListener('input', updatePreview);
+        etcEl.addEventListener('change', updatePreview);
+      }
 
       // 동적 필드 제어 (신호등 종류 변경 시)
-      if (config.title === '신호등' && field.id === 'type') {
-        var onTypeChange = function () {
-          var showPed = inputEl.value === '보행';
+      if (config.title === '신호등' && field.id === 'type' && selEl) {
+        selEl.addEventListener('change', function () {
+          var showPed = this.value === '보행';
           var pedTypeGrp = document.getElementById(prefixId + '-group-pedestrianType');
           var pedCountGrp = document.getElementById(prefixId + '-group-pedestrianCount');
           var pedTypeEl = document.getElementById(prefixId + '-pedestrianType');
@@ -4585,41 +4613,31 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
           if (pedTypeGrp) pedTypeGrp.style.display = showPed ? 'flex' : 'none';
           if (pedCountGrp) pedCountGrp.style.display = (showPed && pedTypeVal !== '보행등무') ? 'flex' : 'none';
           updatePreview();
-        };
-        inputEl.addEventListener('input', onTypeChange);
-        inputEl.addEventListener('change', onTypeChange);
+        });
       }
 
       // 동적 필드 제어 (신호등 보행등 구분 변경 시)
-      if (config.title === '신호등' && field.id === 'pedestrianType') {
-        var onPedTypeChange = function () {
+      if (config.title === '신호등' && field.id === 'pedestrianType' && selEl) {
+        selEl.addEventListener('change', function () {
           var pedCountGrp = document.getElementById(prefixId + '-group-pedestrianCount');
           if (pedCountGrp) {
-            pedCountGrp.style.display = (inputEl.value !== '보행등무') ? 'flex' : 'none';
+            pedCountGrp.style.display = (this.value !== '보행등무') ? 'flex' : 'none';
           }
           updatePreview();
-        };
-        inputEl.addEventListener('input', onPedTypeChange);
-        inputEl.addEventListener('change', onPedTypeChange);
+        });
       }
 
-      // 동적 필드 제어 (도로표지 방향 변경 시)
-      if (config.title === '도로표지' && field.id === 'direction') {
-        var onDirectionChange = function () {
-          var showContent = inputEl.value === '안내';
+      // 도로표지 방향 변경 시
+      if (config.title === '도로표지' && field.id === 'direction' && selEl) {
+        selEl.addEventListener('change', function () {
+          var showContent = this.value === '안내';
           var contentGrp = document.getElementById(prefixId + '-group-content');
           if (contentGrp) contentGrp.style.display = showContent ? 'flex' : 'none';
           updatePreview();
-        };
-        inputEl.addEventListener('input', onDirectionChange);
-        inputEl.addEventListener('change', onDirectionChange);
+        });
       }
     }
   });
-
-  if (customLayerInput) {
-    customLayerInput.addEventListener('input', updatePreview);
-  }
 
   // 초기 렌더링 시점에 미리보기 1회 업데이트
   updatePreview();
@@ -4632,9 +4650,18 @@ function serializeFacilityForm(container, config, prefixId) {
 
   config.fields.forEach(function (field) {
     var el = document.getElementById(prefixId + '-' + field.id);
+    var etcEl = document.getElementById(prefixId + '-' + field.id + '-etc');
     var val = '';
     if (el) {
-      val = el.value.trim();
+      if (el.tagName === 'SELECT') {
+        if (el.value === '기타' && etcEl) {
+          val = etcEl.value.trim();
+        } else {
+          val = el.value.trim();
+        }
+      } else {
+        val = el.value.trim();
+      }
     }
 
     // 빈칸 입력 검사 및 기본값 자동 보정
