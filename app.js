@@ -4509,14 +4509,11 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
 
       // 옵션 중 기본 텍스트 찌꺼기 정제
       opts = opts.filter(function (opt) {
-        return opt !== '내용' && opt !== '종류' && opt !== '메모' && opt !== '기타' && opt !== '';
+        return opt !== '내용' && opt !== '종류' && opt !== '메모' && opt !== '기타' && opt !== '선택' && opt !== '';
       });
 
       // 선택(드롭다운) 상자 생성
       html += '<select id="' + prefixId + '-' + field.id + '">';
-      if (opts.length === 0) {
-        opts.push('선택');
-      }
 
       // 현재 직전 입력된 실제값을 드롭다운 옵션 후보군에 동적 병합 (없으면 추가)
       var strVal = String(val).trim();
