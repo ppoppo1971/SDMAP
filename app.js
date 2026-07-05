@@ -244,6 +244,12 @@ var FACILITY_CONFIG = {
       { id: 'count', label: '수량', type: 'number', isNumber: true, placeholder: '숫자 입력', default: '기타' }
     ]
   },
+  '주차장': {
+    title: '주차장',
+    layer: '주차장_T',
+    prefix: '주차장',
+    fields: []
+  },
   'CCTV': {
     title: 'CCTV',
     layer: 'CCTV_T',
@@ -3191,7 +3197,7 @@ function showPhotoModal(photoId) {
     
     var addSelect = document.createElement('select');
     addSelect.id = 'pm-attribute-adder';
-    var addOpts = ['-- 추가할 속성 선택 --', '주의표지', '규제표지', '지시표지', '보조표지', '도로표지', '교통기타', 'CCTV', '새주소', '전광표지', '보안등', '신호등', '참고사항'];
+    var addOpts = getAttributeAdderOptions(false);
     addOpts.forEach(function (opt) {
       var disabled = opt.indexOf('--') === 0 ? ' disabled selected' : '';
       addSelect.innerHTML += '<option value="' + opt + '"' + disabled + '>' + opt + '</option>';
@@ -3632,6 +3638,7 @@ function detectFacilityType(name, layer) {
   // 1. 도로반사경 및 도로표지 등 특수 도로 시설물 우선 처리
   if (n.indexOf('도로반사경') >= 0 || l.indexOf('도로반사경') >= 0 || n.indexOf('반사경') >= 0 || l.indexOf('반사경') >= 0) return '도로반사경';
   if (n.indexOf('도로표지') >= 0 || l.indexOf('도로표지') >= 0) return '도로표지';
+  if (n.indexOf('주차장') >= 0 || l.indexOf('주차장') >= 0 || n.indexOf('주차선') >= 0 || l.indexOf('주차선') >= 0 || n.indexOf('parking') >= 0 || l.indexOf('parking') >= 0) return '주차장';
   if (n.indexOf('고가') >= 0 || l.indexOf('고가') >= 0) return '고가도로';
   if (n.indexOf('도로') >= 0 || l.indexOf('도로') >= 0 || n.indexOf('포장') >= 0 || l.indexOf('포장') >= 0) {
     return '도로';
@@ -3701,6 +3708,10 @@ function detectFacilityType(name, layer) {
   // 16. 보안등
   if (n.indexOf('보안등') >= 0 || l.indexOf('보안등') >= 0) {
     return '보안등';
+  }
+  // 신호등제어기 우선 판별
+  if (n.indexOf('신호등제어기') >= 0 || l.indexOf('신호등제어기') >= 0) {
+    return '신호등제어기';
   }
   // 17. 신호등
   if (n.indexOf('신호등') >= 0 || l.indexOf('신호등') >= 0) {
@@ -3772,9 +3783,13 @@ function detectFacilityType(name, layer) {
   if (n.indexOf('횡단보도') >= 0 || l.indexOf('횡단보도') >= 0) return '횡단보도';
   if (n.indexOf('안전지대') >= 0 || l.indexOf('안전지대') >= 0) return '안전지대';
   if (n.indexOf('가로등제어기') >= 0 || l.indexOf('가로등제어기') >= 0) return '가로등제어기';
-  if (n.indexOf('신호등제어기') >= 0 || l.indexOf('신호등제어기') >= 0) return '신호등제어기';
-  if (n.indexOf('기타제어기') >= 0 || l.indexOf('기타제어기') >= 0 || n.indexOf('제어기') >= 0 || l.indexOf('제어기') >= 0) return '기타제어기';
-  if (n.indexOf('기타표지') >= 0 || l.indexOf('기타표지') >= 0 || n.indexOf('기타표시') >= 0 || l.indexOf('기타표시') >= 0) return '기타표지';
+  if (n.indexOf('기타제어기') >= 0 || l.indexOf('기타제어기') >= 0 ||
+      n.indexOf('전기제어기') >= 0 || l.indexOf('전기제어기') >= 0 ||
+      n.indexOf('제어기') >= 0 || l.indexOf('제어기') >= 0) return '기타제어기';
+  if (n.indexOf('기타표지') >= 0 || l.indexOf('기타표지') >= 0 || n.indexOf('기타표시') >= 0 || l.indexOf('기타표시') >= 0 ||
+      n.indexOf('사설안내판') >= 0 || l.indexOf('사설안내판') >= 0 ||
+      n.indexOf('사설표지') >= 0 || l.indexOf('사설표지') >= 0 ||
+      n.indexOf('광고판') >= 0 || l.indexOf('광고판') >= 0) return '기타표지';
   if (n.indexOf('화단') >= 0 || l.indexOf('화단') >= 0) return '화단';
 
   // 32. 참고사항
@@ -3860,16 +3875,18 @@ function validatePhotoNumber(newNumStr, currentPhotoId) {
   return true;
 }
 
-// 특정 시설물 및 필드 ID에 매칭되는 이전 입력값들을 texts 이력에서 추출하여 빈도순 정렬하여 반환
+// 특정 시설물 및 필드 ID에 매칭되는 이전 입력값들을 texts 이력에서 추출하여 빈도순 정렬하여 반환 (최대 15개 제한 + 누락 기본값 하단 추가)
 function getFieldSuggestions(fieldId, config, defaultOptions) {
   var counts = {};
-  
-  // 1. 기본 옵션 목록(사용자 지정 기본 목록)을 0회 카운트로 사전 등록하여 무조건 노출 대상에 포함시킴
+  var baseDefaults = []; // 누락된 기본 옵션들을 체크하기 위한 순수 목록 보관용
+
+  // 1. 기본 옵션 목록(사용자 지정 기본 목록)을 0회 카운트로 사전 등록
   if (defaultOptions && defaultOptions.length > 0) {
     defaultOptions.forEach(function (opt) {
       var val = String(opt).trim();
       if (val !== '' && val !== '기타' && val !== '내용' && val !== '선택') {
         counts[val] = 0; // 초기 빈도 0
+        baseDefaults.push(val);
       }
     });
   }
@@ -3899,7 +3916,71 @@ function getFieldSuggestions(fieldId, config, defaultOptions) {
     return a.val.localeCompare(b.val, 'ko');
   });
 
-  return list.map(function (item) { return item.val; });
+  // 정렬된 결과 값 리스트 추출
+  var sortedValues = list.map(function (item) { return item.val; });
+
+  // 3. 상위 15개로 1차 제한
+  var result = sortedValues.slice(0, 15);
+
+  // 4. 상위 15개 목록에 포함되지 않은 기본 설정값(defaultOptions)이 있다면 뒤에 추가로 병합
+  baseDefaults.forEach(function (defVal) {
+    if (result.indexOf(defVal) === -1) {
+      result.push(defVal);
+    }
+  });
+
+  return result;
+}
+
+// 속성 추가 선택기(드롭다운)의 옵션들을 사용자가 자주 입력한 시설물 빈도순으로 자동 정렬하여 반환하는 헬퍼 함수
+function getAttributeAdderOptions(isBottomSheet) {
+  var baseOpts = [
+    '주의표지', '규제표지', '지시표지', '보조표지', '도로표지', 
+    '교통기타', 'CCTV', '새주소', '전광표지', '보안등', 
+    '신호등', '도로반사경'
+  ];
+  if (isBottomSheet) {
+    baseOpts.push('가로등', '기타표지');
+  } else {
+    baseOpts.push('참고사항');
+  }
+
+  var counts = {};
+  baseOpts.forEach(function (opt) {
+    counts[opt] = 0; // 초기 빈도 0
+  });
+
+  // texts 이력(도면 데이터)에서 사용된 각 시설물 레이어 빈도수 집계
+  if (window.texts && window.texts.length > 0) {
+    window.texts.forEach(function (t) {
+      if (t.layer) {
+        for (var key in FACILITY_CONFIG) {
+          var config = FACILITY_CONFIG[key];
+          if (config && (config.layer === t.layer || (key + '_T') === t.layer)) {
+            if (counts[key] !== undefined) {
+              counts[key]++;
+            }
+            break;
+          }
+        }
+      }
+    });
+  }
+
+  // 빈도순(횟수가 같을 시 가나다순) 정렬
+  var sorted = baseOpts.map(function (opt) {
+    return { name: opt, count: counts[opt] || 0 };
+  });
+  sorted.sort(function (a, b) {
+    if (b.count !== a.count) return b.count - a.count;
+    return a.name.localeCompare(b.name, 'ko');
+  });
+
+  var result = ['-- 추가할 속성 선택 --'];
+  sorted.forEach(function (item) {
+    result.push(item.name);
+  });
+  return result;
 }
 
 function isAutoGeneratedMemo(memo) {
@@ -4181,7 +4262,7 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
   addSelectorGroup.innerHTML = '<label>➕ 속성 추가 입력</label>';
   var addSelect = document.createElement('select');
   addSelect.id = 'sw-attribute-adder';
-  var addOpts = ['-- 추가할 속성 선택 --', '주의표지', '규제표지', '지시표지', '보조표지', '도로표지', '교통기타', 'CCTV', '새주소', '전광표지', '보안등', '신호등', '가로등', '기타표지'];
+  var addOpts = getAttributeAdderOptions(true);
   addOpts.forEach(function (opt) {
     var disabled = opt.indexOf('--') === 0 ? ' disabled selected' : '';
     addSelect.innerHTML += '<option value="' + opt + '"' + disabled + '>' + opt + '</option>';
