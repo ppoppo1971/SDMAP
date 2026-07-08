@@ -3857,174 +3857,35 @@ if (typeof DxfParser === 'undefined' && typeof window !== 'undefined') {
 // --- 가로등/측구 자동 입력용 스마트 바텀 시트 흐름 구현 ---
 
 function detectFacilityType(name, layer) {
-  var n = String(name || '').toLowerCase();
-  var l = String(layer || '').toLowerCase();
+  var n = String(name || '').trim();
+  var l = String(layer || '').trim();
 
-  // 0. 자전거 도로 예외 처리 (시설물 제원 폼 대신 기본 사진/텍스트 모달 호출 유도)
+  // 자전거 관련 예외는 최우선적으로 제외 (시설물 속성 대신 일반 폼 호출)
   if (n.indexOf('자전거') >= 0 || l.indexOf('자전거') >= 0) {
     return null;
   }
 
-  // 1. 도로반사경 및 도로표지 등 특수 도로 시설물 우선 처리
-  if (n.indexOf('도로반사경') >= 0 || l.indexOf('도로반사경') >= 0 || n.indexOf('반사경') >= 0 || l.indexOf('반사경') >= 0) return '도로반사경';
-  if (n.indexOf('도로표지') >= 0 || l.indexOf('도로표지') >= 0) return '도로표지';
-  if (n.indexOf('주차장') >= 0 || l.indexOf('주차장') >= 0 || n.indexOf('주차선') >= 0 || l.indexOf('주차선') >= 0 || n.indexOf('parking') >= 0 || l.indexOf('parking') >= 0) return '주차장';
-  if (n.indexOf('고가') >= 0 || l.indexOf('고가') >= 0) return '고가도로';
-  if (n.indexOf('도로') >= 0 || l.indexOf('도로') >= 0 || n.indexOf('포장') >= 0 || l.indexOf('포장') >= 0) {
-    return '도로';
-  }
-  // 2. 석축
-  if (n.indexOf('석축') >= 0 || l.indexOf('석축') >= 0) {
-    return '석축';
-  }
-  // 3. 옹벽
-  if (n.indexOf('옹벽') >= 0 || l.indexOf('옹벽') >= 0 || n.indexOf('retainingwall') >= 0 || l.indexOf('retainingwall') >= 0) {
-    return '옹벽';
-  }
-  // 4. 성토면/절개면
-  if (n.indexOf('성토면') >= 0 || l.indexOf('성토면') >= 0) {
-    return '성토면';
-  }
-  if (n.indexOf('절개면') >= 0 || l.indexOf('절개면') >= 0 || n.indexOf('사면') >= 0 || l.indexOf('사면') >= 0 || n.indexOf('slope') >= 0 || l.indexOf('slope') >= 0) {
-    return '절개면';
-  }
-  // 5. 배수암거
-  if (n.indexOf('배수암거') >= 0 || l.indexOf('배수암거') >= 0 || n.indexOf('암거') >= 0 || l.indexOf('암거') >= 0 || n.indexOf('boxculvert') >= 0 || l.indexOf('boxculvert') >= 0) {
-    return '배수암거';
-  }
-  // 6. 배수관
-  if (n.indexOf('배수관') >= 0 || l.indexOf('배수관') >= 0 || n.indexOf('pipeculvert') >= 0 || l.indexOf('pipeculvert') >= 0 || n.indexOf('흄관') >= 0 || l.indexOf('흄관') >= 0) {
-    return '배수관';
-  }
-  // 7. 측구
-  if (n.indexOf('측구') >= 0 || l.indexOf('측구') >= 0 || n.indexOf('u형') >= 0 || l.indexOf('u형') >= 0 || n.indexOf('l형') >= 0 || l.indexOf('l형') >= 0 || n.indexOf('v형') >= 0 || l.indexOf('v형') >= 0 || n.indexOf('gutter') >= 0 || l.indexOf('gutter') >= 0) {
-    return '측구';
-  }
-  // 8. 중앙분리대
-  if (n.indexOf('중앙분리대') >= 0 || l.indexOf('중앙분리대') >= 0) {
-    return '중앙분리대';
-  }
-  // 9. 차량방호시설
-  if (n.indexOf('차량방호') >= 0 || l.indexOf('차량방호') >= 0 || n.indexOf('방호시설') >= 0 || l.indexOf('방호시설') >= 0 || n.indexOf('안전시설') >= 0 || l.indexOf('안전시설') >= 0) {
-    return '차량방호시설';
-  }
-  // 10. 낙석방지시설
-  if (n.indexOf('낙석방지') >= 0 || l.indexOf('낙석방지') >= 0) {
-    return '낙석방지시설';
-  }
-  // 11. 교통안전표지들 (주의, 규제, 지시, 보조)
-  if (n.indexOf('주의표지') >= 0 || l.indexOf('주의표지') >= 0 || n.indexOf('주의표시') >= 0 || l.indexOf('주의표시') >= 0) return '주의표지';
-  if (n.indexOf('규제표지') >= 0 || l.indexOf('규제표지') >= 0 || n.indexOf('규제표시') >= 0 || l.indexOf('규제표시') >= 0) return '규제표지';
-  if (n.indexOf('지시표지') >= 0 || l.indexOf('지시표지') >= 0 || n.indexOf('지시표시') >= 0 || l.indexOf('지시표시') >= 0) return '지시표지';
-  if (n.indexOf('보조표지') >= 0 || l.indexOf('보조표지') >= 0 || n.indexOf('보조표시') >= 0 || l.indexOf('보조표시') >= 0) return '보조표지';
-  if (n.indexOf('교통기타') >= 0 || l.indexOf('교통기타') >= 0) return '교통기타';
-  
-  // 12. 갈매기표지
-  if (n.indexOf('갈매기') >= 0 || l.indexOf('갈매기') >= 0) {
-    return '갈매기표지';
-  }
-  // CCTV 추가
-  if (n.indexOf('cctv') >= 0 || l.indexOf('cctv') >= 0) {
-    return 'CCTV';
-  }
-  // 14. 새주소
-  if (n.indexOf('새주소') >= 0 || l.indexOf('새주소') >= 0) {
-    return '새주소';
-  }
-  // 15. 전광표지
-  if (n.indexOf('전광표지') >= 0 || l.indexOf('전광표지') >= 0) {
-    return '전광표지';
-  }
-  // 16. 보안등
-  if (n.indexOf('보안등') >= 0 || l.indexOf('보안등') >= 0) {
-    return '보안등';
-  }
-  // 신호등제어기 우선 판별
-  if (n.indexOf('신호등제어기') >= 0 || l.indexOf('신호등제어기') >= 0) {
-    return '신호등제어기';
-  }
-  // 17. 신호등
-  if (n.indexOf('신호등') >= 0 || l.indexOf('신호등') >= 0) {
-    return '신호등';
-  }
-  // 18. 과속방지턱
-  if (n.indexOf('방지턱') >= 0 || l.indexOf('방지턱') >= 0 || n.indexOf('과속방지') >= 0 || l.indexOf('과속방지') >= 0) {
-    return '과속방지턱';
-  }
-  // 19. 방음시설
-  if (n.indexOf('방음') >= 0 || l.indexOf('방음') >= 0) {
-    return '방음시설';
-  }
-  // 20. 가로수
-  if (n.indexOf('가로수') >= 0 || l.indexOf('가로수') >= 0) {
-    return '가로수';
-  }
-  // 21. 통로박스
-  if (n.indexOf('통로박스') >= 0 || l.indexOf('통로박스') >= 0) {
-    return '통로박스';
-  }
-  // 22. 과적검문소
-  if (n.indexOf('과적검문소') >= 0 || l.indexOf('과적검문소') >= 0) {
-    return '과적검문소';
-  }
-  // 23. 제설함 / 제설시설
-  if (n.indexOf('제설') >= 0 || l.indexOf('제설') >= 0) {
-    return '제설시설';
-  }
-  // 24. 정차대
-  if (n.indexOf('정차대') >= 0 || l.indexOf('정차대') >= 0 || n.indexOf('정차도') >= 0 || l.indexOf('정차도') >= 0) {
-    return '정차대';
-  }
-  // 25. 버스/택시 정류장
-  if (n.indexOf('버스정류장') >= 0 || l.indexOf('버스정류장') >= 0) return '버스정류장';
-  if (n.indexOf('택시정류장') >= 0 || l.indexOf('택시정류장') >= 0) return '택시정류장';
-  if (n.indexOf('정류장') >= 0 || l.indexOf('정류장') >= 0) return '버스정류장';
-  
-  // 26. 교량
-  if (n.indexOf('교량') >= 0 || l.indexOf('교량') >= 0) {
-    return '교량';
-  }
-  // 27. 터널
-  if (n.indexOf('터널') >= 0 || l.indexOf('터널') >= 0) {
-    return '터널';
-  }
-  // 28. 육교
-  if (n.indexOf('육교') >= 0 || l.indexOf('육교') >= 0) {
-    return '육교';
-  }
-  // 29. 지하차도 / 지하보도
-  if (n.indexOf('지하차도') >= 0 || l.indexOf('지하차도') >= 0) return '지하차도';
-  if (n.indexOf('지하보도') >= 0 || l.indexOf('지하보도') >= 0) return '지하보도';
-
-  // 30. 오르막차로 / 교차시설
-  if (n.indexOf('오르막차로') >= 0 || l.indexOf('오르막차로') >= 0) return '오르막차로';
-  if (n.indexOf('교차시설') >= 0 || l.indexOf('교차시설') >= 0) return '교차시설';
-
-  // 31. 가로등 기본 키워드 매핑 폴백
-  if (n.indexOf('가로등') >= 0 || l.indexOf('가로등') >= 0 || n.indexOf('streetlight') >= 0 || l.indexOf('streetlight') >= 0) {
-    return '가로등';
+  // 1) 레이어로 매칭 (FACILITY_CONFIG에 정의된 layer와 완전 일치 검사)
+  if (l) {
+    for (var key in FACILITY_CONFIG) {
+      if (FACILITY_CONFIG[key].layer && FACILITY_CONFIG[key].layer.toLowerCase() === l.toLowerCase()) {
+        return key;
+      }
+    }
   }
 
-  // 신규 9종 및 기타표지 감지 키워드 추가
-  if (n.indexOf('통신주') >= 0 || l.indexOf('통신주') >= 0) return '통신주';
-  if (n.indexOf('전력주') >= 0 || l.indexOf('전력주') >= 0 || n.indexOf('한전주') >= 0 || l.indexOf('한전주') >= 0) return '전력주';
-  if (n.indexOf('게시판') >= 0 || l.indexOf('게시판') >= 0) return '게시판';
-  if (n.indexOf('변압기') >= 0 || l.indexOf('변압기') >= 0) return '변압기';
-  if (n.indexOf('횡단보도') >= 0 || l.indexOf('횡단보도') >= 0) return '횡단보도';
-  if (n.indexOf('안전지대') >= 0 || l.indexOf('안전지대') >= 0) return '안전지대';
-  if (n.indexOf('가로등제어기') >= 0 || l.indexOf('가로등제어기') >= 0) return '가로등제어기';
-  if (n.indexOf('기타제어기') >= 0 || l.indexOf('기타제어기') >= 0 ||
-      n.indexOf('전기제어기') >= 0 || l.indexOf('전기제어기') >= 0 ||
-      n.indexOf('제어기') >= 0 || l.indexOf('제어기') >= 0) return '기타제어기';
-  if (n.indexOf('기타표지') >= 0 || l.indexOf('기타표지') >= 0 || n.indexOf('기타표시') >= 0 || l.indexOf('기타표시') >= 0 ||
-      n.indexOf('사설안내판') >= 0 || l.indexOf('사설안내판') >= 0 ||
-      n.indexOf('사설표지') >= 0 || l.indexOf('사설표지') >= 0 ||
-      n.indexOf('광고판') >= 0 || l.indexOf('광고판') >= 0) return '기타표지';
-  if (n.indexOf('화단') >= 0 || l.indexOf('화단') >= 0) return '화단';
+  // 2) 객체명(텍스트명)으로 매칭 (FACILITY_CONFIG의 키와 완전 일치 검사)
+  if (n && FACILITY_CONFIG[n]) {
+    return n;
+  }
 
-  // 32. 참고사항
-  if (n.indexOf('참고사항') >= 0 || l.indexOf('참고사항') >= 0) {
-    return '참고사항';
+  // 3) 객체명 대소문자 무관 완전 일치 검사 폴백
+  if (n) {
+    for (var key in FACILITY_CONFIG) {
+      if (key.toLowerCase() === n.toLowerCase()) {
+        return key;
+      }
+    }
   }
 
   return null;
