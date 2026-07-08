@@ -223,6 +223,53 @@
     });
   }
 
+  function resizeImageBlob(blob, quality, maxDim) {
+    return new Promise(function (resolve) {
+      if (!blob || blob.type.indexOf('image/') !== 0) {
+        return resolve(blob);
+      }
+      var img = new Image();
+      var url = URL.createObjectURL(blob);
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        var width = img.width;
+        var height = img.height;
+        var maxDimension = maxDim || 1200;
+        
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+        
+        var canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        canvas.toBlob(function (resizedBlob) {
+          canvas.width = 0;
+          canvas.height = 0;
+          if (resizedBlob) {
+            resolve(resizedBlob);
+          } else {
+            resolve(blob);
+          }
+        }, 'image/jpeg', quality || 0.75);
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        resolve(blob);
+      };
+      img.src = url;
+    });
+  }
+
   function downloadFile(blob, filename) {
     return new Promise(function (resolve) {
       var url = URL.createObjectURL(blob);
@@ -425,15 +472,14 @@
     return exportProjectSequential(dxfFile, onProgress);
   }
 
-  function exportAsZipOnly(dxfFile) {
+  function exportAsZipOnly(dxfFile, compressOptions, onProgress) {
     return Promise.all([loadProject(dxfFile), loadPhotos(dxfFile)]).then(function (res) {
       var project = res[0] || {};
       var photos = res[1] || [];
       var baseName = normalizeBaseName(dxfFile);
 
-      // subPhotos flatten: 메타데이터 photos 배열 확장 및 ZIP 엔트리 수집
       var flatPhotos = [];
-      var entries = [];
+      var rawEntries = [];
       photos.forEach(function (p) {
         if (p.subPhotos && p.subPhotos.length > 0) {
           p.subPhotos.forEach(function (sp) {
@@ -450,7 +496,7 @@
               facilityType: isPrimary ? (p.facilityType || null) : null
             });
             if (sp.blob && sp.fileName) {
-              entries.push({ name: sp.fileName, blob: sp.blob, modifiedAt: new Date(p.updatedAt || Date.now()) });
+              rawEntries.push({ name: sp.fileName, blob: sp.blob, modifiedAt: new Date(p.updatedAt || Date.now()) });
             }
           });
         } else {
@@ -466,7 +512,7 @@
             facilityType: p.facilityType || null
           });
           if (p.blob && p.fileName) {
-            entries.push({ name: p.fileName, blob: p.blob, modifiedAt: new Date(p.updatedAt || Date.now()) });
+            rawEntries.push({ name: p.fileName, blob: p.blob, modifiedAt: new Date(p.updatedAt || Date.now()) });
           }
         }
       });
@@ -481,12 +527,165 @@
         lastModified: project.lastModified || new Date().toISOString()
       };
       var metadataBlob = new Blob([JSON.stringify(metadata, null, 2)], { type: 'application/json' });
-      entries.unshift({ name: baseName + '_metadata.json', blob: metadataBlob, modifiedAt: new Date() });
 
-      return createZip(entries).then(function (zipBlob) {
-        var zipName = baseName + '_export.zip';
-        return downloadFile(zipBlob, zipName).then(function () {
-          return { success: true, type: 'zip', fileName: zipName };
+      var entries = [];
+      var totalToProcess = rawEntries.length;
+
+      var chain = Promise.resolve();
+      rawEntries.forEach(function (entry, idx) {
+        chain = chain.then(function () {
+          if (compressOptions && compressOptions.compress) {
+            if (onProgress) {
+              onProgress(idx, totalToProcess, entry.name);
+            }
+            return resizeImageBlob(entry.blob, compressOptions.quality, compressOptions.maxDim).then(function (resizedBlob) {
+              entries.push({ name: entry.name, blob: resizedBlob, modifiedAt: entry.modifiedAt });
+            });
+          } else {
+            entries.push(entry);
+            return Promise.resolve();
+          }
+        });
+      });
+
+      return chain.then(function () {
+        if (onProgress && compressOptions && compressOptions.compress && totalToProcess > 0) {
+          onProgress(totalToProcess, totalToProcess, '완료');
+        }
+        entries.unshift({ name: baseName + '_metadata.json', blob: metadataBlob, modifiedAt: new Date() });
+
+        return createZip(entries).then(function (zipBlob) {
+          var zipName = baseName + '_export.zip';
+          return downloadFile(zipBlob, zipName).then(function () {
+            return { success: true, type: 'zip', fileName: zipName };
+          });
+        });
+      });
+    });
+  }
+
+  function exportAsPartitionedZips(dxfFile, compressOptions, onProgress) {
+    return Promise.all([loadProject(dxfFile), loadPhotos(dxfFile)]).then(function (res) {
+      var project = res[0] || {};
+      var photos = res[1] || [];
+      var baseName = normalizeBaseName(dxfFile);
+
+      var flatPhotos = [];
+      var rawEntries = [];
+      photos.forEach(function (p) {
+        if (p.subPhotos && p.subPhotos.length > 0) {
+          p.subPhotos.forEach(function (sp) {
+            var isPrimary = (sp.subIndex === 0);
+            flatPhotos.push({
+              id: p.id + '_sub_' + (sp.subIndex || flatPhotos.length), fileName: sp.fileName,
+              position: { x: p.x, y: -p.y },
+              size: { width: p.width, height: p.height },
+              memo: p.memo || '', uploaded: true,
+              numTextId: isPrimary ? (p.numTextId || null) : null,
+              specTextId: isPrimary ? (p.specTextId || null) : null,
+              specTextIds: isPrimary ? (p.specTextIds || null) : null,
+              additionalTypes: isPrimary ? (p.additionalTypes || null) : null,
+              facilityType: isPrimary ? (p.facilityType || null) : null
+            });
+            if (sp.blob && sp.fileName) {
+              rawEntries.push({ name: sp.fileName, blob: sp.blob, modifiedAt: new Date(p.updatedAt || Date.now()) });
+            }
+          });
+        } else {
+          flatPhotos.push({
+            id: p.id, fileName: p.fileName,
+            position: { x: p.x, y: -p.y },
+            size: { width: p.width, height: p.height },
+            memo: p.memo || '', uploaded: true,
+            numTextId: p.numTextId || null,
+            specTextId: p.specTextId || null,
+            specTextIds: p.specTextIds || null,
+            additionalTypes: p.additionalTypes || null,
+            facilityType: p.facilityType || null
+          });
+          if (p.blob && p.fileName) {
+            rawEntries.push({ name: p.fileName, blob: p.blob, modifiedAt: new Date(p.updatedAt || Date.now()) });
+          }
+        }
+      });
+
+      var metadata = {
+        dxfFile: dxfFile,
+        photos: flatPhotos,
+        texts: (project.texts || []).map(function (t) {
+          var out = {}; for (var k in t) if (Object.prototype.hasOwnProperty.call(t, k)) out[k] = t[k];
+          out.y = typeof t.y === 'number' ? -t.y : t.y; return out;
+        }),
+        lastModified: project.lastModified || new Date().toISOString()
+      };
+      var metadataBlob = new Blob([JSON.stringify(metadata, null, 2)], { type: 'application/json' });
+
+      var entries = [];
+      var totalToProcess = rawEntries.length;
+
+      var chain = Promise.resolve();
+      rawEntries.forEach(function (entry, idx) {
+        chain = chain.then(function () {
+          if (compressOptions && compressOptions.compress) {
+            if (onProgress) {
+              onProgress(idx, totalToProcess, entry.name);
+            }
+            return resizeImageBlob(entry.blob, compressOptions.quality, compressOptions.maxDim).then(function (resizedBlob) {
+              entries.push({ name: entry.name, blob: resizedBlob, modifiedAt: entry.modifiedAt });
+            });
+          } else {
+            entries.push(entry);
+            return Promise.resolve();
+          }
+        });
+      });
+
+      return chain.then(function () {
+        if (onProgress && compressOptions && compressOptions.compress && totalToProcess > 0) {
+          onProgress(totalToProcess, totalToProcess, '완료');
+        }
+
+        // 분할 ZIP 생성 (약 100MB 단위로 파티셔닝 - 모바일 메모리 안전 마진 확보)
+        var maxPartSize = 100 * 1024 * 1024; // 100MB
+        var parts = [];
+        
+        var currentPartEntries = [{ name: baseName + '_metadata.json', blob: metadataBlob, modifiedAt: new Date() }];
+        var currentPartSize = metadataBlob.size;
+
+        entries.forEach(function (entry) {
+          var entrySize = entry.blob.size;
+          if (currentPartSize + entrySize > maxPartSize && currentPartEntries.length > 1) {
+            parts.push(currentPartEntries);
+            currentPartEntries = [entry];
+            currentPartSize = entrySize;
+          } else {
+            currentPartEntries.push(entry);
+            currentPartSize += entrySize;
+          }
+        });
+        if (currentPartEntries.length > 0) {
+          parts.push(currentPartEntries);
+        }
+
+        var zipResults = [];
+        var zipChain = Promise.resolve();
+        parts.forEach(function (partEntries, idx) {
+          zipChain = zipChain.then(function () {
+            if (onProgress) {
+              onProgress(idx, parts.length, '압축 중 (Part ' + (idx + 1) + ')');
+            }
+            return createZip(partEntries).then(function (zipBlob) {
+              var partName = baseName + '_export_part' + (idx + 1) + '.zip';
+              zipResults.push({ name: partName, blob: zipBlob });
+            });
+          });
+        });
+
+        return zipChain.then(function () {
+          if (onProgress) {
+            onProgress(parts.length, parts.length, '분할 완료');
+          }
+          return zipResults;
         });
       });
     });
@@ -512,6 +711,7 @@
     exportProjectZip: exportProjectZip,
     exportProjectSequential: exportProjectSequential,
     exportAsZipOnly: exportAsZipOnly,
+    exportAsPartitionedZips: exportAsPartitionedZips,
     getPhotoDataUrl: getPhotoDataUrl,
     saveDxfCache: saveDxfCache
   };

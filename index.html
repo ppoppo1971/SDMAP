@@ -615,6 +615,54 @@
     </div>
   </div>
 
+  <!-- 사진 압축 여부 선택 컨펌 모달 (2MB 초과 사진 대응) -->
+  <div class="modal" id="export-compress-confirm-modal">
+    <div class="modal-content" style="max-width:380px;">
+      <div class="modal-header">
+        <h3>고용량 사진 감지</h3>
+        <span class="close-btn" id="export-compress-confirm-close">&times;</span>
+      </div>
+      <div class="info-box" style="margin-bottom:15px; font-size:14px; line-height:1.5;">
+        2MB를 초과하는 고용량 사진이 포함되어 있습니다. <br>
+        모바일 환경에서 안전하게 다운로드하기 위해 <strong>사진을 약 500KB로 압축</strong>하여 다운로드하시겠습니까?
+      </div>
+      <div style="display:flex; flex-direction:column; gap:10px; margin: 15px 0;">
+        <button type="button" class="btn" id="export-compress-yes-btn" style="background:#007AFF; color:#fff; padding:12px; border:none; border-radius:8px; cursor:pointer;">
+          <strong>⚡ 예, 압축해서 다운로드 (권장)</strong>
+        </button>
+        <button type="button" class="btn btn-secondary" id="export-compress-no-btn" style="padding:12px; border:1px solid #ccc; border-radius:8px; cursor:pointer;">
+          📷 아니오, 원본 화질 유지
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 내보내기 진행 상태 모달 (진행률 바 & 분할 예비 버튼 리스트 제공) -->
+  <div class="modal" id="export-progress-modal">
+    <div class="modal-content" style="max-width:400px;">
+      <div class="modal-header">
+        <h3 id="export-progress-title">자료 내보내기 진행 중</h3>
+        <span class="close-btn" id="export-progress-close" style="display:none;">&times;</span>
+      </div>
+      <div style="margin: 15px 0;">
+        <div id="export-progress-container" style="background:#eee; border-radius:10px; height:20px; width:100%; overflow:hidden; margin-bottom:10px;">
+          <div id="export-progress-bar" style="background:#007AFF; width:0%; height:100%; transition: width 0.2s ease;"></div>
+        </div>
+        <div id="export-progress-status" style="font-size:14px; color:#555; text-align:center; min-height:20px; line-height:1.5;">준비 중...</div>
+      </div>
+      
+      <!-- 분할 다운로드 수동 예비 버튼 영역 -->
+      <div id="export-partition-container" style="display:none; flex-direction:column; gap:8px; padding:10px; background:#f5f5f7; border-radius:8px; margin-top:15px;">
+        <div style="font-size:12px; font-weight:bold; color:#666; margin-bottom:5px;">분할 파일 목록 (자동 차단 시 아래를 순서대로 클릭하세요)</div>
+        <div id="export-partition-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+      </div>
+
+      <div style="margin-top:20px; display:flex; justify-content:center;">
+        <button type="button" class="btn" id="export-progress-done-btn" style="display:none; background:#34C759; color:#fff; width:100%; padding:12px; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">확인</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 자료 삭제 모달 (현재 도면의 모든 데이터 일괄 삭제) -->
   <div class="modal" id="delete-data-modal">
     <div class="modal-content" style="max-width:360px;">

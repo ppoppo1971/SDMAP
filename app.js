@@ -893,6 +893,34 @@ function bindUI() {
     });
   }
 
+  // 사진 압축 선택 컨펌 모달 이벤트 리스너
+  var compressConfirmModal = document.getElementById('export-compress-confirm-modal');
+  var compressConfirmClose = document.getElementById('export-compress-confirm-close');
+  var compressYesBtn = document.getElementById('export-compress-yes-btn');
+  var compressNoBtn = document.getElementById('export-compress-no-btn');
+  if (compressConfirmClose) compressConfirmClose.addEventListener('click', hideCompressConfirmModal);
+  if (compressYesBtn) compressYesBtn.addEventListener('click', function() { startExportProcess(true); });
+  if (compressNoBtn) compressNoBtn.addEventListener('click', function() { startExportProcess(false); });
+  if (compressConfirmModal) {
+    compressConfirmModal.addEventListener('click', function (e) {
+      if (e.target === compressConfirmModal) hideCompressConfirmModal();
+    });
+  }
+
+  // 내보내기 진행바 모달 이벤트 리스너
+  var progressModal = document.getElementById('export-progress-modal');
+  var progressClose = document.getElementById('export-progress-close');
+  var progressDoneBtn = document.getElementById('export-progress-done-btn');
+  if (progressClose) progressClose.addEventListener('click', hideProgressModal);
+  if (progressDoneBtn) progressDoneBtn.addEventListener('click', hideProgressModal);
+  if (progressModal) {
+    progressModal.addEventListener('click', function (e) {
+      // 진행 완료 상태일 때만 바깥 클릭으로 닫을 수 있게 설정
+      var isDoneVisible = progressDoneBtn && progressDoneBtn.style.display !== 'none';
+      if (e.target === progressModal && isDoneVisible) hideProgressModal();
+    });
+  }
+
   document.getElementById('zoom-fit').addEventListener('click', fitDxfToView);
   document.getElementById('zoom-in').addEventListener('click', function () {
     if (map) map.setZoom((map.getZoom() || 16) + 1);
@@ -1062,21 +1090,227 @@ function showLoading(show) {
   }
 }
 
+function showCompressConfirmModal() {
+  var modal = document.getElementById('export-compress-confirm-modal');
+  if (modal) modal.classList.add('active');
+}
+
+function hideCompressConfirmModal() {
+  var modal = document.getElementById('export-compress-confirm-modal');
+  if (modal) modal.classList.remove('active');
+}
+
+function showProgressModal(title) {
+  var modal = document.getElementById('export-progress-modal');
+  var titleEl = document.getElementById('export-progress-title');
+  var bar = document.getElementById('export-progress-bar');
+  var status = document.getElementById('export-progress-status');
+  var closeBtn = document.getElementById('export-progress-close');
+  var doneBtn = document.getElementById('export-progress-done-btn');
+  var partitionContainer = document.getElementById('export-partition-container');
+  
+  if (modal) modal.classList.add('active');
+  if (titleEl) titleEl.textContent = title || '자료 내보내기 진행 중';
+  if (bar) bar.style.width = '0%';
+  if (status) status.textContent = '준비 중...';
+  if (closeBtn) closeBtn.style.display = 'none';
+  if (doneBtn) doneBtn.style.display = 'none';
+  if (partitionContainer) {
+    partitionContainer.style.display = 'none';
+    var list = document.getElementById('export-partition-list');
+    if (list) list.innerHTML = '';
+  }
+}
+
+function updateProgressModal(percent, statusText) {
+  var bar = document.getElementById('export-progress-bar');
+  var status = document.getElementById('export-progress-status');
+  if (bar) bar.style.width = percent + '%';
+  if (status) status.textContent = statusText || '';
+}
+
+function finishProgressModal(statusText, isSuccess) {
+  var status = document.getElementById('export-progress-status');
+  var closeBtn = document.getElementById('export-progress-close');
+  var doneBtn = document.getElementById('export-progress-done-btn');
+  if (status) {
+    status.innerHTML = statusText || (isSuccess ? '<span style="color:#34C759; font-weight:bold;">🎉 다운로드 완료</span>' : '<span style="color:#FF3B30; font-weight:bold;">❌ 실패</span>');
+  }
+  if (closeBtn) closeBtn.style.display = 'block';
+  if (doneBtn) doneBtn.style.display = 'block';
+}
+
+function hideProgressModal() {
+  var modal = document.getElementById('export-progress-modal');
+  if (modal) modal.classList.remove('active');
+  exportInfo = null;
+}
+
 function exportLocalData() {
+  if (!dxfFileFullName) {
+    alert('내보낼 프로젝트 파일 정보가 없습니다.');
+    return;
+  }
   window.localStore.loadPhotos(dxfFileFullName).then(function (photosList) {
     var totalSize = 0;
+    var hasLargePhoto = false;
+    
     if (photosList && photosList.length) {
-      photosList.forEach(function (p) { if (p.blob) totalSize += p.blob.size; });
+      photosList.forEach(function (p) {
+        if (p.subPhotos && p.subPhotos.length > 0) {
+          p.subPhotos.forEach(function (sp) {
+            if (sp.blob) {
+              totalSize += sp.blob.size;
+              if (sp.blob.size > 2 * 1024 * 1024) {
+                hasLargePhoto = true;
+              }
+            }
+          });
+        } else if (p.blob) {
+          totalSize += p.blob.size;
+          if (p.blob.size > 2 * 1024 * 1024) {
+            hasLargePhoto = true;
+          }
+        }
+      });
     }
+    
     exportInfo = {
       photos: photosList || [],
-      totalSizeMB: (totalSize / 1024 / 1024).toFixed(1)
+      totalSizeMB: (totalSize / 1024 / 1024).toFixed(1),
+      hasLargePhoto: hasLargePhoto
     };
+
     showExportMethodModal();
   }).catch(function (err) {
     console.error('내보내기 준비 실패:', err);
     alert('내보내기 준비 실패: ' + (err && err.message ? err.message : err));
   });
+}
+
+function startExportProcess(shouldCompress) {
+  hideCompressConfirmModal();
+  if (!dxfFileFullName || !window.localStore) return;
+
+  var compressOptions = {
+    compress: shouldCompress,
+    quality: 0.75,
+    maxDim: 1200
+  };
+
+  var approxTotalSize = parseFloat(exportInfo.totalSizeMB) * 1024 * 1024;
+  var limitSize = 300 * 1024 * 1024; // 300MB
+
+  if (!shouldCompress && approxTotalSize > limitSize) {
+    showProgressModal('자료 분할 압축 진행 중');
+    
+    window.localStore.exportAsPartitionedZips(dxfFileFullName, compressOptions, function (cur, total, name) {
+      if (name.indexOf('Part') !== -1) {
+        updateProgressModal(Math.floor((cur / total) * 100), name);
+      } else {
+        var pct = Math.floor((cur / total) * 100);
+        updateProgressModal(pct, '이미지 처리 중: ' + (cur + 1) + '/' + total);
+      }
+    }).then(function (zipResults) {
+      updateProgressModal(100, '압축 완료. 다운로드를 개시합니다.');
+      
+      var container = document.getElementById('export-partition-container');
+      var list = document.getElementById('export-partition-list');
+      if (container && list) {
+        container.style.display = 'flex';
+        list.innerHTML = '';
+        
+        zipResults.forEach(function (part, idx) {
+          var row = document.createElement('div');
+          row.style.display = 'flex';
+          row.style.justifyContent = 'space-between';
+          row.style.alignItems = 'center';
+          row.style.padding = '8px';
+          row.style.background = '#fff';
+          row.style.borderRadius = '6px';
+          row.style.border = '1px solid #ddd';
+
+          var nameSpan = document.createElement('span');
+          nameSpan.textContent = 'Part ' + (idx + 1) + ' (' + (part.blob.size / 1024 / 1024).toFixed(1) + 'MB)';
+          nameSpan.style.fontSize = '13px';
+          nameSpan.style.fontWeight = '500';
+
+          var dlBtn = document.createElement('button');
+          dlBtn.textContent = '다운로드';
+          dlBtn.className = 'btn';
+          dlBtn.style.padding = '6px 12px';
+          dlBtn.style.fontSize = '12px';
+          dlBtn.style.background = '#007AFF';
+          dlBtn.style.color = '#fff';
+          dlBtn.style.border = 'none';
+          dlBtn.style.borderRadius = '4px';
+          dlBtn.style.cursor = 'pointer';
+
+          dlBtn.addEventListener('click', function () {
+            var url = URL.createObjectURL(part.blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = part.name;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            dlBtn.style.background = '#8E8E93';
+            dlBtn.textContent = '완료됨';
+            setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+          });
+
+          row.appendChild(nameSpan);
+          row.appendChild(dlBtn);
+          list.appendChild(row);
+        });
+      }
+
+      finishProgressModal('<span style="color:#007AFF; font-weight:bold;">📦 분할 압축 성공!</span><br><span style="font-size:11px; color:#666;">스마트폰 보안에 의해 자동으로 안 받아지는 파트는<br>아래 파일 목록에서 다운로드 버튼을 눌러주세요.</span>', true);
+
+      // 자동 연속 다운로드 시도 (1.5초 간격)
+      var chain = Promise.resolve();
+      zipResults.forEach(function (part, idx) {
+        chain = chain.then(function () {
+          return new Promise(function (resolve) {
+            setTimeout(function () {
+              var url = URL.createObjectURL(part.blob);
+              var a = document.createElement('a');
+              a.href = url;
+              a.download = part.name;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              
+              var buttons = list ? list.querySelectorAll('button') : [];
+              if (buttons[idx]) {
+                buttons[idx].style.background = '#8E8E93';
+                buttons[idx].textContent = '완료됨';
+              }
+              setTimeout(function () { URL.revokeObjectURL(url); resolve(); }, 1000);
+            }, idx === 0 ? 0 : 1500);
+          });
+        });
+      });
+      
+    }).catch(function (err) {
+      console.error('분할 내보내기 실패:', err);
+      finishProgressModal('<span style="color:#FF3B30; font-weight:bold;">❌ 분할 압축 실패:</span> ' + (err && err.message ? err.message : err), false);
+    });
+  } else {
+    // 단일 ZIP 다운로드
+    showProgressModal(shouldCompress ? '자료 압축 및 내보내기 진행 중' : '자료 내보내기 진행 중');
+    
+    window.localStore.exportAsZipOnly(dxfFileFullName, compressOptions, function (cur, total, name) {
+      var pct = Math.floor((cur / total) * 100);
+      updateProgressModal(pct, shouldCompress ? ('사진 압축 중: ' + cur + '/' + total + ' (' + name + ')') : ('처리 중: ' + name));
+    }).then(function (result) {
+      updateProgressModal(100, '다운로드 준비 중...');
+      finishProgressModal('🎉 다운로드 완료', true);
+    }).catch(function (err) {
+      console.error('내보내기 실패:', err);
+      finishProgressModal('<span style="color:#FF3B30; font-weight:bold;">❌ 내보내기 실패:</span> ' + (err && err.message ? err.message : err), false);
+    });
+  }
 }
 
 function showExportMethodModal() {
@@ -1091,20 +1325,16 @@ function showExportMethodModal() {
 function hideExportMethodModal() {
   var modal = document.getElementById('export-method-modal');
   if (modal) modal.classList.remove('active');
-  exportInfo = null;
 }
 
 function exportAsZip() {
+  var hasLarge = exportInfo && exportInfo.hasLargePhoto;
   hideExportMethodModal();
-  if (!dxfFileFullName || !window.localStore) return;
-  showLoading(true);
-  window.localStore.exportAsZipOnly(dxfFileFullName).then(function () {
-    showLoading(false);
-    alert('내보내기 완료.');
-  }).catch(function (err) {
-    showLoading(false);
-    alert('내보내기 실패: ' + (err && err.message ? err.message : err));
-  });
+  if (hasLarge) {
+    showCompressConfirmModal();
+  } else {
+    startExportProcess(false);
+  }
 }
 
 function exportAsIndividual() {
@@ -1115,7 +1345,7 @@ function exportAsIndividual() {
     console.log('내보내기 ' + cur + '/' + total + ' ' + name);
   }).then(function () {
     showLoading(false);
-    alert('내보내기 완료.');
+    alert('개별 내보내기 완료. (모바일 보안 정책에 의해 누락된 사진이 있을 수 있으니 가급적 ZIP 파일 방식을 권장합니다.)');
   }).catch(function (err) {
     showLoading(false);
     alert('내보내기 실패: ' + (err && err.message ? err.message : err));
