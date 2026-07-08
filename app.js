@@ -3355,6 +3355,14 @@ function showPhotoModal(photoId) {
       });
     }
 
+    // 폼 카드를 담을 리스트 컨테이너 생성
+    var pmFormListContainer = document.createElement('div');
+    pmFormListContainer.id = 'pm-dynamic-form-list';
+    pmFormListContainer.style.display = 'flex';
+    pmFormListContainer.style.flexDirection = 'column';
+    pmFormListContainer.style.gap = '15px';
+    dynamicFieldsContainer.appendChild(pmFormListContainer);
+
     // 실시간 미리보기용 컨테이너 생성
     var previewGroup = document.createElement('div');
     previewGroup.className = 'form-group';
@@ -3379,19 +3387,11 @@ function showPhotoModal(photoId) {
         var config = FACILITY_CONFIG[type] || { title: type, fields: [] };
         var result = serializeFacilityForm(card.querySelector('div'), config, prefixIdUnique);
         if (result) {
-          previews.push('[' + type + '] ' + result.specText + ' (' + result.layer + ')');
+          previews.push(result.specText);
         }
       });
       previewEl.textContent = previews.join('\n') || '추가된 속성이 없습니다.';
     };
-
-    // 폼 카드를 담을 리스트 컨테이너 생성
-    var pmFormListContainer = document.createElement('div');
-    pmFormListContainer.id = 'pm-dynamic-form-list';
-    pmFormListContainer.style.display = 'flex';
-    pmFormListContainer.style.flexDirection = 'column';
-    pmFormListContainer.style.gap = '15px';
-    dynamicFieldsContainer.appendChild(pmFormListContainer);
 
     // 2. 사진에 저장되어 있던 기존 제원 복원 렌더링
     var textIds = p.specTextIds || [];
@@ -4303,6 +4303,19 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
     });
   }
 
+  // 동적 필드 카드들을 담을 수직 리스트 컨테이너 생성
+  var formListContainer = document.createElement('div');
+  formListContainer.id = 'sw-dynamic-form-list';
+  formListContainer.style.display = 'flex';
+  formListContainer.style.flexDirection = 'column';
+  formListContainer.style.gap = '15px';
+  content.appendChild(formListContainer);
+
+  // 1. 최초 롱프레스로 자동 인식된 주(Primary) 시설물 카드 1개 자동 렌더링
+  var primaryType = pendingFacilityType || '일반시설물';
+  var cached = lastSpecs[primaryType] || {};
+  renderMultiAttributeCard(formListContainer, primaryType, cached, 'sw-primary');
+
   // 실시간 전체 제원 미리보기 필드 삽입 (가시성 확보용)
   var previewGroup = document.createElement('div');
   previewGroup.className = 'form-group';
@@ -4327,24 +4340,11 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
       var config = FACILITY_CONFIG[type] || { title: type, fields: [] };
       var result = serializeFacilityForm(card.querySelector('div'), config, prefixIdUnique);
       if (result) {
-        previews.push('[' + type + '] ' + result.specText + ' (' + result.layer + ')');
+        previews.push(result.specText);
       }
     });
     previewEl.textContent = previews.join('\n') || '추가된 속성이 없습니다.';
   };
-
-  // 동적 필드 카드들을 담을 수직 리스트 컨테이너 생성
-  var formListContainer = document.createElement('div');
-  formListContainer.id = 'sw-dynamic-form-list';
-  formListContainer.style.display = 'flex';
-  formListContainer.style.flexDirection = 'column';
-  formListContainer.style.gap = '15px';
-  content.appendChild(formListContainer);
-
-  // 1. 최초 롱프레스로 자동 인식된 주(Primary) 시설물 카드 1개 자동 렌더링
-  var primaryType = pendingFacilityType || '일반시설물';
-  var cached = lastSpecs[primaryType] || {};
-  renderMultiAttributeCard(formListContainer, primaryType, cached, 'sw-primary');
 
   // 속성 추가 선택기 UI (기본 노출 방식)
   var addSelectorGroup = document.createElement('div');
@@ -4639,6 +4639,7 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
   previewGroup.style.padding = '8px 12px';
   previewGroup.style.borderRadius = '8px';
   previewGroup.style.border = '1px solid #E5E5EA';
+  previewGroup.style.display = 'none'; // 화면 중복 노출을 피하기 위해 보이지 않게 숨김 처리
   previewGroup.innerHTML = 
     '<label style="color:#5856D6; font-size:11px; margin-bottom:2px;">전체 제원 텍스트 미리보기</label>' +
     '<div id="' + prefixId + '-spec-preview" style="font-size:13px; font-weight:bold; color:#1C1C1E; word-break:break-all; min-height:16px;"></div>';
