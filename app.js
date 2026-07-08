@@ -3363,6 +3363,12 @@ function showPhotoModal(photoId) {
     pmFormListContainer.style.gap = '15px';
     dynamicFieldsContainer.appendChild(pmFormListContainer);
 
+    // 구분선 삽입 (일괄 미리보기 위)
+    var pmPreviewDivider = document.createElement('div');
+    pmPreviewDivider.style.borderTop = '1.5px solid #8E8E93';
+    pmPreviewDivider.style.marginTop = '15px';
+    dynamicFieldsContainer.appendChild(pmPreviewDivider);
+
     // 실시간 미리보기용 컨테이너 생성
     var previewGroup = document.createElement('div');
     previewGroup.className = 'form-group';
@@ -3418,6 +3424,12 @@ function showPhotoModal(photoId) {
         renderMultiAttributeCard(pmFormListContainer, fType, parsedValues, uniquePrefix);
       }
     });
+
+    // 구분선 삽입 (속성 추가 선택기 위)
+    var pmAddDivider = document.createElement('div');
+    pmAddDivider.style.borderTop = '1.5px solid #8E8E93';
+    pmAddDivider.style.marginTop = '15px';
+    dynamicFieldsContainer.appendChild(pmAddDivider);
 
     // 3. 편집 모달 내에서도 [속성 추가 선택기] 상시 제공
     var addSelectorGroup = document.createElement('div');
@@ -4316,6 +4328,12 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
   var cached = lastSpecs[primaryType] || {};
   renderMultiAttributeCard(formListContainer, primaryType, cached, 'sw-primary');
 
+  // 구분선 삽입 (일괄 미리보기 위)
+  var swPreviewDivider = document.createElement('div');
+  swPreviewDivider.style.borderTop = '1.5px solid #8E8E93';
+  swPreviewDivider.style.marginTop = '15px';
+  content.appendChild(swPreviewDivider);
+
   // 실시간 전체 제원 미리보기 필드 삽입 (가시성 확보용)
   var previewGroup = document.createElement('div');
   previewGroup.className = 'form-group';
@@ -4345,6 +4363,12 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
     });
     previewEl.textContent = previews.join('\n') || '추가된 속성이 없습니다.';
   };
+
+  // 구분선 삽입 (속성 추가 선택기 위)
+  var swAddDivider = document.createElement('div');
+  swAddDivider.style.borderTop = '1.5px solid #8E8E93';
+  swAddDivider.style.marginTop = '15px';
+  content.appendChild(swAddDivider);
 
   // 속성 추가 선택기 UI (기본 노출 방식)
   var addSelectorGroup = document.createElement('div');
@@ -4913,7 +4937,7 @@ function serializeFacilityForm(container, config, prefixId) {
 
   // 통신주 및 전력주(체신주)는 오해 방지를 위해 미리보기 텍스트를 전개 제외로 표시
   if (config.title === '통신주' || config.title === '전력주') {
-    specText = '도면 전개 제외 (시설물 정보만 저장)';
+    specText = config.title + '(캐드제외)';
   }
 
   // 폼 캐시에 최신 입력값 저장
