@@ -4050,7 +4050,7 @@ function getFieldSuggestions(fieldId, config, defaultOptions) {
   if (defaultOptions && defaultOptions.length > 0) {
     defaultOptions.forEach(function (opt) {
       var val = String(opt).trim();
-      if (val !== '' && val !== '기타' && val !== '내용' && val !== '선택') {
+      if (val !== '' && val !== '기타' && val !== '직접입력' && val !== '선택') {
         counts[val] = 0; // 초기 빈도 0
         baseDefaults.push(val);
       }
@@ -4064,7 +4064,7 @@ function getFieldSuggestions(fieldId, config, defaultOptions) {
         var parsed = deserializeSpecText(t.text, config);
         if (parsed && parsed[fieldId] !== undefined) {
           var val = String(parsed[fieldId]).trim();
-          if (val !== '' && val !== '기타' && val !== '내용' && val !== '종류' && val !== '형식') {
+          if (val !== '' && val !== '기타' && val !== '직접입력' && val !== '선택') {
             counts[val] = (counts[val] || 0) + 1;
           }
         }
@@ -4841,7 +4841,7 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
 
       var opts = getFieldSuggestions(field.id, config, field.options);
       opts = opts.filter(function (opt) {
-        return opt !== '내용' && opt !== '종류' && opt !== '메모' && opt !== '기타' && opt !== '직접입력' && opt !== '선택' && opt !== '';
+        return opt !== '기타' && opt !== '직접입력' && opt !== '선택' && opt !== '';
       });
 
       var strVal = String(val).trim();
