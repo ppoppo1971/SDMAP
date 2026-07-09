@@ -563,8 +563,8 @@ var FACILITY_CONFIG = {
     prefix: '화단',
     fields: []
   },
-  '미끄럼방지': {
-    title: '미끄럼방지',
+  '미끄럼방지시설': {
+    title: '미끄럼방지시설',
     layer: '미끄럼방지_T',
     prefix: '미끄럼방지',
     fields: []
@@ -4219,7 +4219,7 @@ function getAttributeAdderOptions(isBottomSheet) {
   var baseOpts = [
     '주의표지', '규제표지', '지시표지', '보조표지', '도로표지', 
     '교통기타', 'CCTV', '새주소', '전광표지', '보안등', 
-    '신호등', '도로반사경', '가로등', '기타표지', '미끄럼방지', '자전거도로'
+    '신호등', '도로반사경', '가로등', '기타표지', '미끄럼방지시설', '자전거도로'
   ];
 
   var counts = {};
