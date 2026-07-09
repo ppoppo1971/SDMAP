@@ -4846,25 +4846,25 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
 
       var strVal = String(val).trim();
       var isOptionMatched = opts.indexOf(strVal) !== -1;
-      var showEtc = strVal !== '' && strVal !== '선택' && strVal !== '직접입력' && strVal !== '기타' && !isOptionMatched;
-
-      if (showEtc) {
-        opts.unshift(strVal);
-      }
+      
+      // 최초 입력이거나, '직접입력'이거나, 매칭되는 기존 옵션이 없으면 입력 상자를 기본 활성화
+      var showEtc = (strVal === '' || strVal === '선택' || strVal === '직접입력' || strVal === '기타' || !isOptionMatched);
 
       opts.forEach(function (opt) {
-        var selected = (opt === strVal) ? ' selected' : '';
+        var selected = (!showEtc && opt === strVal) ? ' selected' : '';
         html += '<option value="' + opt + '"' + selected + '>' + opt + '</option>';
       });
 
       html += '</select>';
 
-      // 직접 입력용 임시 텍스트 필드 (기본 숨김)
+      // 직접 입력용 임시 텍스트 필드 (showEtc 상태에 따라 노출 여부 결정)
+      var etcVal = (showEtc && strVal !== '선택' && strVal !== '직접입력' && strVal !== '기타') ? strVal : '';
+      var etcDisplay = showEtc ? 'block' : 'none';
       var inputType = isNumericField ? 'number' : 'text';
       var stepAttr = isNumericField ? ' step="any" inputmode="decimal"' : '';
       var placeholder = field.placeholder || (isNumericField ? '숫자 입력 후 완료' : '직접 입력 후 완료(엔터/바깥터치)');
 
-      html += '<input type="' + inputType + '"' + stepAttr + ' id="' + inputId + '-etc" style="display:none; margin-top:5px;" value="" placeholder="' + placeholder + '">';
+      html += '<input type="' + inputType + '"' + stepAttr + ' id="' + inputId + '-etc" style="display:' + etcDisplay + '; margin-top:5px;" value="' + etcVal + '" placeholder="' + placeholder + '">';
       group.innerHTML = html;
       container.appendChild(group);
 
