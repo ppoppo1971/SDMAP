@@ -562,6 +562,24 @@ var FACILITY_CONFIG = {
     layer: '화단_T',
     prefix: '화단',
     fields: []
+  },
+  '미끄럼방지': {
+    title: '미끄럼방지',
+    layer: '미끄럼방지_T',
+    prefix: '미끄럼방지',
+    fields: []
+  },
+  '자전거도로': {
+    title: '자전거도로',
+    layer: '자전거도로_T',
+    prefix: '자전거도로',
+    fields: []
+  },
+  '그늘막': {
+    title: '그늘막',
+    layer: '그늘막_T',
+    prefix: '그늘막',
+    fields: []
   }
 };
 
@@ -4020,11 +4038,6 @@ function detectFacilityType(name, layer) {
   var n = String(name || '').trim();
   var l = String(layer || '').trim();
 
-  // 자전거 관련 예외는 최우선적으로 제외 (시설물 속성 대신 일반 폼 호출)
-  if (n.indexOf('자전거') >= 0 || l.indexOf('자전거') >= 0) {
-    return null;
-  }
-
   // '안내표지'가 들어오면 '도로표지'로 자동 매칭
   if (l.indexOf('안내표지') >= 0 || n.indexOf('안내표지') >= 0) {
     return '도로표지';
@@ -4070,6 +4083,15 @@ function getNextPhotoNumber() {
     });
   }
   
+  // 도면에 사진번호 텍스트가 1개 이상 존재한다면 도면 상의 실제 최대값을 기준으로 결정하고 localStorage 동기화
+  if (maxNum > 0) {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('dmap:lastPhotoNumber', String(maxNum));
+    }
+    return String(maxNum + 1);
+  }
+  
+  // 도면이 완전히 비어있는 최초 상태일 때만 localStorage 보조 기억장치 값 참조
   var lastLocalStorageNum = 0;
   if (typeof localStorage !== 'undefined') {
     var lastStr = localStorage.getItem('dmap:lastPhotoNumber');
@@ -4079,8 +4101,7 @@ function getNextPhotoNumber() {
     }
   }
   
-  var finalLastNum = Math.max(maxNum, lastLocalStorageNum);
-  return finalLastNum > 0 ? String(finalLastNum + 1) : '1'; // 기본값 1
+  return lastLocalStorageNum > 0 ? String(lastLocalStorageNum + 1) : '1'; // 기본값 1
 }
 
 // 신규 입력/수정될 사진번호가 기존 번호들과 중복되거나 중간 순서가 누락되었는지 검증 (confirm 경고)
@@ -4193,7 +4214,7 @@ function getAttributeAdderOptions(isBottomSheet) {
   var baseOpts = [
     '주의표지', '규제표지', '지시표지', '보조표지', '도로표지', 
     '교통기타', 'CCTV', '새주소', '전광표지', '보안등', 
-    '신호등', '도로반사경', '가로등', '기타표지'
+    '신호등', '도로반사경', '가로등', '기타표지', '미끄럼방지', '자전거도로'
   ];
 
   var counts = {};
