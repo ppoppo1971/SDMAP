@@ -4175,8 +4175,10 @@ function getFieldSuggestions(fieldId, config, defaultOptions) {
 
   // 2. 현재 도면에서 실제로 입력된 값들을 집계하여 빈도수 가산
   if (window.texts && window.texts.length > 0 && config && config.layer) {
+    var confClean = String(config.layer || '').replace(/_T$/i, '').toLowerCase();
     window.texts.forEach(function (t) {
-      if (t.layer === config.layer && t.text) {
+      var tClean = String(t.layer || '').replace(/_T$/i, '').toLowerCase();
+      if ((tClean === confClean || (config.title && tClean === config.title.toLowerCase())) && t.text) {
         var parsed = deserializeSpecText(t.text, config);
         if (parsed && parsed[fieldId] !== undefined) {
           var val = String(parsed[fieldId]).trim();
@@ -4219,7 +4221,7 @@ function getAttributeAdderOptions(isBottomSheet) {
   var baseOpts = [
     '주의표지', '규제표지', '지시표지', '보조표지', '도로표지', 
     '교통기타', 'CCTV', '새주소', '전광표지', '보안등', 
-    '신호등', '도로반사경', '가로등', '기타표지', '미끄럼방지시설', '자전거도로'
+    '신호등', '도로반사경', '가로등', '기타표지', '갈매기표지'
   ];
 
   var counts = {};
@@ -4955,10 +4957,35 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
 
     var val = '';
     // 직전에 입력된 캐시값(lastSpecs[type] 등)이 존재하면 해당 값을 가져오고, 없으면 기본값 적용
-    if (cachedVals && cachedVals[field.id] !== undefined) {
-      val = cachedVals[field.id];
+    var hasCache = cachedVals && cachedVals[field.id] !== undefined;
+    var cachedVal = hasCache ? cachedVals[field.id] : '';
+
+    // [요구사항] 특정 조건 충족 시 지주형식은 자동으로 "부착"으로 입력 (새주소 제외)
+    if ((field.id === 'support' || field.label === '지주형식') && config.title !== '새주소') {
+      var facilityType = config.title;
+      var target5 = ['통신주', '전력주', '가로등', '신호등', '가로수'];
+      
+      // 조건 1: 롱프레스로 감지된 5종 시설물인 경우
+      var isLongPress5 = (window.pendingStreetlightItem && target5.indexOf(facilityType) !== -1);
+      
+      // 조건 2: 두 번째 이후 카드인 경우
+      var cardEl = container.parentNode;
+      var cardsContainer = cardEl ? cardEl.parentNode : null;
+      var isSecondOrLater = false;
+      if (cardsContainer) {
+        var siblingCards = cardsContainer.querySelectorAll('.attr-card');
+        if (siblingCards.length > 0 && siblingCards[0] !== cardEl) {
+          isSecondOrLater = true;
+        }
+      }
+      
+      if (isLongPress5 || isSecondOrLater) {
+        val = '부착';
+      } else {
+        val = hasCache ? cachedVal : (field.default || '');
+      }
     } else {
-      val = field.default || '';
+      val = hasCache ? cachedVal : (field.default || '');
     }
 
     var html = '<label>' + field.label + '</label>';

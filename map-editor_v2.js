@@ -575,7 +575,6 @@
     var openFolderBtn = document.getElementById('open-folder-btn');
     var dxfInput = document.getElementById('dxf-file-input');
     var exportBtn = document.getElementById('export-zip-btn');
-    var dragOverlay = document.getElementById('drag-overlay');
     
     // [고도화 추가] 배경 테마 토글 단추 바인딩 (라이트 ↔ 다크 ↔ 그레이)
     var themeToggleBtn = document.getElementById('map-theme-toggle');
@@ -652,55 +651,8 @@
       exportBtn.addEventListener('click', exportModifiedZip);
     }
 
-    // 드래그 앤 드롭 바인딩
-    window.addEventListener('dragenter', function (e) {
-      e.preventDefault();
-      dragOverlay.classList.add('active');
-    });
-
-    dragOverlay.addEventListener('dragleave', function (e) {
-      e.preventDefault();
-      var rect = dragOverlay.getBoundingClientRect();
-      if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
-        dragOverlay.classList.remove('active');
-      }
-    });
-
-    window.addEventListener('dragover', function (e) {
-      e.preventDefault();
-    });
-
-    window.addEventListener('drop', function (e) {
-      e.preventDefault();
-      dragOverlay.classList.remove('active');
-      var items = e.dataTransfer.items;
-      if (items && items.length) {
-        var item = items[0];
-        if (typeof item.getAsFileSystemHandle === 'function') {
-          item.getAsFileSystemHandle().then(function (handle) {
-            if (handle.kind === 'directory') {
-              handleFolderHandle(handle);
-            } else if (handle.name.endsWith('.dxf')) {
-              handle.getFile().then(handleDxfUpload);
-            } else {
-              alert('지원하지 않는 형식입니다. 압축 해제된 폴더나 .dxf 도면을 여기에 떨어뜨려 주세요.');
-            }
-          }).catch(function (err) {
-            console.error('드롭 파일 핸들러 오류:', err);
-          });
-        } else {
-          var files = e.dataTransfer.files;
-          if (files && files.length) {
-            var file = files[0];
-            if (file.name.endsWith('.dxf')) {
-              handleDxfUpload(file);
-            } else {
-              alert('현재 브라우저에서는 드롭으로 폴더를 올릴 수 없습니다. 상단 [📁 작업 폴더 열기] 버튼을 통해 선택해 주세요.');
-            }
-          }
-        }
-      }
-    });
+    // 드래그 앤 드롭 바인딩 제거 완료
+    // (텍스트 드래그 시 오작동으로 오버레이가 발생하는 현상 방지)
 
     // 편집창 수동 저장 클릭 바인딩
     document.getElementById('photo-save-btn').addEventListener('click', async function () {

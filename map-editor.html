@@ -567,39 +567,6 @@
       z-index: 2 !important;
     }
 
-    /* 드래그 앤 드롭 영역 안내 */
-    .drag-overlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(18, 18, 20, 0.9);
-      border: 3px dashed var(--primary);
-      z-index: 99999;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      gap: 20px;
-      pointer-events: none;
-    }
-
-    .drag-overlay.active {
-      display: flex;
-    }
-
-    .drag-overlay h2 {
-      font-size: 24px;
-      font-weight: 700;
-      color: var(--primary);
-    }
-
-    .drag-overlay p {
-      color: var(--text-muted);
-      font-size: 15px;
-    }
-
     /* 팝업 모달 */
     .modal {
       display: none;
@@ -1515,12 +1482,7 @@
 
   <!-- 메인 작업 컨테이너 -->
   <div class="main-container" id="drop-zone">
-    <!-- 드래그 오버 레이아웃 -->
-    <div class="drag-overlay" id="drag-overlay">
-      <h2>드롭하여 파일 로드</h2>
-      <p>수행한 NDMAP 내보내기 ZIP 또는 도면 DXF 파일을 여기에 드래그 앤 드롭 하세요.</p>
-    </div>
-
+    
     <!-- 좌측 구글 지도 (배경 없음, CAD선 렌더링용) -->
     <div class="canvas-container">
       <div id="map"></div>
