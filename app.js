@@ -2765,13 +2765,68 @@ function bindMapLongPress() {
   function showMenuAt(clientX, clientY, latLng) {
     if (!latLng) return;
     
+    // 롱프레스가 실행된 타임스탬프를 갱신하여 600ms 이내의 후속 클릭(손가락 뗄 때) 이벤트 차단
+    lastLongPressEndTime = Date.now();
+    
     var dxfCoords = latLngToDxf(latLng);
     if (!dxfCoords) return;
 
-    // 2m 이내 시설물 탐색 및 유효한 시설물 유형만 필터링
+    // 2m 이내 시설물 탐색
     var nearby = findNearbyFacilities(latLng, 2.0);
     nearby = nearby.filter(function (item) {
-      return detectFacilityType(item.name, item.layer) !== null;
+      // 1. 유효한 시설물 유형인지 필터링
+      if (detectFacilityType(item.name, item.layer) === null) return false;
+
+      // 2. 이미 조사(촬영)가 완료된 객체인지 필터링 (반경 1.5m 내 사진 마커나 제원 텍스트가 이미 등록되어 있다면 제외)
+      var geom = item.getGeometry && item.getGeometry();
+      if (geom && typeof geom.getType === 'function') {
+        var itemPt = null;
+        if (geom.getType() === 'Point') {
+          itemPt = geom.get();
+        } else if (geom.getType() === 'LineString') {
+          itemPt = geom.getAt(0);
+        } else if (geom.getType() === 'Polygon') {
+          var path = geom.getAt(0);
+          if (path && path.getAt) itemPt = path.getAt(0);
+        }
+
+        if (itemPt) {
+          var isAlreadySurveyed = false;
+          // 이미 등록된 사진(photos) 중 1.5m 이내에 겹치는 것이 있는지 검사
+          if (window.photos && window.photos.length > 0) {
+            for (var i = 0; i < window.photos.length; i++) {
+              var p = window.photos[i];
+              var pPos = dxfToLatLng(p.x, p.y);
+              if (pPos) {
+                var d = getLatLngDistanceM(itemPt, pPos);
+                if (d < 1.5) {
+                  isAlreadySurveyed = true;
+                  break;
+                }
+              }
+            }
+          }
+          if (isAlreadySurveyed) return false;
+
+          // 이미 등록된 제원 텍스트(texts) 중 1.5m 이내에 겹치는 것이 있는지 검사
+          if (window.texts && window.texts.length > 0) {
+            for (var i = 0; i < window.texts.length; i++) {
+              var tObj = window.texts[i];
+              var tPos = dxfToLatLng(tObj.x, tObj.y);
+              if (tPos) {
+                var d = getLatLngDistanceM(itemPt, tPos);
+                if (d < 1.5) {
+                  isAlreadySurveyed = true;
+                  break;
+                }
+              }
+            }
+          }
+          if (isAlreadySurveyed) return false;
+        }
+      }
+
+      return true;
     });
 
     // 항상 바텀시트 호출 (방안 1)
@@ -4103,13 +4158,8 @@ function getAttributeAdderOptions(isBottomSheet) {
   var baseOpts = [
     '주의표지', '규제표지', '지시표지', '보조표지', '도로표지', 
     '교통기타', 'CCTV', '새주소', '전광표지', '보안등', 
-    '신호등', '도로반사경'
+    '신호등', '도로반사경', '가로등', '기타표지'
   ];
-  if (isBottomSheet) {
-    baseOpts.push('가로등', '기타표지');
-  } else {
-    baseOpts.push('참고사항');
-  }
 
   var counts = {};
   baseOpts.forEach(function (opt) {
