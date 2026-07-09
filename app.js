@@ -4043,11 +4043,16 @@ function detectFacilityType(name, layer) {
     return '도로표지';
   }
 
-  // 1) 레이어로 매칭 (FACILITY_CONFIG에 정의된 layer와 완전 일치 검사)
+  // 1) 레이어로 매칭 (FACILITY_CONFIG에 정의된 layer와 완전 일치 검사 - _T 접미사 유연화 적용)
   if (l) {
+    var cleanL = l.replace(/_T$/i, '').toLowerCase();
     for (var key in FACILITY_CONFIG) {
-      if (FACILITY_CONFIG[key].layer && FACILITY_CONFIG[key].layer.toLowerCase() === l.toLowerCase()) {
-        return key;
+      var confLayer = FACILITY_CONFIG[key].layer;
+      if (confLayer) {
+        var cleanConfL = confLayer.replace(/_T$/i, '').toLowerCase();
+        if (cleanL === cleanConfL) {
+          return key;
+        }
       }
     }
   }
