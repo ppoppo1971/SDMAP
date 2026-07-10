@@ -3339,7 +3339,12 @@ function showPhotoModal(photoId) {
       memoSuggest.appendChild(opt);
     });
 
-
+    // 기본 선택 옵션으로 '--' 추가
+    var defaultOpt = document.createElement('option');
+    defaultOpt.value = '--';
+    defaultOpt.textContent = '--';
+    if (currentMemo === '' || currentMemo === '--') defaultOpt.selected = true;
+    memoSuggest.insertBefore(defaultOpt, memoSuggest.firstChild);
 
     var handleMemoSelectChange = function () {
       if (memoSuggest.value === '직접입력') {
@@ -3785,7 +3790,7 @@ function bindPhotoModal() {
     } else if (memoInput) {
       memoVal = memoInput.value.trim();
     }
-    p.memo = memoVal || '';
+    p.memo = (memoVal === '--') ? '' : (memoVal || '');
 
     var newNum = '';
     var pmNumInput = document.getElementById('pm-form-num');
@@ -4500,7 +4505,12 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
     directOpt.textContent = '직접입력';
     memoSuggestEl.appendChild(directOpt);
 
-
+    // 기본 선택 옵션으로 '--' 추가
+    var defaultOpt = document.createElement('option');
+    defaultOpt.value = '--';
+    defaultOpt.textContent = '--';
+    defaultOpt.selected = true;
+    memoSuggestEl.insertBefore(defaultOpt, memoSuggestEl.firstChild);
 
     memoSuggestions.forEach(function (sug) {
       var opt = document.createElement('option');
@@ -4898,7 +4908,7 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
       width: 1,
       height: 1,
       blob: blob,
-      memo: formData.memo || (descText + ' (' + item.name + ')'),
+      memo: (formData.memo === '--') ? '' : (formData.memo || (descText + ' (' + item.name + ')')),
       fileName: mainFileName,
       createdAt: new Date().toISOString(),
       numTextId: numTextId,
