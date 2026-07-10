@@ -712,8 +712,8 @@
       <!-- 다중 사진 썸네일 리스트 -->
       <div class="photo-thumbnail-list" id="photo-modal-thumbnails"></div>
       <div id="photo-modal-no-file" style="display:none; padding:12px; color:#666;">이미지 파일을 찾을 수 없습니다. DXF와 같은 폴더를 선택하세요.</div>
-      <input type="text" id="photo-modal-memo" list="photo-modal-memo-list" placeholder="메모 입력 또는 선택" style="width:100%; padding:10px; margin:10px 0; border:1px solid #ccc; border-radius:8px; box-sizing:border-box; font-size:14px;">
-      <datalist id="photo-modal-memo-list"></datalist>
+      <select id="photo-modal-memo-suggest" style="width:100%; padding:10px; margin:10px 0; border:1px solid #ccc; border-radius:8px; box-sizing:border-box; font-size:14px; background-color:#fff; color:#333;"></select>
+      <input type="text" id="photo-modal-memo" placeholder="메모 직접 입력 후 완료(엔터/바깥터치)" style="display:none; width:100%; padding:10px; margin:10px 0; border:1px solid #ccc; border-radius:8px; box-sizing:border-box; font-size:14px;">
       <!-- 동적으로 자바스크립트 설정 테이블에 의해 렌더링될 입력 양식 컨테이너 -->
       <div id="photo-modal-dynamic-fields" style="border-top: 1px dashed #ccc; padding-top: 10px; margin-top: 10px; display: none; flex-direction: column; gap: 8px;"></div>
       <div id="photo-modal-actions" style="display:flex; gap:10px; width:100%; margin-top: 15px;">
