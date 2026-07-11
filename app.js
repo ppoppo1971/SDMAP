@@ -1817,9 +1817,9 @@ function updateDynamicMapData() {
   
   // 최소 줌레벨 미만인 경우 지도 렌더러를 완전히 비워 렉 방지
   if (zoom < DXF_RENDER_MIN_ZOOM) {
-    map.data.forEach(function (feature) {
-      map.data.remove(feature);
-    });
+    var allFeatures = [];
+    map.data.forEach(function (feature) { allFeatures.push(feature); });
+    allFeatures.forEach(function (feature) { map.data.remove(feature); });
     return;
   }
 
@@ -1834,6 +1834,15 @@ function updateDynamicMapData() {
   var startLngCell = Math.floor(sw.lng() / spatialIndexCellSize);
   var endLngCell = Math.floor(ne.lng() / spatialIndexCellSize);
 
+  // 피처 고유 식별자 헬퍼 (getId가 없으면 _dxfFeatIdx 속성을 폴백)
+  function getFid(feature) {
+    var id = feature.getId();
+    if (id != null) return 'id_' + id;
+    var idx = feature.getProperty('_dxfFeatIdx');
+    if (idx != null) return 'idx_' + idx;
+    return null;
+  }
+
   // 1. 현재 화면 바운더리에 포함된 격자 셀들만 뒤져서 대상 피처 고유 맵 수집
   var visibleFeaturesMap = {};
   for (var latCell = startLatCell; latCell <= endLatCell; latCell++) {
@@ -1842,7 +1851,7 @@ function updateDynamicMapData() {
       var cellFeatures = spatialIndex[key];
       if (cellFeatures) {
         cellFeatures.forEach(function (feature) {
-          var fid = feature.getId();
+          var fid = getFid(feature);
           if (fid != null) {
             visibleFeaturesMap[fid] = feature;
           }
@@ -1851,18 +1860,21 @@ function updateDynamicMapData() {
     }
   }
 
-  // 2. 현재 지도 위에 있는 피처 스캔 및 동기화 정리
+  // 2. 현재 지도 위에 있는 피처 스캔 — 화면 밖 피처는 제거 대상으로 수집
   var currentFeaturesOnMap = {};
+  var toRemove = [];
   map.data.forEach(function (feature) {
-    var fid = feature.getId();
+    var fid = getFid(feature);
     if (fid != null) {
       currentFeaturesOnMap[fid] = feature;
-      
-      // 화면 바운더리 밖으로 벗어난 피처는 즉시 지도 레이어에서 탈거
       if (!visibleFeaturesMap[fid]) {
-        map.data.remove(feature);
+        toRemove.push(feature);
       }
     }
+  });
+  // forEach 완료 후 안전하게 제거
+  toRemove.forEach(function (feature) {
+    map.data.remove(feature);
   });
 
   // 3. 화면 바운더리 내부로 들어왔으나 아직 지도에 안 실린 피처 신규 주입
@@ -1905,18 +1917,33 @@ function getFeatureLatLngBounds(feature) {
 function applyDxfToMap() {
   if (!map || !dxfData || !window.DxfToGeoJSON) return;
   spatialIndex = null; // 공간 인덱스 리셋
+  dxfGoogleFeaturesSource = []; // 피처 캐시 초기화
   
-  // 1) 원본 GeoJSON 획득하여 전역 보관
-  dxfGeoJsonSource = window.DxfToGeoJSON.dxfToGeoJSON(dxfData);
+  // 1) DXF → GeoJSON 변환
+  var geoJson = window.DxfToGeoJSON.dxfToGeoJSON(dxfData);
   
   // 2) 기존 맵 데이터 초기 청소
   map.data.forEach(function (feature) { map.data.remove(feature); });
   
-  if (dxfGeoJsonSource.features && dxfGeoJsonSource.features.length > 0) {
-    // 3) 메모리 가상 공간 인덱스 선가공 구축
+  if (geoJson.features && geoJson.features.length > 0) {
+    // 3) 구글 Maps API가 정상적으로 생산한 피처 인스턴스를 획득
+    //    addGeoJson은 구글이 내부적으로 GeoJSON을 해석하여 온전한 피처 객체 배열을 반환
+    var importedFeatures = map.data.addGeoJson(geoJson);
+    
+    // 4) 생산된 온전한 피처 인스턴스들을 전역 캐시에 보관 (인덱싱 및 culling용)
+    dxfGoogleFeaturesSource = importedFeatures || [];
+    
+    // 5) 피처에 고유 ID가 없는 경우 순번 ID를 강제 부여 (culling 동기화 핵심)
+    dxfGoogleFeaturesSource.forEach(function (feature, idx) {
+      if (feature.getId() == null) {
+        feature.setProperty('_dxfFeatIdx', idx);
+      }
+    });
+    
+    // 6) 공간 인덱스 구축
     buildSpatialIndex();
     
-    // 4) 지도 데이터 스타일 지정
+    // 7) 지도 데이터 스타일 지정
     map.data.setStyle(function (feature) {
       var geom = feature.getGeometry && feature.getGeometry();
       var geomType = geom && geom.getType ? geom.getType() : '';
@@ -1950,10 +1977,15 @@ function applyDxfToMap() {
       };
     });
     
-    // 5) 도면 외곽 바운더리 매핑
-    dxfBoundsLatLng = boundsFromGeoJSON(dxfGeoJsonSource);
+    // 8) 도면 외곽 바운더리 매핑
+    dxfBoundsLatLng = boundsFromGeoJSON(geoJson);
     
-    // 6) 최초 1회 화면 영역 culling 렌더링 호출
+    // 9) 지도에 방금 올린 피처를 일단 전부 제거 (culling이 화면 영역에 맞게 다시 주입)
+    dxfGoogleFeaturesSource.forEach(function (feature) {
+      map.data.remove(feature);
+    });
+    
+    // 10) 최초 1회 화면 영역 culling 렌더링 호출
     updateDynamicMapData();
   } else {
     dxfBoundsLatLng = null;
