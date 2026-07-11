@@ -42,6 +42,10 @@ var streetlightPreviewObjectUrl = null; // 이미지 프리뷰용 Object URL 캐
 // 모든 시설물 통합 캐시 스펙 저장 객체
 var lastSpecs = {};
 
+// DXF 도면 렌더링 culling 최적화를 위한 원본 소스 캐시 및 최소 줌 레벨
+var dxfGeoJsonSource = null;
+var DXF_RENDER_MIN_ZOOM = 16;
+
 // 30여 개 시설물 제원 포맷 및 입력 양식 설정 테이블
 var FACILITY_CONFIG = {
   '참고사항': {
@@ -266,7 +270,7 @@ var FACILITY_CONFIG = {
     prefix: '새주소',
     fields: [
       { id: 'content', label: '내용', type: 'text', placeholder: '내용 입력', default: '' },
-      { id: 'support', label: '지주형식', type: 'select', options: ['단주', '부착', '현수식', '기타'], default: '단주' }
+      { id: 'support', label: '지주형식', type: 'select', options: ['단주', '부착', '현수식', '기타'], default: '현수식' }
     ]
   },
   '전광표지': {
@@ -745,6 +749,7 @@ function ensureMap() {
   bindDoubleTapZoom();
   bindDxfDataLayerClick();
   bindDxfTextModal();
+  map.addListener('idle', updateDynamicMapData);
   mapBindingsDone = true;
   console.log('new_dmap: 지도 생성 완료 (뷰어 표시 후, 배경 없음 기본)');
 }
@@ -1779,22 +1784,94 @@ var spatialIndexCellSize = 0.0005; // ~50m 격자 크기
 
 function buildSpatialIndex() {
   spatialIndex = {};
-  if (!map || !map.data) return;
-  map.data.forEach(function (feature) {
-    var geom = feature.getGeometry && feature.getGeometry();
-    if (!geom || !geom.getType) return;
-    var bounds = getFeatureLatLngBounds(feature);
+  if (!dxfGeoJsonSource || !dxfGeoJsonSource.features) return;
+  
+  dxfGeoJsonSource.features.forEach(function (geoJsonFeat, idx) {
+    if (geoJsonFeat.id === undefined) {
+      geoJsonFeat.id = 'dxf-feat-' + idx;
+    }
+    
+    // 렌더링 성능을 위해 메모리 가상 공간에 구글 맵 피처 인스턴스 우선 생성
+    var mapFeature = new google.maps.Data.Feature(geoJsonFeat);
+    
+    var bounds = getFeatureLatLngBounds(mapFeature);
     if (!bounds) return;
+    
     var startLatCell = Math.floor(bounds.minLat / spatialIndexCellSize);
     var endLatCell = Math.floor(bounds.maxLat / spatialIndexCellSize);
     var startLngCell = Math.floor(bounds.minLng / spatialIndexCellSize);
     var endLngCell = Math.floor(bounds.maxLng / spatialIndexCellSize);
+    
     for (var latCell = startLatCell; latCell <= endLatCell; latCell++) {
       for (var lngCell = startLngCell; lngCell <= endLngCell; lngCell++) {
         var key = latCell + ',' + lngCell;
         if (!spatialIndex[key]) spatialIndex[key] = [];
-        spatialIndex[key].push(feature);
+        spatialIndex[key].push(mapFeature);
       }
+    }
+  });
+}
+
+// 지도의 스크롤/줌 상태에 맞춰 현재 화면 영역 바깥의 도면선들을 지우고, 화면 내부 선들만 동적으로 주입
+function updateDynamicMapData() {
+  if (!map || !dxfGeoJsonSource || !spatialIndex) return;
+
+  var zoom = map.getZoom();
+  
+  // 최소 줌레벨 미만인 경우 지도 렌더러를 완전히 비워 렉 방지
+  if (zoom < DXF_RENDER_MIN_ZOOM) {
+    map.data.forEach(function (feature) {
+      map.data.remove(feature);
+    });
+    return;
+  }
+
+  var bounds = map.getBounds();
+  if (!bounds) return;
+
+  var sw = bounds.getSouthWest();
+  var ne = bounds.getNorthEast();
+
+  var startLatCell = Math.floor(sw.lat() / spatialIndexCellSize);
+  var endLatCell = Math.floor(ne.lat() / spatialIndexCellSize);
+  var startLngCell = Math.floor(sw.lng() / spatialIndexCellSize);
+  var endLngCell = Math.floor(ne.lng() / spatialIndexCellSize);
+
+  // 1. 현재 화면 바운더리에 포함된 격자 셀들만 뒤져서 대상 피처 고유 맵 수집
+  var visibleFeaturesMap = {};
+  for (var latCell = startLatCell; latCell <= endLatCell; latCell++) {
+    for (var lngCell = startLngCell; lngCell <= endLngCell; lngCell++) {
+      var key = latCell + ',' + lngCell;
+      var cellFeatures = spatialIndex[key];
+      if (cellFeatures) {
+        cellFeatures.forEach(function (feature) {
+          var fid = feature.getId();
+          if (fid != null) {
+            visibleFeaturesMap[fid] = feature;
+          }
+        });
+      }
+    }
+  }
+
+  // 2. 현재 지도 위에 있는 피처 스캔 및 동기화 정리
+  var currentFeaturesOnMap = {};
+  map.data.forEach(function (feature) {
+    var fid = feature.getId();
+    if (fid != null) {
+      currentFeaturesOnMap[fid] = feature;
+      
+      // 화면 바운더리 밖으로 벗어난 피처는 즉시 지도 레이어에서 탈거
+      if (!visibleFeaturesMap[fid]) {
+        map.data.remove(feature);
+      }
+    }
+  });
+
+  // 3. 화면 바운더리 내부로 들어왔으나 아직 지도에 안 실린 피처 신규 주입
+  Object.keys(visibleFeaturesMap).forEach(function (fid) {
+    if (!currentFeaturesOnMap[fid]) {
+      map.data.add(visibleFeaturesMap[fid]);
     }
   });
 }
@@ -1831,11 +1908,18 @@ function getFeatureLatLngBounds(feature) {
 function applyDxfToMap() {
   if (!map || !dxfData || !window.DxfToGeoJSON) return;
   spatialIndex = null; // 공간 인덱스 리셋
-  var geoJson = window.DxfToGeoJSON.dxfToGeoJSON(dxfData);
+  
+  // 1) 원본 GeoJSON 획득하여 전역 보관
+  dxfGeoJsonSource = window.DxfToGeoJSON.dxfToGeoJSON(dxfData);
+  
+  // 2) 기존 맵 데이터 초기 청소
   map.data.forEach(function (feature) { map.data.remove(feature); });
-  if (geoJson.features && geoJson.features.length > 0) {
-    map.data.addGeoJson(geoJson);
-    buildSpatialIndex(); // 공간 인덱스 구축
+  
+  if (dxfGeoJsonSource.features && dxfGeoJsonSource.features.length > 0) {
+    // 3) 메모리 가상 공간 인덱스 선가공 구축
+    buildSpatialIndex();
+    
+    // 4) 지도 데이터 스타일 지정
     map.data.setStyle(function (feature) {
       var geom = feature.getGeometry && feature.getGeometry();
       var geomType = geom && geom.getType ? geom.getType() : '';
@@ -1868,7 +1952,12 @@ function applyDxfToMap() {
         clickable: false
       };
     });
-    dxfBoundsLatLng = boundsFromGeoJSON(geoJson);
+    
+    // 5) 도면 외곽 바운더리 매핑
+    dxfBoundsLatLng = boundsFromGeoJSON(dxfGeoJsonSource);
+    
+    // 6) 최초 1회 화면 영역 culling 렌더링 호출
+    updateDynamicMapData();
   } else {
     dxfBoundsLatLng = null;
   }
@@ -2457,15 +2546,22 @@ function loadMetadataAndDisplay(dxfFile) {
     var loadedPhotos = res[1] || [];
     texts = project.texts || [];
     loadedPhotos.forEach(function (p) {
+      var subPhotosClean = null;
+      if (p.subPhotos && p.subPhotos.length > 0) {
+        subPhotosClean = p.subPhotos.map(function (sp) {
+          return { subIndex: sp.subIndex, fileName: sp.fileName, blob: null };
+        });
+      }
       photos.push({
         id: p.id, x: p.x, y: p.y, width: p.width, height: p.height,
-        blob: p.blob, memo: p.memo || '', fileName: p.fileName || '',
+        blob: null, memo: p.memo || '', fileName: p.fileName || '',
         createdAt: p.createdAt, updatedAt: p.updatedAt,
         numTextId: p.numTextId,
         specTextId: p.specTextId,
         specTextIds: p.specTextIds || null,
         facilityType: p.facilityType,
-        additionalTypes: p.additionalTypes || null
+        additionalTypes: p.additionalTypes || null,
+        subPhotos: subPhotosClean
       });
     });
     drawPhotoMarkers();
@@ -2794,9 +2890,12 @@ function bindMapLongPress() {
     var nearby = findNearbyFacilities(latLng, 2.0);
     nearby = nearby.filter(function (item) {
       // 1. 유효한 시설물 유형인지 필터링
-      if (detectFacilityType(item.name, item.layer) === null) return false;
+      return detectFacilityType(item.name, item.layer) !== null;
+    });
 
-      // 2. 이미 조사(촬영)가 완료된 객체인지 필터링 (반경 1.5m 내 사진 마커나 제원 텍스트가 이미 등록되어 있다면 제외)
+    // 각 시설물 객체별로 조사 완료 여부(1.5m 이내 사진 존재 여부)를 판단하여 속성 추가
+    nearby.forEach(function (item) {
+      item.isSurveyed = false;
       var feature = item.feature;
       var geom = feature && feature.getGeometry && feature.getGeometry();
       if (geom && typeof geom.getType === 'function') {
@@ -2811,7 +2910,6 @@ function bindMapLongPress() {
         }
 
         if (itemPt) {
-          var isAlreadySurveyed = false;
           // 이미 등록된 사진(photos) 중 1.5m 이내에 겹치는 것이 있는지 검사
           if (window.photos && window.photos.length > 0) {
             for (var i = 0; i < window.photos.length; i++) {
@@ -2820,33 +2918,14 @@ function bindMapLongPress() {
               if (pPos) {
                 var d = getLatLngDistanceM(itemPt, pPos);
                 if (d < 1.5) {
-                  isAlreadySurveyed = true;
+                  item.isSurveyed = true;
                   break;
                 }
               }
             }
           }
-          if (isAlreadySurveyed) return false;
-
-          // 이미 등록된 제원 텍스트(texts) 중 1.5m 이내에 겹치는 것이 있는지 검사
-          if (window.texts && window.texts.length > 0) {
-            for (var i = 0; i < window.texts.length; i++) {
-              var tObj = window.texts[i];
-              var tPos = dxfToLatLng(tObj.x, tObj.y);
-              if (tPos) {
-                var d = getLatLngDistanceM(itemPt, tPos);
-                if (d < 1.5) {
-                  isAlreadySurveyed = true;
-                  break;
-                }
-              }
-            }
-          }
-          if (isAlreadySurveyed) return false;
         }
       }
-
-      return true;
     });
 
     // 항상 바텀시트 호출 (방안 1)
@@ -3131,6 +3210,7 @@ function addPhotoAtPosition(xy, file) {
       window.localStore.savePhoto(dxfFileFullName, photo),
       window.localStore.saveProject(dxfFileFullName, { texts: texts, lastModified: new Date().toISOString() })
     ]).then(function () {
+      cleanPhotoMemory(photo);
       drawPhotoMarkers();
       drawTextMarkers();
       pendingAddPosition = null;
@@ -3347,15 +3427,23 @@ function showPhotoModal(photoId) {
     memoSuggest.insertBefore(defaultOpt, memoSuggest.firstChild);
 
     var handleMemoSelectChange = function () {
-      if (memoSuggest.value === '직접입력') {
-        memoInput.style.display = 'block';
-        memoInput.value = '';
-        memoInput.focus();
-        setTimeout(function () { memoInput.focus(); }, 10);
-      } else {
+      var val = memoSuggest.value;
+      if (val === '') {
         memoInput.style.display = 'none';
+        memoInput.value = '';
         var previewEl = document.getElementById('sw-spec-preview') || document.getElementById('pm-spec-preview');
         if (previewEl && typeof updateAllPreviewsPM === 'function') updateAllPreviewsPM();
+      } else {
+        memoInput.style.display = 'block';
+        memoInput.value = (val === '직접입력') ? '' : val;
+        memoSuggest.value = '직접입력'; // 저장 동기화용 상태 고정
+        memoInput.focus();
+        setTimeout(function () {
+          memoInput.focus();
+          if (memoInput.type !== 'number') {
+            memoInput.select();
+          }
+        }, 10);
       }
     };
 
@@ -3408,48 +3496,16 @@ function showPhotoModal(photoId) {
   var addBtn = document.getElementById('photo-modal-add-btn');
   if (addBtn) addBtn.style.display = 'inline-block';
 
-  // 기존 subPhoto object URL 해제
+  // 기존 subPhoto object URL 해제 및 썸네일 컨테이너 초기화
   subPhotoObjectUrls.forEach(function (u) { URL.revokeObjectURL(u); });
   subPhotoObjectUrls = [];
   isAddingSubPhoto = false;
 
-  // subPhotos 썸네일 렌더링
   var thumbContainer = document.getElementById('photo-modal-thumbnails');
   if (thumbContainer) {
     thumbContainer.innerHTML = '';
-    var subs = p.subPhotos || [];
-    if (subs.length > 1) {
-      subs.forEach(function (sp, idx) {
-        var thumbDiv = document.createElement('div');
-        thumbDiv.className = 'photo-thumb-item' + (idx === 0 ? ' active' : '');
-        var thumbImg = document.createElement('img');
-        if (sp.blob) {
-          var objUrl = URL.createObjectURL(sp.blob);
-          subPhotoObjectUrls.push(objUrl);
-          thumbImg.src = objUrl;
-        }
-        thumbDiv.appendChild(thumbImg);
-        var indexLabel = document.createElement('span');
-        indexLabel.className = 'thumb-index';
-        indexLabel.textContent = String(idx + 1);
-        thumbDiv.appendChild(indexLabel);
-        thumbDiv.addEventListener('click', function () {
-          openImageViewer(subs, idx);
-        });
-        thumbContainer.appendChild(thumbDiv);
-      });
-    }
   }
-
-  // 메인 이미지 클릭 시 이미지 뷰어 열기
-  img.onclick = function () {
-    var subs = p.subPhotos || [];
-    if (subs.length > 0) {
-      openImageViewer(subs, 0);
-    } else if (p.blob) {
-      openImageViewer([{ blob: p.blob, fileName: p.fileName }], 0);
-    }
-  };
+  img.onclick = null;
   
   if (!isSamePhoto) {
     img.src = '';
@@ -3642,22 +3698,62 @@ function showPhotoModal(photoId) {
     window.updateAllPreviewsPM();
   }
 
-  if (!isSamePhoto || !img.src) {
-    if (p && p.blob) {
+  // 비동기로 DB에서 온전한 레코드(blob이 살아있는 버전)를 조회해 메인 이미지 및 썸네일 렌더링
+  window.localStore.getPhotoById(photoId).then(function (record) {
+    if (editingPhotoId !== photoId) return; // 비동기 레이스 컨디션 방지
+    if (!record) return;
+
+    // 1) 메인 이미지 세팅
+    if (record.blob && (!isSamePhoto || !img.src)) {
       if (dxfImageObjectUrl) URL.revokeObjectURL(dxfImageObjectUrl);
-      dxfImageObjectUrl = URL.createObjectURL(p.blob);
+      dxfImageObjectUrl = URL.createObjectURL(record.blob);
       img.src = dxfImageObjectUrl;
-    } else {
-      window.localStore.getPhotoById(photoId).then(function (record) {
-        if (editingPhotoId !== photoId) return;
-        if (record && record.blob) {
-          if (dxfImageObjectUrl) URL.revokeObjectURL(dxfImageObjectUrl);
-          dxfImageObjectUrl = URL.createObjectURL(record.blob);
-          img.src = dxfImageObjectUrl;
-        }
-      });
     }
-  }
+
+    // 2) 썸네일 세팅
+    var thumbContainer = document.getElementById('photo-modal-thumbnails');
+    if (thumbContainer) {
+      thumbContainer.innerHTML = '';
+      var subs = record.subPhotos || [];
+      if (subs.length > 1) {
+        subPhotoObjectUrls.forEach(function (u) { URL.revokeObjectURL(u); });
+        subPhotoObjectUrls = [];
+        
+        subs.forEach(function (sp, idx) {
+          var thumbDiv = document.createElement('div');
+          thumbDiv.className = 'photo-thumb-item' + (idx === 0 ? ' active' : '');
+          var thumbImg = document.createElement('img');
+          if (sp.blob) {
+            var objUrl = URL.createObjectURL(sp.blob);
+            subPhotoObjectUrls.push(objUrl);
+            thumbImg.src = objUrl;
+          }
+          thumbDiv.appendChild(thumbImg);
+          var indexLabel = document.createElement('span');
+          indexLabel.className = 'thumb-index';
+          indexLabel.textContent = String(idx + 1);
+          thumbDiv.appendChild(indexLabel);
+          thumbDiv.addEventListener('click', function () {
+            openImageViewer(subs, idx); // blob이 온전히 살아있는 subs 전달
+          });
+          thumbContainer.appendChild(thumbDiv);
+        });
+      }
+    }
+
+    // 3) 메인 이미지 클릭 시 슬라이더 바인딩
+    img.onclick = function () {
+      var subs = record.subPhotos || [];
+      if (subs.length > 0) {
+        openImageViewer(subs, 0);
+      } else if (record.blob) {
+        openImageViewer([{ blob: record.blob, fileName: record.fileName }], 0);
+      }
+    };
+  }).catch(function (err) {
+    console.warn('사진 모달 이미지 비동기 로딩 실패:', err);
+  });
+
   modal.classList.add('active');
 }
 
@@ -4308,6 +4404,127 @@ function getMemoSuggestions(targetFacilityType) {
   return list.slice(0, 15).map(function (item) { return item.val; });
 }
 
+// 과거 도면 데이터에서 역순으로 탐색하여 '부착'이 아닌 최근 지주형식 값을 알아내는 함수
+function getLastNonAttachedSupport(facilityType) {
+  if (!window.texts || window.texts.length === 0) return null;
+  
+  var config = FACILITY_CONFIG[facilityType];
+  if (!config) return null;
+  
+  var confClean = String(config.layer || '').replace(/_T$/i, '').toLowerCase();
+  
+  // 가장 최신 데이터(맨 뒤)부터 역순으로 과거를 향해 탐색
+  for (var i = window.texts.length - 1; i >= 0; i--) {
+    var t = window.texts[i];
+    var tClean = String(t.layer || '').replace(/_T$/i, '').toLowerCase();
+    
+    // 동일한 종류의 시설물인지 확인
+    if ((tClean === confClean || tClean === facilityType.toLowerCase()) && t.text) {
+      var parsed = deserializeSpecText(t.text, config);
+      if (parsed && parsed.support) {
+        var supVal = String(parsed.support).trim();
+        // '부착'이나 빈 칸이 아닌 실질적인 지주형식(단주, 복주, 현수식 등)을 발견하면 즉시 반환하고 멈춤
+        if (supVal !== '' && supVal !== '부착' && supVal !== '선택' && supVal !== '기타') {
+          return supVal;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// 과거 도면 데이터에서 역순으로 탐색하여 대분류와 소분류가 일치하는 최근 제원 데이터를 가져오는 함수
+function getLastSpecBySubType(facilityType, subType) {
+  if (!window.texts || window.texts.length === 0) return null;
+  
+  var config = FACILITY_CONFIG[facilityType];
+  if (!config) return null;
+  
+  var confClean = String(config.layer || '').replace(/_T$/i, '').toLowerCase();
+  
+  // 가장 최신 데이터부터 역순 탐색
+  for (var i = window.texts.length - 1; i >= 0; i--) {
+    var t = window.texts[i];
+    var tClean = String(t.layer || '').replace(/_T$/i, '').toLowerCase();
+    
+    if ((tClean === confClean || tClean === facilityType.toLowerCase()) && t.text) {
+      var parsed = deserializeSpecText(t.text, config);
+      if (parsed) {
+        // 첫 번째 필드(type 또는 type1 등)의 값을 찾아와 비교
+        var primaryFieldId = config.fields[0] ? config.fields[0].id : null;
+        if (primaryFieldId && String(parsed[primaryFieldId]).trim() === String(subType).trim()) {
+          return parsed; // 일치하는 제원 객체를 찾았으므로 통째로 반환
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// 상위 속성 종류 변경에 맞춰 그 하위 속성들의 과거 최근값을 연동하여 강제 리셋해주는 트리거 함수
+function triggerSubAttributesReset(container, config, prefixId, selectedSubType) {
+  if (!container || !config || !selectedSubType) return;
+  
+  // 1. 해당 소분류의 과거 최신 제원 데이터를 획득
+  var lastSpec = getLastSpecBySubType(config.title, selectedSubType);
+  if (!lastSpec) return; // 과거 기록이 전혀 없으면 하위 필드를 리셋하지 않고 그대로 유지 (부작용 최소화)
+  
+  // 2. 첫 번째 필드를 제외한 나머지 필드들에 대해 화면 동기화 적용
+  config.fields.forEach(function (field, idx) {
+    if (idx === 0) return; // 상위 필드(종류)는 제외
+    
+    var inputId = prefixId + '-' + field.id;
+    var selEl = document.getElementById(inputId);
+    var etcEl = document.getElementById(inputId + '-etc');
+    
+    var newVal = lastSpec[field.id];
+    if (newVal === undefined) return;
+    
+    newVal = String(newVal).trim();
+    
+    if (selEl) {
+      // 드롭다운에 존재하는 옵션인지 확인
+      var exists = false;
+      for (var i = 0; i < selEl.options.length; i++) {
+        if (selEl.options[i].value === newVal) {
+          exists = true;
+          selEl.selectedIndex = i;
+          break;
+        }
+      }
+      
+      if (!exists && newVal !== '' && newVal !== '직접입력') {
+        // 추천 옵션에 없는 경우 옵션을 임시 추가
+        var opt = document.createElement('option');
+        opt.value = newVal;
+        opt.textContent = newVal;
+        selEl.add(opt, 1);
+        selEl.value = newVal;
+      }
+      
+      // 직접입력창 동기화 (우리는 초기화 시 무조건 100% 숨기지만, 값이 수집되도록 inner 값을 맞춤)
+      if (etcEl) {
+        etcEl.value = (newVal !== '직접입력') ? newVal : '';
+        etcEl.style.display = 'none'; // 무조건 숨김
+      }
+    }
+  });
+  
+  // 전체 미리보기 일괄 업데이트
+  if (typeof updateAllPreviews === 'function') updateAllPreviews();
+}
+
+// 메모리 절약을 위해 사진 객체 내부의 모든 Blob 이미지 리소스를 강제로 null 처리하여 소멸시키는 함수
+function cleanPhotoMemory(photo) {
+  if (!photo) return;
+  photo.blob = null;
+  if (photo.subPhotos && photo.subPhotos.length > 0) {
+    photo.subPhotos.forEach(function (sp) {
+      sp.blob = null;
+    });
+  }
+}
+
 // 개별 속성 카드(구분선, 타이틀, [X] 삭제 버튼 탑재)를 동적으로 생성하는 헬퍼 함수
 function renderMultiAttributeCard(container, type, cachedVals, prefixIdUnique) {
   // 전력주와 통신주는 캐드 전개 비대상 시설물이므로 속성 카드 노출을 원천 차단
@@ -4520,14 +4737,22 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
     });
 
     var handleMemoSelectChange = function () {
-      if (memoSuggestEl.value === '직접입력') {
-        memoInputEl.style.display = 'block';
-        memoInputEl.value = '';
-        memoInputEl.focus();
-        setTimeout(function () { memoInputEl.focus(); }, 10);
-      } else {
+      var val = memoSuggestEl.value;
+      if (val === '') {
         memoInputEl.style.display = 'none';
+        memoInputEl.value = '';
         if (typeof updateAllPreviews === 'function') updateAllPreviews();
+      } else {
+        memoInputEl.style.display = 'block';
+        memoInputEl.value = (val === '직접입력') ? '' : val;
+        memoSuggestEl.value = '직접입력'; // 저장 동기화용 상태 고정
+        memoInputEl.focus();
+        setTimeout(function () {
+          memoInputEl.focus();
+          if (memoInputEl.type !== 'number') {
+            memoInputEl.select();
+          }
+        }, 10);
       }
     };
 
@@ -4925,6 +5150,7 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
       window.localStore.savePhoto(dxfFileFullName, photo),
       window.localStore.saveProject(dxfFileFullName, { texts: texts, lastModified: new Date().toISOString() })
     ]).then(function () {
+      cleanPhotoMemory(photo);
       drawPhotoMarkers();
       drawTextMarkers();
       showLoading(false);
@@ -4975,7 +5201,7 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
   }
 
   // 2. 설정 테이블 필드 동적 생성 (datalist 통합 콤보박스 적용)
-  config.fields.forEach(function (field) {
+  config.fields.forEach(function (field, idx) {
     var group = document.createElement('div');
     group.className = 'form-group';
 
@@ -4984,8 +5210,10 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
     var hasCache = cachedVals && cachedVals[field.id] !== undefined;
     var cachedVal = hasCache ? cachedVals[field.id] : '';
 
-    // [요구사항] 특정 조건 충족 시 지주형식은 자동으로 "부착"으로 입력 (새주소 제외)
-    if ((field.id === 'support' || field.label === '지주형식') && config.title !== '새주소') {
+    // [요구사항] 새주소의 경우 무조건 "현수식"으로 지주형식 기본 세팅 (캐시 데이터 유무 상관없이 무조건 현수식)
+    if ((field.id === 'support' || field.label === '지주형식') && config.title === '새주소') {
+      val = '현수식';
+    } else if ((field.id === 'support' || field.label === '지주형식') && config.title !== '새주소') {
       var facilityType = config.title;
       
       // 조건 2: 두 번째 이후 카드인 경우
@@ -5009,8 +5237,16 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
         // 추가시설물(두 번째 이후 카드)로 모든 표지판과 도로반사경이 얹혀지면 무조건 "부착"
         val = '부착';
       } else if (isSignOrReflector) {
-        // 단독(첫 번째 카드)으로 수집된 모든 표지판과 도로반사경은 무조건 "단주"
-        val = '단주';
+        // 단독(첫 번째 카드)으로 수집된 모든 표지판과 도로반사경 처리
+        // 1. 과거 데이터에서 '부착'이 아니었던 최근 지주형식을 검색해 봅니다.
+        var lastNonAttached = getLastNonAttachedSupport(facilityType);
+        if (lastNonAttached) {
+          val = lastNonAttached; // 찾았다면 그 값(예: '복주')으로 입력대기
+        } else {
+          // 2. 만약 히스토리에 '부착'이 아닌 과거 기록이 없다면 캐시값 또는 기본값인 '단주'로 대기
+          var hasValidCache = hasCache && cachedVal !== '부착' && cachedVal !== '';
+          val = hasValidCache ? cachedVal : '단주';
+        }
       } else {
         var target5 = ['통신주', '전력주', '가로등', '신호등', '가로수'];
         
@@ -5055,19 +5291,22 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       var strVal = String(val).trim();
       var isOptionMatched = opts.indexOf(strVal) !== -1;
       
-      // 최초 입력이거나, '직접입력'이거나, 매칭되는 기존 옵션이 없으면 입력 상자를 기본 활성화
-      var showEtc = (strVal === '' || strVal === '선택' || strVal === '직접입력' || strVal === '기타' || !isOptionMatched);
+      // 추천 목록에 없지만 이미 채워진 데이터가 있는 경우, 드롭다운 옵션에 임시 추가하여 깔끔하게 선택되도록 처리
+      if (strVal !== '' && strVal !== '선택' && strVal !== '직접입력' && strVal !== '기타' && !isOptionMatched) {
+        opts.unshift(strVal);
+        isOptionMatched = true;
+      }
 
       opts.forEach(function (opt) {
-        var selected = (!showEtc && opt === strVal) ? ' selected' : '';
+        var selected = (opt === strVal) ? ' selected' : '';
         html += '<option value="' + opt + '"' + selected + '>' + opt + '</option>';
       });
 
       html += '</select>';
 
-      // 직접 입력용 임시 텍스트 필드 (showEtc 상태에 따라 노출 여부 결정)
-      var etcVal = (showEtc && strVal !== '선택' && strVal !== '직접입력' && strVal !== '기타') ? strVal : '';
-      var etcDisplay = showEtc ? 'block' : 'none';
+      // [요구사항] 초기 렌더링 시 텍스트 입력 상자는 무조건 숨김(display: none) 처리하여 깔끔한 화면 유지
+      var etcVal = (strVal !== '선택' && strVal !== '직접입력' && strVal !== '기타') ? strVal : '';
+      var etcDisplay = 'none';
       var inputType = isNumericField ? 'number' : 'text';
       var stepAttr = isNumericField ? ' step="any" inputmode="decimal"' : '';
       var placeholder = field.placeholder || (isNumericField ? '숫자 입력 후 완료' : '직접 입력 후 완료(엔터/바깥터치)');
@@ -5081,9 +5320,15 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
 
       if (selEl && etcEl) {
         var handleSelectChange = function () {
-          if (selEl.value === '직접입력') {
-            etcEl.style.display = 'block';
+          var sVal = selEl.value;
+          if (sVal === '--' || sVal === '') {
+            etcEl.style.display = 'none';
             etcEl.value = '';
+            updatePreview();
+          } else {
+            etcEl.style.display = 'block';
+            etcEl.value = (sVal === '직접입력') ? '' : sVal;
+            selEl.value = '직접입력'; // 저장 동기화용 상태 고정
             etcEl.focus();
             setTimeout(function () {
               etcEl.focus();
@@ -5091,9 +5336,11 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
                 etcEl.select();
               }
             }, 10);
-          } else {
-            etcEl.style.display = 'none';
-            updatePreview();
+            
+            // 첫 번째 종류 필드가 변경된 경우 하위 속성 자동 연동 동기화 트리거
+            if (idx === 0) {
+              triggerSubAttributesReset(container, config, prefixId, sVal);
+            }
           }
         };
 
@@ -5124,6 +5371,11 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
           
           etcEl.style.display = 'none';
           updatePreview();
+          
+          // 첫 번째 종류 필드가 변경 완료된 경우 하위 속성 자동 연동 동기화 트리거
+          if (idx === 0) {
+            triggerSubAttributesReset(container, config, prefixId, selEl.value);
+          }
         };
 
         selEl.addEventListener('change', handleSelectChange);
@@ -5583,7 +5835,16 @@ function showStreetlightBottomSheet(list, dxfCoords, latLng) {
     list.forEach(function (item) {
       var div = document.createElement('div');
       div.className = 'facility-list-item';
-      div.textContent = item.name + ' (' + item.layer + ') — ' + item.distance.toFixed(1) + 'm';
+      
+      var suffix = item.isSurveyed ? ' [조사완료]' : '';
+      div.textContent = item.name + ' (' + item.layer + ') — ' + item.distance.toFixed(1) + 'm' + suffix;
+      
+      if (item.isSurveyed) {
+        div.style.color = '#888';
+        div.style.backgroundColor = '#f5f5f5';
+        div.style.borderColor = '#e0e0e0';
+      }
+      
       div.addEventListener('click', function () {
         triggerStreetlightCamera(item, dxfCoords, latLng);
       });
@@ -5677,16 +5938,22 @@ function tryAutoLoadLastProject() {
       return window.localStore.loadPhotos(lastDxfFile).then(function (loadedPhotos) {
         photos = [];
         loadedPhotos.forEach(function (p) {
+          var subPhotosClean = null;
+          if (p.subPhotos && p.subPhotos.length > 0) {
+            subPhotosClean = p.subPhotos.map(function (sp) {
+              return { subIndex: sp.subIndex, fileName: sp.fileName, blob: null };
+            });
+          }
           photos.push({
             id: p.id, x: p.x, y: p.y, width: p.width, height: p.height,
-            blob: p.blob, memo: p.memo || '', fileName: p.fileName || '',
+            blob: null, memo: p.memo || '', fileName: p.fileName || '',
             createdAt: p.createdAt, updatedAt: p.updatedAt,
             numTextId: p.numTextId,
             specTextId: p.specTextId,
             specTextIds: p.specTextIds || null,
             facilityType: p.facilityType,
             additionalTypes: p.additionalTypes || null,
-            subPhotos: p.subPhotos || null
+            subPhotos: subPhotosClean
           });
         });
         drawPhotoMarkers();
@@ -5751,47 +6018,65 @@ function addSubPhotoToCurrentPhoto(file) {
   var numTextObj = p.numTextId ? texts.filter(function (t) { return t.id === p.numTextId; })[0] : null;
   var numTextVal = numTextObj ? numTextObj.text : getNextPhotoNumber();
 
-  if (!p.subPhotos) {
-    p.subPhotos = [];
-    if (p.blob) {
-      p.subPhotos.push({
-        subIndex: 0,
-        fileName: p.fileName || generatePhotoFileName(numTextVal),
-        blob: p.blob
+  // 1. 디스크 DB에서 안전하게 온전한 원본 객체를 조회
+  window.localStore.getPhotoById(editingPhotoId).then(function (record) {
+    if (!record) {
+      alert('저장된 사진 원본 데이터를 찾을 수 없어 추가할 수 없습니다.');
+      return;
+    }
+
+    if (!record.subPhotos) {
+      record.subPhotos = [];
+      if (record.blob) {
+        record.subPhotos.push({
+          subIndex: 0,
+          fileName: record.fileName || generatePhotoFileName(numTextVal),
+          blob: record.blob
+        });
+      }
+    }
+
+    var nextSubSuffix = record.subPhotos.length;
+    var newFileName = generatePhotoFileName(numTextVal + '_' + nextSubSuffix);
+
+    function finish(blob) {
+      record.subPhotos.push({
+        subIndex: nextSubSuffix,
+        fileName: newFileName,
+        blob: blob
+      });
+      
+      record.updatedAt = new Date().toISOString();
+
+      // 2. 온전한 원본 레코드를 DB에 안전하게 보존 저장
+      window.localStore.savePhoto(dxfFileFullName, record).then(function () {
+        // 3. 저장이 성공하면 메모리 photos 배열 객체(p)의 메타데이터 싱크
+        p.subPhotos = record.subPhotos.map(function (sp) {
+          return { subIndex: sp.subIndex, fileName: sp.fileName, blob: null }; // 메모리에는 blob을 보관하지 않음
+        });
+        p.updatedAt = record.updatedAt;
+        cleanPhotoMemory(p); // 안전 청소 보장
+
+        showToast('추가 사진이 저장되었습니다.');
+        // 모달창 갱신
+        showPhotoModal(p.id);
+      }).catch(function (err) {
+        console.error('서브 사진 저장 실패:', err);
+        alert('추가 사진을 저장하지 못했습니다.');
       });
     }
-  }
 
-  var nextSubSuffix = p.subPhotos.length;
-  var newFileName = generatePhotoFileName(numTextVal + '_' + nextSubSuffix);
-
-  function finish(blob) {
-    p.subPhotos.push({
-      subIndex: nextSubSuffix,
-      fileName: newFileName,
-      blob: blob
-    });
-    
-    // 메인 blob 및 파일명은 유지
-    p.updatedAt = new Date().toISOString();
-
-    window.localStore.savePhoto(dxfFileFullName, p).then(function () {
-      showToast('추가 사진이 저장되었습니다.');
-      // 모달창 갱신
-      showPhotoModal(p.id);
-    }).catch(function (err) {
-      console.error('서브 사진 저장 실패:', err);
-      alert('추가 사진을 저장하지 못했습니다.');
-    });
-  }
-
-  if (targetSize != null) {
-    compressImage(file, targetSize).then(finish).catch(function () {
+    if (targetSize != null) {
+      compressImage(file, targetSize).then(finish).catch(function () {
+        finish(file);
+      });
+    } else {
       finish(file);
-    });
-  } else {
-    finish(file);
-  }
+    }
+  }).catch(function (err) {
+    console.error('DB 원본 로딩 실패:', err);
+    alert('DB에서 사진 원본을 조회하는 중 오류가 발생했습니다.');
+  });
 }
 
 /** 이미지 슬라이드 뷰어 열기 */

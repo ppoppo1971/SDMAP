@@ -2909,17 +2909,6 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
         values['material'] = parts[2] || '';
         values['height'] = parts[3] || '';
       }
-    } else if (fType === '도로표지') {
-      // 모바일 표준 4파트 포맷팅 대응하되, 과거 3파트 데이터도 밀리지 않게 지능적 보정
-      if (parts.length === 3) {
-        values['direction'] = parts[1] || '방향';
-        values['content'] = '';
-        values['support'] = parts[2] || '단주';
-      } else {
-        values['direction'] = parts[1] || '방향';
-        values['content'] = (parts[2] === '--') ? '' : (parts[2] || '');
-        values['support'] = parts[3] || '단주';
-      }
     } else if (config.joinFormat) {
       if (fType === '배수암거') {
         var dim = parts[1] || '';
@@ -3228,17 +3217,6 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
           ped = pedType + '*' + (values['pedestrianCount'] || '1');
         }
         resultParts.push(ped);
-      }
-    } else if (fType === '도로표지') {
-      // 모바일 표준 4파트 포맷팅 대응하되, 과거 3파트 데이터도 밀리지 않게 지능적 보정
-      if (parts.length === 3) {
-        values['direction'] = parts[1] || '방향';
-        values['content'] = '';
-        values['support'] = parts[2] || '단주';
-      } else {
-        values['direction'] = parts[1] || '방향';
-        values['content'] = (parts[2] === '--') ? '' : (parts[2] || '');
-        values['support'] = parts[3] || '단주';
       }
     } else if (config.joinFormat) {
       if (type === '배수암거') {
