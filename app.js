@@ -43,7 +43,7 @@ var streetlightPreviewObjectUrl = null; // 이미지 프리뷰용 Object URL 캐
 var lastSpecs = {};
 
 // DXF 도면 렌더링 culling 최적화를 위한 원본 소스 캐시 및 최소 줌 레벨
-var dxfGeoJsonSource = null;
+var dxfGoogleFeaturesSource = [];
 var DXF_RENDER_MIN_ZOOM = 16;
 
 // 30여 개 시설물 제원 포맷 및 입력 양식 설정 테이블
@@ -1784,17 +1784,14 @@ var spatialIndexCellSize = 0.0005; // ~50m 격자 크기
 
 function buildSpatialIndex() {
   spatialIndex = {};
-  if (!dxfGeoJsonSource || !dxfGeoJsonSource.features) return;
+  if (!dxfGoogleFeaturesSource || dxfGoogleFeaturesSource.length === 0) return;
   
-  dxfGeoJsonSource.features.forEach(function (geoJsonFeat, idx) {
-    if (geoJsonFeat.id === undefined) {
-      geoJsonFeat.id = 'dxf-feat-' + idx;
-    }
+  dxfGoogleFeaturesSource.forEach(function (feature) {
+    // 구글 API가 정상 생성한 데이터이므로 getGeometry()가 100% 보장됨
+    var geom = feature.getGeometry && feature.getGeometry();
+    if (!geom || !geom.getType) return;
     
-    // 렌더링 성능을 위해 메모리 가상 공간에 구글 맵 피처 인스턴스 우선 생성
-    var mapFeature = new google.maps.Data.Feature(geoJsonFeat);
-    
-    var bounds = getFeatureLatLngBounds(mapFeature);
+    var bounds = getFeatureLatLngBounds(feature);
     if (!bounds) return;
     
     var startLatCell = Math.floor(bounds.minLat / spatialIndexCellSize);
@@ -1806,7 +1803,7 @@ function buildSpatialIndex() {
       for (var lngCell = startLngCell; lngCell <= endLngCell; lngCell++) {
         var key = latCell + ',' + lngCell;
         if (!spatialIndex[key]) spatialIndex[key] = [];
-        spatialIndex[key].push(mapFeature);
+        spatialIndex[key].push(feature);
       }
     }
   });
@@ -1814,7 +1811,7 @@ function buildSpatialIndex() {
 
 // 지도의 스크롤/줌 상태에 맞춰 현재 화면 영역 바깥의 도면선들을 지우고, 화면 내부 선들만 동적으로 주입
 function updateDynamicMapData() {
-  if (!map || !dxfGeoJsonSource || !spatialIndex) return;
+  if (!map || !dxfGoogleFeaturesSource || !spatialIndex) return;
 
   var zoom = map.getZoom();
   
