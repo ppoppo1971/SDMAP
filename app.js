@@ -2922,9 +2922,12 @@ function bindMapLongPress() {
       return detectFacilityType(item.name, item.layer) !== null;
     });
 
-    // 각 시설물 객체별로 조사 완료 여부(1.5m 이내 사진 존재 여부)를 판단하여 속성 추가
+    // 각 시설물 객체별로 조사 완료 여부(1.5m 이내 사진 존재 및 시설물 종류 일치 여부)를 판단하여 속성 추가
     nearby.forEach(function (item) {
       item.isSurveyed = false;
+      var facilityType = detectFacilityType(item.name, item.layer);
+      if (!facilityType) return;
+
       var feature = item.feature;
       var geom = feature && feature.getGeometry && feature.getGeometry();
       if (geom && typeof geom.getType === 'function') {
@@ -2939,22 +2942,39 @@ function bindMapLongPress() {
         }
 
         if (itemPt) {
-          // 이미 등록된 사진(photos) 중 1.5m 이내에 겹치는 것이 있는지 검사
+          // 이미 등록된 사진(photos) 중 1.5m 이내에 겹치고 종류가 일치하는 것이 있는지 검사
           if (window.photos && window.photos.length > 0) {
             for (var i = 0; i < window.photos.length; i++) {
               var p = window.photos[i];
-              var pPos = dxfToLatLng(p.x, p.y);
-              if (pPos) {
-                var d = getLatLngDistanceM(itemPt, pPos);
-                if (d < 1.5) {
-                  item.isSurveyed = true;
-                  break;
+              
+              // 사진의 메인 시설물 종류 또는 부속 시설물 목록에 매핑되는지 체크
+              var isTypeMatched = (p.facilityType === facilityType);
+              if (!isTypeMatched && p.additionalTypes && p.additionalTypes.indexOf) {
+                isTypeMatched = (p.additionalTypes.indexOf(facilityType) !== -1);
+              }
+
+              if (isTypeMatched) {
+                var pPos = dxfToLatLng(p.x, p.y);
+                if (pPos) {
+                  var d = getLatLngDistanceM(itemPt, pPos);
+                  if (d < 1.5) {
+                    item.isSurveyed = true;
+                    break;
+                  }
                 }
               }
             }
           }
         }
       }
+    });
+
+    // 미조사 항목을 목록 상단에 배치하고, 조사 완료된 항목은 하단으로 순위를 밀되, 각각의 군 안에서는 거리순 정렬 유지
+    nearby.sort(function (a, b) {
+      if (!!a.isSurveyed !== !!b.isSurveyed) {
+        return a.isSurveyed ? 1 : -1;
+      }
+      return a.distance - b.distance;
     });
 
     // 항상 바텀시트 호출 (방안 1)
