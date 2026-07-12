@@ -3483,6 +3483,7 @@ function showPhotoModal(photoId) {
         var previewEl = document.getElementById('sw-spec-preview') || document.getElementById('pm-spec-preview');
         if (previewEl && typeof updateAllPreviewsPM === 'function') updateAllPreviewsPM();
       } else {
+        // 사진 메모는 기존 방식 유지: 추천 선택 시도 즉시 입력창을 열어 편집 대기
         memoInput.style.display = 'block';
         memoInput.value = (val === '직접입력') ? '' : val;
         memoSuggest.value = '직접입력'; // 저장 동기화용 상태 고정
@@ -4792,6 +4793,7 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
         memoInputEl.value = '';
         if (typeof updateAllPreviews === 'function') updateAllPreviews();
       } else {
+        // 사진 메모는 기존 방식 유지: 추천 선택 시 즉시 입력창을 열어 편집 대기
         memoInputEl.style.display = 'block';
         memoInputEl.value = (val === '직접입력') ? '' : val;
         memoSuggestEl.value = '직접입력'; // 저장 동기화용 상태 고정
@@ -5374,17 +5376,19 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
             etcEl.style.display = 'none';
             etcEl.value = '';
             updatePreview();
-          } else {
+          } else if (sVal === '직접입력') {
+            // 직접입력을 선택한 경우에만 인풋창을 노출하고 포커스
             etcEl.style.display = 'block';
-            etcEl.value = (sVal === '직접입력') ? '' : sVal;
-            selEl.value = '직접입력'; // 저장 동기화용 상태 고정
+            etcEl.value = '';
             etcEl.focus();
             setTimeout(function () {
               etcEl.focus();
-              if (etcEl.type !== 'number') {
-                etcEl.select();
-              }
             }, 10);
+          } else {
+            // 추천 항목을 선택한 경우: 인풋창은 숨기고 값만 주입한 뒤 확정
+            etcEl.style.display = 'none';
+            etcEl.value = sVal;
+            updatePreview();
             
             // 첫 번째 종류 필드가 변경된 경우 하위 속성 자동 연동 동기화 트리거
             if (idx === 0) {
