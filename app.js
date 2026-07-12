@@ -2922,58 +2922,8 @@ function bindMapLongPress() {
       return detectFacilityType(item.name, item.layer) !== null;
     });
 
-    // 각 시설물 객체별로 조사 완료 여부(1.5m 이내 사진 존재 및 시설물 종류 일치 여부)를 판단하여 속성 추가
-    nearby.forEach(function (item) {
-      item.isSurveyed = false;
-      var facilityType = detectFacilityType(item.name, item.layer);
-      if (!facilityType) return;
-
-      var feature = item.feature;
-      var geom = feature && feature.getGeometry && feature.getGeometry();
-      if (geom && typeof geom.getType === 'function') {
-        var itemPt = null;
-        if (geom.getType() === 'Point') {
-          itemPt = geom.get();
-        } else if (geom.getType() === 'LineString') {
-          itemPt = geom.getAt(0);
-        } else if (geom.getType() === 'Polygon') {
-          var path = geom.getAt(0);
-          if (path && path.getAt) itemPt = path.getAt(0);
-        }
-
-        if (itemPt) {
-          // 이미 등록된 사진(photos) 중 1.5m 이내에 겹치고 종류가 일치하는 것이 있는지 검사
-          if (window.photos && window.photos.length > 0) {
-            for (var i = 0; i < window.photos.length; i++) {
-              var p = window.photos[i];
-              
-              // 사진의 메인 시설물 종류 또는 부속 시설물 목록에 매핑되는지 체크
-              var isTypeMatched = (p.facilityType === facilityType);
-              if (!isTypeMatched && p.additionalTypes && p.additionalTypes.indexOf) {
-                isTypeMatched = (p.additionalTypes.indexOf(facilityType) !== -1);
-              }
-
-              if (isTypeMatched) {
-                var pPos = dxfToLatLng(p.x, p.y);
-                if (pPos) {
-                  var d = getLatLngDistanceM(itemPt, pPos);
-                  if (d < 1.5) {
-                    item.isSurveyed = true;
-                    break;
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    });
-
-    // 미조사 항목을 목록 상단에 배치하고, 조사 완료된 항목은 하단으로 순위를 밀되, 각각의 군 안에서는 거리순 정렬 유지
+    // 거리순 정렬
     nearby.sort(function (a, b) {
-      if (!!a.isSurveyed !== !!b.isSurveyed) {
-        return a.isSurveyed ? 1 : -1;
-      }
       return a.distance - b.distance;
     });
 
@@ -5793,11 +5743,13 @@ function findNearbyFacilities(latLng, maxDistM) {
       var bx = feature.getProperty('blockInsertX');
       var by = feature.getProperty('blockInsertY');
       
+      // 동일한 블록 삽입 좌표(blockInsertXY)가 정확히 일치하는 경우에만 중복으로 처리
+      // (이름이 같거나 거리가 비슷한 것은 별개 객체이므로 중복 처리하지 않음)
       var already = list.some(function (x) {
         if (bx != null && by != null && x.bx != null && x.by != null) {
-          return Math.abs(x.bx - bx) < 0.01 && Math.abs(x.by - by) < 0.01;
+          return Math.abs(x.bx - bx) < 0.001 && Math.abs(x.by - by) < 0.001;
         }
-        return x.name === name && Math.abs(x.distance - dist) < 0.2;
+        return false;
       });
       
       if (!already) {
@@ -5889,14 +5841,7 @@ function showStreetlightBottomSheet(list, dxfCoords, latLng) {
       var div = document.createElement('div');
       div.className = 'facility-list-item';
       
-      var suffix = item.isSurveyed ? ' [조사완료]' : '';
-      div.textContent = item.name + ' (' + item.layer + ') — ' + item.distance.toFixed(1) + 'm' + suffix;
-      
-      if (item.isSurveyed) {
-        div.style.color = '#888';
-        div.style.backgroundColor = '#f5f5f5';
-        div.style.borderColor = '#e0e0e0';
-      }
+      div.textContent = item.name + ' (' + item.layer + ') — ' + item.distance.toFixed(1) + 'm';
       
       div.addEventListener('click', function () {
         triggerStreetlightCamera(item, dxfCoords, latLng);
