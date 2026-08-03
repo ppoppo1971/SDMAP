@@ -400,8 +400,9 @@
   function exportProjectSequential(dxfFile, onProgress) {
     return Promise.all([loadProject(dxfFile), loadPhotos(dxfFile)]).then(function (res) {
       var project = res[0] || {};
-      var photos = res[1] || [];
-      var baseName = normalizeBaseName(dxfFile);
+      var rawPhotos = res[1] || [];
+      return preparePhotoEntries(rawPhotos).then(function (photos) {
+        var baseName = normalizeBaseName(dxfFile);
 
       // subPhotos flatten: 개별 파일 목록 및 메타데이터 photos 배열 확장
       var flatPhotos = [];
@@ -464,7 +465,8 @@
         return chain.then(function () { return { success: true, totalFiles: totalFiles }; });
       });
     });
-  }
+  });
+}
 
   // [참고] 이 함수는 현재 사용되지 않는 데드 코드(Dead Code)입니다.
   // 실제 프로젝트를 단일 ZIP 파일로 통합해 내보내는 기능은 아래의 exportAsZipOnly() 함수를 사용합니다.
@@ -472,11 +474,26 @@
     return exportProjectSequential(dxfFile, onProgress);
   }
 
+  function preparePhotoEntries(photos) {
+    if (!photos || photos.length === 0) return Promise.resolve([]);
+    var photoFetchTasks = photos.map(function (p) {
+      var needsFetch = !p.blob || (p.subPhotos && p.subPhotos.some(function (sp) { return !sp.blob; }));
+      if (needsFetch) {
+        return getPhotoById(p.id).then(function (rec) {
+          return rec || p;
+        }).catch(function () { return p; });
+      }
+      return Promise.resolve(p);
+    });
+    return Promise.all(photoFetchTasks);
+  }
+
   function exportAsZipOnly(dxfFile, compressOptions, onProgress) {
     return Promise.all([loadProject(dxfFile), loadPhotos(dxfFile)]).then(function (res) {
       var project = res[0] || {};
-      var photos = res[1] || [];
-      var baseName = normalizeBaseName(dxfFile);
+      var rawPhotos = res[1] || [];
+      return preparePhotoEntries(rawPhotos).then(function (photos) {
+        var baseName = normalizeBaseName(dxfFile);
 
       var flatPhotos = [];
       var rawEntries = [];
@@ -562,13 +579,15 @@
         });
       });
     });
-  }
+  });
+}
 
   function exportAsPartitionedZips(dxfFile, compressOptions, onProgress) {
     return Promise.all([loadProject(dxfFile), loadPhotos(dxfFile)]).then(function (res) {
       var project = res[0] || {};
-      var photos = res[1] || [];
-      var baseName = normalizeBaseName(dxfFile);
+      var rawPhotos = res[1] || [];
+      return preparePhotoEntries(rawPhotos).then(function (photos) {
+        var baseName = normalizeBaseName(dxfFile);
 
       var flatPhotos = [];
       var rawEntries = [];
@@ -689,7 +708,8 @@
         });
       });
     });
-  }
+  });
+}
 
   function getPhotoDataUrl(photoId) {
     return getPhotoById(photoId).then(function (r) {

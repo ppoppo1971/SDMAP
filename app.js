@@ -2575,22 +2575,16 @@ function loadMetadataAndDisplay(dxfFile) {
     var loadedPhotos = res[1] || [];
     texts = project.texts || [];
     loadedPhotos.forEach(function (p) {
-      var subPhotosClean = null;
-      if (p.subPhotos && p.subPhotos.length > 0) {
-        subPhotosClean = p.subPhotos.map(function (sp) {
-          return { subIndex: sp.subIndex, fileName: sp.fileName, blob: null };
-        });
-      }
       photos.push({
         id: p.id, x: p.x, y: p.y, width: p.width, height: p.height,
-        blob: null, memo: p.memo || '', fileName: p.fileName || '',
+        blob: p.blob, memo: p.memo || '', fileName: p.fileName || '',
         createdAt: p.createdAt, updatedAt: p.updatedAt,
         numTextId: p.numTextId,
         specTextId: p.specTextId,
         specTextIds: p.specTextIds || null,
         facilityType: p.facilityType,
         additionalTypes: p.additionalTypes || null,
-        subPhotos: subPhotosClean
+        subPhotos: p.subPhotos || null
       });
     });
     drawPhotoMarkers();
@@ -4514,15 +4508,9 @@ function triggerSubAttributesReset(container, config, prefixId, selectedSubType)
   if (typeof updateAllPreviews === 'function') updateAllPreviews();
 }
 
-// 메모리 절약을 위해 사진 객체 내부의 모든 Blob 이미지 리소스를 강제로 null 처리하여 소멸시키는 함수
+// 메모리 보존을 위해 photo.blob을 유지
 function cleanPhotoMemory(photo) {
-  if (!photo) return;
-  photo.blob = null;
-  if (photo.subPhotos && photo.subPhotos.length > 0) {
-    photo.subPhotos.forEach(function (sp) {
-      sp.blob = null;
-    });
-  }
+  return;
 }
 
 // 개별 속성 카드(구분선, 타이틀, [X] 삭제 버튼 탑재)를 동적으로 생성하는 헬퍼 함수
@@ -5936,22 +5924,16 @@ function tryAutoLoadLastProject() {
       return window.localStore.loadPhotos(lastDxfFile).then(function (loadedPhotos) {
         photos = [];
         loadedPhotos.forEach(function (p) {
-          var subPhotosClean = null;
-          if (p.subPhotos && p.subPhotos.length > 0) {
-            subPhotosClean = p.subPhotos.map(function (sp) {
-              return { subIndex: sp.subIndex, fileName: sp.fileName, blob: null };
-            });
-          }
           photos.push({
             id: p.id, x: p.x, y: p.y, width: p.width, height: p.height,
-            blob: null, memo: p.memo || '', fileName: p.fileName || '',
+            blob: p.blob, memo: p.memo || '', fileName: p.fileName || '',
             createdAt: p.createdAt, updatedAt: p.updatedAt,
             numTextId: p.numTextId,
             specTextId: p.specTextId,
             specTextIds: p.specTextIds || null,
             facilityType: p.facilityType,
             additionalTypes: p.additionalTypes || null,
-            subPhotos: subPhotosClean
+            subPhotos: p.subPhotos || null
           });
         });
         drawPhotoMarkers();
@@ -6048,12 +6030,8 @@ function addSubPhotoToCurrentPhoto(file) {
 
       // 2. 온전한 원본 레코드를 DB에 안전하게 보존 저장
       window.localStore.savePhoto(dxfFileFullName, record).then(function () {
-        // 3. 저장이 성공하면 메모리 photos 배열 객체(p)의 메타데이터 싱크
-        p.subPhotos = record.subPhotos.map(function (sp) {
-          return { subIndex: sp.subIndex, fileName: sp.fileName, blob: null }; // 메모리에는 blob을 보관하지 않음
-        });
+        p.subPhotos = record.subPhotos;
         p.updatedAt = record.updatedAt;
-        cleanPhotoMemory(p); // 안전 청소 보장
 
         showToast('추가 사진이 저장되었습니다.');
         // 모달창 갱신
