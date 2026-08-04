@@ -42,9 +42,9 @@ var streetlightPreviewObjectUrl = null; // 이미지 프리뷰용 Object URL 캐
 // 모든 시설물 통합 캐시 스펙 저장 객체
 var lastSpecs = {};
 
-// DXF 도면 렌더링 culling 최적화를 위한 원본 소스 캐시 및 최소 줌 레벨
+// DXF 도면 렌더링 (방안 2: 줌 레벨 제한 없이 모든 축소 단계에서 항상 도면 표시)
 var dxfGoogleFeaturesSource = [];
-var DXF_RENDER_MIN_ZOOM = 16;
+var DXF_RENDER_MIN_ZOOM = 0;
 
 // 30여 개 시설물 제원 포맷 및 입력 양식 설정 테이블
 var FACILITY_CONFIG = {
