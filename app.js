@@ -4508,9 +4508,15 @@ function triggerSubAttributesReset(container, config, prefixId, selectedSubType)
   if (typeof updateAllPreviews === 'function') updateAllPreviews();
 }
 
-// 메모리 보존을 위해 photo.blob을 유지
+// 디스크 DB(IndexedDB) 저장 완료 후 RAM 메모리 과부하 및 앱 재부팅 방지를 위한 메모리 정제
 function cleanPhotoMemory(photo) {
-  return;
+  if (!photo) return;
+  if (photo.blob) photo.blob = null;
+  if (photo.subPhotos && photo.subPhotos.length > 0) {
+    photo.subPhotos.forEach(function (sp) {
+      if (sp.blob) sp.blob = null;
+    });
+  }
 }
 
 // 개별 속성 카드(구분선, 타이틀, [X] 삭제 버튼 탑재)를 동적으로 생성하는 헬퍼 함수

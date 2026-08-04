@@ -95,7 +95,33 @@
 
   function savePhoto(dxfFile, photo) {
     return getDb().then(function (db) {
-      return new Promise(function (resolve, reject) {
+      return getPhotoById(photo.id).then(function (existingRecord) {
+        var finalBlob = photo.blob;
+        if (!finalBlob && existingRecord && existingRecord.blob) {
+          finalBlob = existingRecord.blob;
+        }
+
+        var finalSubPhotos = photo.subPhotos;
+        if (finalSubPhotos && existingRecord && existingRecord.subPhotos) {
+          finalSubPhotos = finalSubPhotos.map(function (sp) {
+            if (!sp.blob) {
+              var oldSp = existingRecord.subPhotos.filter(function (x) {
+                return (x.subIndex === sp.subIndex) || (x.fileName === sp.fileName);
+              })[0];
+              if (oldSp && oldSp.blob) {
+                return {
+                  subIndex: sp.subIndex,
+                  fileName: sp.fileName,
+                  blob: oldSp.blob
+                };
+              }
+            }
+            return sp;
+          });
+        } else if (!finalSubPhotos && existingRecord && existingRecord.subPhotos) {
+          finalSubPhotos = existingRecord.subPhotos;
+        }
+
         var record = {
           id: String(photo.id),
           dxfFile: dxfFile,
@@ -103,20 +129,23 @@
           memo: photo.memo || '',
           x: photo.x, y: photo.y,
           width: photo.width, height: photo.height,
-          blob: photo.blob,
-          createdAt: photo.createdAt || new Date().toISOString(),
+          blob: finalBlob,
+          createdAt: photo.createdAt || (existingRecord ? existingRecord.createdAt : new Date().toISOString()),
           updatedAt: new Date().toISOString(),
           numTextId: photo.numTextId || null,
           specTextId: photo.specTextId || null,
           specTextIds: photo.specTextIds || null,
           additionalTypes: photo.additionalTypes || null,
           facilityType: photo.facilityType || null,
-          subPhotos: photo.subPhotos || null
+          subPhotos: finalSubPhotos || null
         };
-        var tx = db.transaction(PHOTO_STORE, 'readwrite');
-        tx.objectStore(PHOTO_STORE).put(record);
-        tx.oncomplete = function () { resolve(true); };
-        tx.onerror = function () { reject(tx.error); };
+
+        return new Promise(function (resolve, reject) {
+          var tx = db.transaction(PHOTO_STORE, 'readwrite');
+          tx.objectStore(PHOTO_STORE).put(record);
+          tx.oncomplete = function () { resolve(true); };
+          tx.onerror = function () { reject(tx.error); };
+        });
       });
     });
   }
