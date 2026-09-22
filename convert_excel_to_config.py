@@ -134,7 +134,53 @@ def convert_excel_to_config(excel_path, output_js_path):
         
     print(f"SUCCESS: Converted {len(facility_config)} facilities to {output_js_path}")
 
+import sys
+
+def choose_excel_file(default_dir, default_filename):
+    # 1. 커맨드라인 인자로 파일 경로가 전달된 경우 (예: 드래그 앤 드롭 또는 콘솔 실행)
+    if len(sys.argv) > 1 and os.path.isfile(sys.argv[1]):
+        return os.path.abspath(sys.argv[1])
+        
+    # 2. 윈도우 표준 파일 선택 창 띄우기
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        
+        root = tk.Tk()
+        root.withdraw()  # 불필요한 메인 창 숨김
+        root.attributes("-topmost", True)  # 파일 선택창을 화면 맨 앞으로
+        
+        file_path = filedialog.askopenfilename(
+            title="도로대장 시설물 조사옵션 엑셀 파일을 선택해 주세요",
+            initialdir=default_dir,
+            initialfile=default_filename,
+            filetypes=[("Excel 파일 (*.xlsx;*.xlsm)", "*.xlsx;*.xlsm"), ("모든 파일 (*.*)", "*.*")]
+        )
+        root.destroy()
+        
+        if file_path and os.path.isfile(file_path):
+            return os.path.abspath(file_path)
+    except Exception as e:
+        print(f"[알림] 파일 선택창 호출 중 오류: {e}")
+        
+    # 3. 사용자가 창을 닫았거나 취소한 경우, 기본 파일이 있으면 기본 파일 사용
+    default_path = os.path.join(default_dir, default_filename)
+    if os.path.isfile(default_path):
+        print(f"[안내] 파일 선택이 취소되어 기본 파일을 사용합니다: {default_filename}")
+        return default_path
+        
+    return None
+
 if __name__ == "__main__":
-    excel_path = r"d:\!!프로그램\CODING\NDMAP_edit\PDMAP_평택용도로대장\20260918\도로대장_시설물_조사옵션_템플릿.xlsx"
-    out_js = r"d:\!!프로그램\CODING\NDMAP_edit\PDMAP_평택용도로대장\20260918\facility-config.js"
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    default_excel_name = "도로대장_시설물_조사옵션_템플릿.xlsx"
+    out_js = os.path.join(script_dir, "facility-config.js")
+    
+    excel_path = choose_excel_file(script_dir, default_excel_name)
+    if not excel_path:
+        print("[취소] 선택된 엑셀 파일이 없어 작업을 중단합니다.")
+        sys.exit(1)
+        
+    print(f"[작업 시작] 엑셀 파일: {excel_path}")
     convert_excel_to_config(excel_path, out_js)
+

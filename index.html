@@ -11,7 +11,14 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>new_dmap - 도면 뷰어</title>
+  <meta name="apple-mobile-web-app-title" content="도로조사">
+  <meta name="theme-color" content="#2563eb">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <title>도로조사 - 도로대장 현장조사</title>
   <style>
     /* 구글 지도 하단 UI (단축키, 로고, 저작권, 약관 등) 강제 숨김 */
     .gmnoprint, .gm-style-cc { display: none !important; }
@@ -896,6 +903,18 @@
       };
       document.head.appendChild(s);
     })();
+  </script>
+  <!-- PWA Service Worker 등록 -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('./sw.js').then(function (reg) {
+          console.log('[PWA] ServiceWorker registered with scope:', reg.scope);
+        }).catch(function (err) {
+          console.warn('[PWA] ServiceWorker registration failed:', err);
+        });
+      });
+    }
   </script>
 </body>
 </html>
