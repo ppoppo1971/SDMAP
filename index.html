@@ -788,6 +788,36 @@
     </div>
   </div>
 
+  <!-- 미감지 시설물 선택 및 일반사진 모달 (방안 1) -->
+  <div class="modal" id="facility-select-modal">
+    <div class="modal-content" style="max-width:380px;">
+      <div class="modal-header">
+        <h3>📷 사진 촬영 & 미감지 시설물</h3>
+        <span class="close-btn" id="facility-select-close">&times;</span>
+      </div>
+      <div class="info-box" style="margin-bottom:12px; font-size:13px; line-height:1.4;">
+        도면에 감지 레이어가 없는 시설물은 아래에서 직접 선택하여 조사창으로 진행할 수 있습니다.
+      </div>
+      <div class="form-group" style="margin-bottom:15px;">
+        <label for="facility-select-dropdown" style="font-size:13px; font-weight:bold; color:#333;">시설물 선택 (도면 미감지 시):</label>
+        <select id="facility-select-dropdown" style="padding:10px; border:1.5px solid #007AFF; border-radius:8px; font-size:14px; font-weight:500; background:#fff; width:100%; box-sizing:border-box;">
+          <option value="">선택 안 함 (기본 일반사진)</option>
+        </select>
+      </div>
+      <div id="facility-select-actions" style="display:flex; flex-direction:column; gap:8px;">
+        <button type="button" class="btn" id="btn-proceed-facility-camera" style="background:#007AFF; color:#fff; padding:12px; font-weight:bold; border-radius:8px; border:none; cursor:pointer;">
+          📷 선택 시설물 사진촬영 조사
+        </button>
+        <button type="button" class="btn" id="btn-proceed-facility-textonly" style="background:#5856D6; color:#fff; padding:12px; font-weight:bold; border-radius:8px; border:none; cursor:pointer;">
+          📝 선택 시설물 글자만 등록 (사진 없음)
+        </button>
+        <button type="button" class="btn btn-secondary" id="btn-proceed-general-photo" style="background:#f2f2f7; color:#333; border:1px solid #ccc; padding:12px; font-weight:bold; border-radius:8px; cursor:pointer;">
+          📷 기본 일반사진 촬영 (선택 안 함)
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- DXF 문자 보기 모달 (간단, 모달 외 터치 시 닫힘) -->
   <div class="modal" id="dxf-text-modal">
     <div class="modal-content" style="max-width:320px;">
@@ -826,6 +856,7 @@
   </div>
 
   <script src="config.js"></script>
+  <script src="facility-config.js"></script>
   <!-- 좌표계 변환: DXF 평면직각좌표(EPSG) → WGS84 (config.DXF_CRS 사용 시) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
   <script src="local-storage.js"></script>

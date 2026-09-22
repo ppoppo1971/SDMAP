@@ -5,8 +5,20 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
 (function () {
   'use strict';
 
-  // 44개 시설물 제원 포맷 및 입력 양식 설정 테이블
-  var FACILITY_CONFIG = {
+  // DOM 요소 지연 캐싱 (Lazy DOM Cache) - 불필요한 반복 DOM 탐색을 방지
+  var _domCache = {};
+  function getEl(id) {
+    if (_domCache[id] === undefined) {
+      _domCache[id] = document.getElementById(id) || null;
+    }
+    return _domCache[id];
+  }
+  function clearDomCache(id) {
+    if (id) { delete _domCache[id]; } else { _domCache = {}; }
+  }
+
+  // 시설물 제원 포맷 및 입력 양식 설정 (facility-config.js 연동)
+  var FACILITY_CONFIG = window.FACILITY_CONFIG || {
     '참고사항': {
       title: '참고사항',
       layer: '참고사항_T',
@@ -740,12 +752,12 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
     // (텍스트 드래그 시 오작동으로 오버레이가 발생하는 현상 방지)
 
     // 편집창 수동 저장 클릭 바인딩
-    document.getElementById('photo-save-btn').addEventListener('click', async function () {
+    getEl('photo-save-btn').addEventListener('click', async function () {
       await saveCurrentPhoto();
       // [요구사항] 저장 완료 후 사진 뷰어 자동 닫기
       // 단, 하단 썸네일 바에 겹침 사진이 2장 이상 있으면 닫지 않음 (다른 사진도 작업 필요)
-      var _fw = document.getElementById('floating-image-window');
-      var _thumbs = document.getElementById('floating-window-thumbnails');
+      var _fw = getEl('floating-image-window');
+      var _thumbs = getEl('floating-window-thumbnails');
       var hasSiblings = _thumbs && _thumbs.children.length > 1;
       if (_fw && !hasSiblings) {
         _fw.style.display = 'none';
@@ -753,13 +765,13 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
     });
 
     // 메모 입력창 포커스 하이라이트, 텍스트 자동 전체선택 및 엔터 저장 연동
-    var memoEl = document.getElementById('photo-memo');
+    var memoEl = getEl('photo-memo');
     if (memoEl) {
       setupInputFocusFade(memoEl);
       memoEl.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') {
           e.preventDefault();
-          var saveBtn = document.getElementById('photo-save-btn');
+          var saveBtn = getEl('photo-save-btn');
           if (saveBtn) saveBtn.click();
         }
       });
@@ -773,20 +785,20 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
     // [고도화 추가] 사진 뷰어 팝업 열기 헬퍼 함수 (도면 영역의 70% 크기 및 중앙 배치)
     // [고도화 추가] 사진 뷰어 팝업 열기 헬퍼 함수 (기본 최대화 기동 - 지도 영역 꽉 차게)
     window.openPhotoViewer = function (imgSrc, photoTitle) {
-      var floatingWin = document.getElementById('floating-image-window');
-      var imageModal = document.getElementById('image-modal-src');
+      var floatingWin = getEl('floating-image-window');
+      var imageModal = getEl('image-modal-src');
       if (!floatingWin || !imageModal) return;
 
       imageModal.src = imgSrc;
       // 뷰어 이미지의 HTML5 드래그를 비활성화하여 드롭 오버레이가 오동작하지 않도록 조치 (1번 요건)
       imageModal.setAttribute('draggable', 'false');
       
-      document.getElementById('floating-window-title').textContent = photoTitle;
+      getEl('floating-window-title').textContent = photoTitle;
       resetZoomState();
 
       // 사진창 열릴 때 기본 최대화 상태 활성화 (가득 채워 열기 요구사항 반영)
       isImageMaximized = true;
-      var maxBtn = document.getElementById('window-maximize-btn');
+      var maxBtn = getEl('window-maximize-btn');
       if (maxBtn) {
         maxBtn.textContent = '❐'; // 복원 아이콘
         maxBtn.title = '이전 크기로 복원';
@@ -818,7 +830,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
       }
 
       // 단일 사진으로 열었을 때는 썸네일 리스트를 숨김
-      var thumbContainer = document.getElementById('floating-window-thumbnails');
+      var thumbContainer = getEl('floating-window-thumbnails');
       if (thumbContainer) {
         thumbContainer.style.display = 'none';
         thumbContainer.innerHTML = '';
@@ -844,7 +856,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
       openPhotoViewer(imgSrc, photoTitle);
 
       // 2. 겹친 사진이 2장 이상일 때만 하단 썸네일 슬라이더 활성화
-      var thumbContainer = document.getElementById('floating-window-thumbnails');
+      var thumbContainer = getEl('floating-window-thumbnails');
       if (!thumbContainer) return;
 
       if (siblings && siblings.length > 1) {
@@ -886,7 +898,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
             item.classList.add('active');
 
             // 뷰어 본문 이미지 및 타이틀 갱신
-            var mainImg = document.getElementById('image-modal-src');
+            var mainImg = getEl('image-modal-src');
             if (mainImg) {
               mainImg.src = photoBlobUrls[p.fileName] || '';
             }
@@ -896,7 +908,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
               if (txtObj) actNum = '#' + txtObj.text;
             }
             if (!actNum) actNum = '사진';
-            document.getElementById('floating-window-title').textContent = '사진 원본 보기 (' + actNum + ' - ' + p.fileName + ')';
+            getEl('floating-window-title').textContent = '사진 원본 보기 (' + actNum + ' - ' + p.fileName + ')';
             
             // 줌 상태 초기화
             resetZoomState();
@@ -914,7 +926,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
 
     // 썸네일 클릭 시 [드래그 가능한 플로팅 팝업창(Modeless)] 열기
     var previewImg = document.getElementById('preview-img');
-    var floatingWin = document.getElementById('floating-image-window');
+    var floatingWin = getEl('floating-image-window');
     
     if (previewImg) {
       function openPreviewViewer() {
@@ -963,7 +975,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
     if (floatingWin) {
       floatingWin.addEventListener('contextmenu', function (e) {
         e.preventDefault(); // 브라우저 기본 우클릭 메뉴 차단
-        var saveBtn = document.getElementById('photo-save-btn');
+        var saveBtn = getEl('photo-save-btn');
         if (saveBtn) {
           saveBtn.click(); // '수정사항 저장' 버튼 자동 클릭
         }
@@ -1127,7 +1139,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
     clearOverlays();
 
     // 플로팅 이미지 창 숨기기
-    var floatingWin = document.getElementById('floating-image-window');
+    var floatingWin = getEl('floating-image-window');
     if (floatingWin) floatingWin.style.display = 'none';
 
     try {
@@ -1414,7 +1426,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
 
   // 여러 개의 JSON 파일이 감지되었을 때 선택 팝업창을 띄우는 함수 (체크박스 다중 선택 구조 개편)
   function showJsonSelectModal(jsonEntries, dxfEntries, imageEntries) {
-    var modal = document.getElementById('json-select-modal');
+    var modal = getEl('json-select-modal');
     var listContainer = document.getElementById('json-file-list');
     listContainer.innerHTML = '';
 
@@ -2256,8 +2268,8 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
 
   // 다음 입력 필드로 포커스 이동을 지원하는 헬퍼 함수
   function moveToNextField(currentInput) {
-    var memoEl = document.getElementById('photo-memo');
-    var saveBtn = document.getElementById('photo-save-btn');
+    var memoEl = getEl('photo-memo');
+    var saveBtn = getEl('photo-save-btn');
 
     // 1. 만약 현재 입력창이 메모 칸(photo-memo)인 경우 바로 저장 버튼으로 초점 이동
     if (currentInput === memoEl) {
@@ -2628,10 +2640,10 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
     if (!p) return;
 
     // 플로팅 창이 활성화되어 열려 있다면, 원본 이미지 소스도 같이 업데이트하여 흐름을 끊지 않음
-    var floatingWin = document.getElementById('floating-image-window');
+    var floatingWin = getEl('floating-image-window');
     if (floatingWin && floatingWin.style.display === 'flex') {
-      document.getElementById('image-modal-src').src = photoBlobUrls[p.fileName] || '';
-      document.getElementById('floating-window-title').textContent = '사진 원본 보기 (사진 #' + (p.numTextId ? p.numTextId : '') + ' - ' + p.fileName + ')';
+      getEl('image-modal-src').src = photoBlobUrls[p.fileName] || '';
+      getEl('floating-window-title').textContent = '사진 원본 보기 (사진 #' + (p.numTextId ? p.numTextId : '') + ' - ' + p.fileName + ')';
     }
 
     // 맵 마커 하이라이트 전환
@@ -2671,7 +2683,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
 
     document.getElementById('preview-photo-number').textContent = numStr;
     document.getElementById('preview-img').src = photoBlobUrls[p.fileName] || '';
-    document.getElementById('photo-memo').value = (p.memo && !isAutoGeneratedMemo(p.memo)) ? p.memo : '';
+    getEl('photo-memo').value = (p.memo && !isAutoGeneratedMemo(p.memo)) ? p.memo : '';
 
     // 다중 사진 썸네일 컨테이너 렌더링
     var thumbContainer = document.getElementById('sidebar-thumbnails');
@@ -2785,8 +2797,16 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
       }
     }
 
+    // 부속시설물로 추가 가능한 시설물(B열 파란색: isSubAttachable)만 필터링
+    var candidateKeys = Object.keys(FACILITY_CONFIG).filter(function (k) {
+      return FACILITY_CONFIG[k] && FACILITY_CONFIG[k].isSubAttachable;
+    });
+    if (candidateKeys.length === 0) {
+      candidateKeys = Object.keys(FACILITY_CONFIG);
+    }
+
     // 빈도 내림차순 → 동점이면 가나다 순 정렬
-    var sortedKeys = Object.keys(FACILITY_CONFIG).sort(function (a, b) {
+    var sortedKeys = candidateKeys.sort(function (a, b) {
       var countA = counts[a] || 0;
       var countB = counts[b] || 0;
       if (countA !== countB) return countB - countA;
@@ -3085,8 +3105,20 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
     header.appendChild(delBtn);
     card.appendChild(header);
 
+    // 부속시설물 판별 (컨테이너 내에 이미 카드가 1개 이상 존재할 경우)
+    var isSub = false;
+    if (container.children && container.children.length > 0) {
+      isSub = true;
+      card.setAttribute('data-is-sub', 'true');
+    }
+
     var fieldsWrap = document.createElement('div');
     config.fields.forEach(function (f) {
+      // 부속시설물일 경우 지주 및 사진 항목 생략
+      if (isSub && (f.isSupport || f.isPhoto || /지주|사진/.test(f.label))) {
+        return;
+      }
+
       var group = document.createElement('div');
       group.className = 'form-group';
       
@@ -3186,76 +3218,58 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
     
     fields.forEach(function (f) {
       var fVal = f.value ? f.value.trim() : '';
-      values[f.getAttribute('data-field-id')] = (fVal === '' || fVal === '기타' || fVal === '선택') ? '--' : fVal;
+      values[f.getAttribute('data-field-id')] = fVal;
     });
 
-    // [요구사항] 과속방지턱 저장 시 대분류명인 '과속방지턱/'을 맨 앞에 붙이지 않고 "형식/재질/높이" 구조로만 저장
-    if (type === '과속방지턱') {
-      var style = values['style'] || '--';
-      var mat = values['material'] || '--';
-      var h = values['height'] || '0.3';
-      return [style, mat, h].join('/');
+    // 부속시설물 여부 확인
+    var isSub = false;
+    if (card.getAttribute('data-is-sub') === 'true') {
+      isSub = true;
+    } else {
+      var parent = card.parentNode;
+      if (parent) {
+        var siblingCards = parent.querySelectorAll('.attribute-card');
+        if (siblingCards.length > 0 && siblingCards[0] !== card) {
+          isSub = true;
+        }
+      }
     }
 
-    var resultParts = [type];
-    
-    if (type === '신호등') {
-      var styleAndCount = (values['style'] || '--') + '*' + (values['count'] || '1');
-      var t = values['type'] || '--';
-      var support = values['support'] || '--';
-      
-      resultParts.push(t);
-      resultParts.push(styleAndCount);
-      resultParts.push(support);
+    // 접두어 결정 (부속시설물일 경우 + 자동 첨부)
+    var prefixWord = (config.prefix !== undefined && config.prefix !== '') ? config.prefix : type;
+    if (isSub && prefixWord) {
+      if (!prefixWord.startsWith('+')) {
+        prefixWord = '+' + prefixWord;
+      }
+    }
 
-      if (t === '보행') {
-        var ped = '';
-        var pedType = values['pedestrianType'] || '--';
-        if (pedType === '보행등무') {
-          ped = '보행등무';
-        } else {
-          ped = pedType + '*' + (values['pedestrianCount'] || '1');
-        }
-        resultParts.push(ped);
-      }
-    } else if (config.joinFormat) {
-      if (type === '배수암거') {
-        var w = values['width'] || '--';
-        var h = values['height'] || '--';
-        var mat = values['type'] || '--';
-        var wing = values['wing'] || '--';
-        var sump = values['sump'] || '--';
-        resultParts.push(w + '*' + h);
-        resultParts.push(mat);
-        resultParts.push(wing);
-        resultParts.push(sump);
-      } else if (type === '측구') {
-        var t = values['type'] || '--';
-        var w = values['width'] || '--';
-        var h = values['height'] || '--';
-        resultParts.push(t);
-        resultParts.push(w + '*' + h);
-      } else if (type === '통로박스') {
-        var w = values['width'] || '--';
-        var h = values['height'] || '--';
-        var t = values['type'] || '--';
-        var traffic = values['traffic'] || '--';
-        resultParts.push(w + '*' + h);
-        resultParts.push(t);
-        resultParts.push(traffic);
-      } else if (type === '교량') {
-        var name = values['bridgeName'] || '--';
-        var mat = values['material'] || '--';
-        var w = values['width'] || '--';
-        var h = values['height'] || '--';
-        resultParts.push(name);
-        resultParts.push(mat);
-        resultParts.push(w + '*' + h);
-      }
-    } else {
+    var resultParts = [];
+    if (prefixWord) {
+      resultParts.push(prefixWord);
+    }
+
+    if (config.fields && config.fields.length > 0) {
       config.fields.forEach(function (f) {
-        resultParts.push(values[f.id] || '--');
+        if (f.id === 'name') return;
+
+        // 부속시설물일 경우 지주 및 사진 항목 생략
+        if (isSub && (f.isSupport || f.isPhoto || /지주|사진/.test(f.label))) {
+          return;
+        }
+
+        var val = values[f.id];
+        if (val === undefined || val === null) return;
+        val = String(val).trim();
+
+        // '삭제' 선택 또는 공란/빈칸/-- 인 경우 생략
+        if (val === '삭제' || val === '--' || val === '' || val === '선택' || val === '기타') {
+          return;
+        }
+
+        resultParts.push(val);
       });
+    } else {
+      return prefixWord || type;
     }
 
     return resultParts.join('/');
@@ -3340,7 +3354,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
     }
 
     // 4. 자동 생성형 가짜 메모는 거르고, 진짜 입력된 메모만 웹앱과 똑같이 [메모] 접두사 형태로 합치기
-    var memoVal = document.getElementById('photo-memo') ? document.getElementById('photo-memo').value : '';
+    var memoVal = getEl('photo-memo') ? getEl('photo-memo').value : '';
     if (!memoVal && currentPhoto.memo) {
       memoVal = currentPhoto.memo;
     }
@@ -3378,7 +3392,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
 
     showLoading(true, '속성 데이터를 로컬에 덮어쓰는 중...');
 
-    p.memo = document.getElementById('photo-memo').value;
+    p.memo = getEl('photo-memo').value;
 
     var cards = document.querySelectorAll('.attribute-card');
     var newTextIds = [];
@@ -3474,8 +3488,8 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
     }
 
     // 저장 후 플로팅 뷰어 자동 닫기 (하단 썸네일에 겹침 사진이 2장 이상이면 닫지 않음)
-    var _fw = document.getElementById('floating-image-window');
-    var _thumbs = document.getElementById('floating-window-thumbnails');
+    var _fw = getEl('floating-image-window');
+    var _thumbs = getEl('floating-window-thumbnails');
     var hasSiblings = _thumbs && _thumbs.children.length > 1;
     if (_fw && !hasSiblings) {
       _fw.style.display = 'none';
@@ -3565,9 +3579,9 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
 
   // 사진창 최대화/이전크기 복원 토글 함수
   function toggleMaximizeImageWindow() {
-    var win = document.getElementById('floating-image-window');
+    var win = getEl('floating-image-window');
     var container = document.querySelector('.canvas-container');
-    var maxBtn = document.getElementById('window-maximize-btn');
+    var maxBtn = getEl('window-maximize-btn');
     if (!win || !container) return;
 
     if (!isImageMaximized) {
@@ -3605,11 +3619,11 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
   }
 
   function setupImageZoom() {
-    var win = document.getElementById('floating-image-window');
+    var win = getEl('floating-image-window');
     var dragHandle = document.getElementById('window-drag-handle');
     var resizeHandle = win.querySelector('.window-resize-handle');
     var container = document.getElementById('zoom-container');
-    var img = document.getElementById('image-modal-src');
+    var img = getEl('image-modal-src');
 
     // 1) 윈도우 창 드래그 이동 기능
     var isWinDragging = false;
@@ -3721,7 +3735,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
     scale = 1;
     translateX = 0;
     translateY = 0;
-    var img = document.getElementById('image-modal-src');
+    var img = getEl('image-modal-src');
     if (img) {
       img.style.transform = 'none';
     }
@@ -3732,7 +3746,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
     imageViewerPhotos = photosList || [];
     imageViewerIndex = startIndex >= 0 && startIndex < imageViewerPhotos.length ? startIndex : 0;
     
-    var viewer = document.getElementById('image-viewer-modal');
+    var viewer = getEl('image-viewer-modal');
     if (!viewer) return;
 
     var prevBtn = document.getElementById('image-viewer-prev');
@@ -3753,7 +3767,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
 
   /** 이미지 슬라이더 닫기 */
   function closeImageViewer() {
-    var viewer = document.getElementById('image-viewer-modal');
+    var viewer = getEl('image-viewer-modal');
     if (viewer) viewer.classList.remove('active');
     if (imageViewerObjectUrl) {
       URL.revokeObjectURL(imageViewerObjectUrl);
@@ -3820,7 +3834,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
     var jsonModalClose = document.getElementById('json-modal-close');
     if (jsonModalClose) {
       jsonModalClose.addEventListener('click', function () {
-        document.getElementById('json-select-modal').classList.remove('active');
+        getEl('json-select-modal').classList.remove('active');
       });
     }
 
@@ -3881,13 +3895,13 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
           }
         });
         
-        document.getElementById('json-select-modal').classList.remove('active');
+        getEl('json-select-modal').classList.remove('active');
         await finishFolderLoad(selectedEntries, dxfEntries, imageEntriesTempForMerge);
       });
     }
 
     // 사진 원본 플로팅 창 최대화 버튼 이벤트 바인딩
-    var maxBtn = document.getElementById('window-maximize-btn');
+    var maxBtn = getEl('window-maximize-btn');
     if (maxBtn) {
       maxBtn.addEventListener('click', toggleMaximizeImageWindow);
     }
@@ -3925,7 +3939,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
 
     // 키보드 방향키 슬라이딩 및 ESC 닫기 연동
     window.addEventListener('keydown', function (e) {
-      var viewer = document.getElementById('image-viewer-modal');
+      var viewer = getEl('image-viewer-modal');
       if (!viewer || !viewer.classList.contains('active')) return;
 
       if (e.key === 'Escape') {
@@ -3946,7 +3960,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
     });
 
     // 메모 입력 시 사진 뷰어 내 속성 정보 실시간 갱신 연동
-    var memoEl = document.getElementById('photo-memo');
+    var memoEl = getEl('photo-memo');
     if (memoEl) {
       memoEl.addEventListener('input', updateFloatingWindowSpecs);
       // 메모창에도 이전에 입력했던 다빈도 메모 목록 10개 실시간 드롭다운 연동

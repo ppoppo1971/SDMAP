@@ -42,12 +42,25 @@ var streetlightPreviewObjectUrl = null; // 이미지 프리뷰용 Object URL 캐
 // 모든 시설물 통합 캐시 스펙 저장 객체
 var lastSpecs = {};
 
+// DOM 요소 지연 캐싱 (Lazy DOM Cache) - 불필요한 반복 DOM 탐색을 방지하여 저사양 기기 성능 개선
+var _domCache = {};
+function getEl(id) {
+  if (_domCache[id] === undefined) {
+    _domCache[id] = document.getElementById(id) || null;
+  }
+  return _domCache[id];
+}
+// 모달 열기/닫기 등으로 DOM 구조가 바뀔 때 캐시 초기화
+function clearDomCache(id) {
+  if (id) { delete _domCache[id]; } else { _domCache = {}; }
+}
+
 // DXF 도면 렌더링 (방안 2: 줌 레벨 제한 없이 모든 축소 단계에서 항상 도면 표시)
 var dxfGoogleFeaturesSource = [];
 var DXF_RENDER_MIN_ZOOM = 0;
 
-// 30여 개 시설물 제원 포맷 및 입력 양식 설정 테이블
-var FACILITY_CONFIG = {
+// 시설물 제원 포맷 및 입력 양식 설정 테이블 (엑셀 facility-config.js 우선 적용)
+var FACILITY_CONFIG = (typeof window !== 'undefined' && window.FACILITY_CONFIG) ? window.FACILITY_CONFIG : {
   '참고사항': {
     title: '참고사항',
     layer: '참고사항_T',
@@ -871,7 +884,7 @@ function bindUI() {
     });
   }
 
-  var objVisModal = document.getElementById('object-visibility-modal');
+  var objVisModal = getEl('object-visibility-modal');
   var objVisClose = document.getElementById('object-visibility-close');
   var objVisRed = document.getElementById('obj-vis-red');
   var objVisBlue = document.getElementById('obj-vis-blue');
@@ -903,7 +916,7 @@ function bindUI() {
     });
   }
 
-  var exportMethodModal = document.getElementById('export-method-modal');
+  var exportMethodModal = getEl('export-method-modal');
   var exportInfoBox = document.getElementById('export-info-box');
   var exportMethodClose = document.getElementById('export-method-close');
   var exportZipBtn = document.getElementById('export-zip-btn');
@@ -918,7 +931,7 @@ function bindUI() {
   }
 
   // 사진 압축 선택 컨펌 모달 이벤트 리스너
-  var compressConfirmModal = document.getElementById('export-compress-confirm-modal');
+  var compressConfirmModal = getEl('export-compress-confirm-modal');
   var compressConfirmClose = document.getElementById('export-compress-confirm-close');
   var compressYesBtn = document.getElementById('export-compress-yes-btn');
   var compressNoBtn = document.getElementById('export-compress-no-btn');
@@ -932,9 +945,9 @@ function bindUI() {
   }
 
   // 내보내기 진행바 모달 이벤트 리스너
-  var progressModal = document.getElementById('export-progress-modal');
-  var progressClose = document.getElementById('export-progress-close');
-  var progressDoneBtn = document.getElementById('export-progress-done-btn');
+  var progressModal = getEl('export-progress-modal');
+  var progressClose = getEl('export-progress-close');
+  var progressDoneBtn = getEl('export-progress-done-btn');
   if (progressClose) progressClose.addEventListener('click', hideProgressModal);
   if (progressDoneBtn) progressDoneBtn.addEventListener('click', hideProgressModal);
   if (progressModal) {
@@ -1115,22 +1128,22 @@ function showLoading(show) {
 }
 
 function showCompressConfirmModal() {
-  var modal = document.getElementById('export-compress-confirm-modal');
+  var modal = getEl('export-compress-confirm-modal');
   if (modal) modal.classList.add('active');
 }
 
 function hideCompressConfirmModal() {
-  var modal = document.getElementById('export-compress-confirm-modal');
+  var modal = getEl('export-compress-confirm-modal');
   if (modal) modal.classList.remove('active');
 }
 
 function showProgressModal(title) {
-  var modal = document.getElementById('export-progress-modal');
+  var modal = getEl('export-progress-modal');
   var titleEl = document.getElementById('export-progress-title');
   var bar = document.getElementById('export-progress-bar');
-  var status = document.getElementById('export-progress-status');
-  var closeBtn = document.getElementById('export-progress-close');
-  var doneBtn = document.getElementById('export-progress-done-btn');
+  var status = getEl('export-progress-status');
+  var closeBtn = getEl('export-progress-close');
+  var doneBtn = getEl('export-progress-done-btn');
   var partitionContainer = document.getElementById('export-partition-container');
   
   if (modal) modal.classList.add('active');
@@ -1148,15 +1161,15 @@ function showProgressModal(title) {
 
 function updateProgressModal(percent, statusText) {
   var bar = document.getElementById('export-progress-bar');
-  var status = document.getElementById('export-progress-status');
+  var status = getEl('export-progress-status');
   if (bar) bar.style.width = percent + '%';
   if (status) status.textContent = statusText || '';
 }
 
 function finishProgressModal(statusText, isSuccess) {
-  var status = document.getElementById('export-progress-status');
-  var closeBtn = document.getElementById('export-progress-close');
-  var doneBtn = document.getElementById('export-progress-done-btn');
+  var status = getEl('export-progress-status');
+  var closeBtn = getEl('export-progress-close');
+  var doneBtn = getEl('export-progress-done-btn');
   if (status) {
     status.innerHTML = statusText || (isSuccess ? '<span style="color:#34C759; font-weight:bold;">🎉 다운로드 완료</span>' : '<span style="color:#FF3B30; font-weight:bold;">❌ 실패</span>');
   }
@@ -1165,7 +1178,7 @@ function finishProgressModal(statusText, isSuccess) {
 }
 
 function hideProgressModal() {
-  var modal = document.getElementById('export-progress-modal');
+  var modal = getEl('export-progress-modal');
   if (modal) modal.classList.remove('active');
   exportInfo = null;
 }
@@ -1338,7 +1351,7 @@ function startExportProcess(shouldCompress) {
 }
 
 function showExportMethodModal() {
-  var modal = document.getElementById('export-method-modal');
+  var modal = getEl('export-method-modal');
   var infoBox = document.getElementById('export-info-box');
   if (modal) modal.classList.add('active');
   if (infoBox && exportInfo) {
@@ -1347,7 +1360,7 @@ function showExportMethodModal() {
 }
 
 function hideExportMethodModal() {
-  var modal = document.getElementById('export-method-modal');
+  var modal = getEl('export-method-modal');
   if (modal) modal.classList.remove('active');
 }
 
@@ -1993,19 +2006,19 @@ function applyDxfToMap() {
 }
 
 function showDxfTextModal(text) {
-  var modal = document.getElementById('dxf-text-modal');
+  var modal = getEl('dxf-text-modal');
   var body = document.getElementById('dxf-text-modal-body');
   if (body) body.textContent = text == null ? '' : String(text);
   if (modal) modal.classList.add('active');
 }
 
 function hideDxfTextModal() {
-  var modal = document.getElementById('dxf-text-modal');
+  var modal = getEl('dxf-text-modal');
   if (modal) modal.classList.remove('active');
 }
 
 function bindDxfTextModal() {
-  var modal = document.getElementById('dxf-text-modal');
+  var modal = getEl('dxf-text-modal');
   var closeBtn = document.getElementById('dxf-text-modal-close');
   if (closeBtn) closeBtn.addEventListener('click', hideDxfTextModal);
   if (modal) modal.addEventListener('click', function (e) {
@@ -2014,12 +2027,12 @@ function bindDxfTextModal() {
 }
 
 function showDeleteDataModal() {
-  var modal = document.getElementById('delete-data-modal');
+  var modal = getEl('delete-data-modal');
   if (modal) modal.classList.add('active');
 }
 
 function hideDeleteDataModal() {
-  var modal = document.getElementById('delete-data-modal');
+  var modal = getEl('delete-data-modal');
   if (modal) modal.classList.remove('active');
 }
 
@@ -2058,7 +2071,7 @@ function deleteDataForProject() {
 }
 
 function bindDeleteDataModal() {
-  var modal = document.getElementById('delete-data-modal');
+  var modal = getEl('delete-data-modal');
   var closeBtn = document.getElementById('delete-data-close');
   var cancelBtn = document.getElementById('delete-data-cancel');
   var confirmBtn = document.getElementById('delete-data-confirm');
@@ -2116,7 +2129,7 @@ function bindConsoleModal() {
 
 /** 좌표계 선택 모달 */
 function showCrsModal() {
-  var modal = document.getElementById('crs-modal');
+  var modal = getEl('crs-modal');
   var container = document.getElementById('crs-options-container');
   if (!modal || !container) return;
   var C = window.DMAP_CONFIG || {};
@@ -2143,7 +2156,7 @@ function showCrsModal() {
 }
 
 function hideCrsModal() {
-  var modal = document.getElementById('crs-modal');
+  var modal = getEl('crs-modal');
   if (modal) modal.classList.remove('active');
   // 취소 시 대기 중인 파일 로드 정보 초기화
   pendingLoadFile = null;
@@ -2151,7 +2164,7 @@ function hideCrsModal() {
 }
 
 function bindCrsModal() {
-  var modal = document.getElementById('crs-modal');
+  var modal = getEl('crs-modal');
   var closeBtn = document.getElementById('crs-modal-close');
   if (closeBtn) closeBtn.addEventListener('click', hideCrsModal);
   if (modal) modal.addEventListener('click', function (e) {
@@ -2426,7 +2439,7 @@ function generatePhotoFileName(photoNum) {
 }
 
 function showImageSizeModal() {
-  var modal = document.getElementById('image-size-modal');
+  var modal = getEl('image-size-modal');
   var currentDisplay = document.getElementById('current-size-display');
   if (currentDisplay) currentDisplay.textContent = imageSizeSetting;
   var opts = document.querySelectorAll('.size-opt');
@@ -2438,7 +2451,7 @@ function showImageSizeModal() {
 }
 
 function closeImageSizeModal() {
-  var modal = document.getElementById('image-size-modal');
+  var modal = getEl('image-size-modal');
   if (modal) modal.classList.remove('active');
 }
 
@@ -2459,7 +2472,7 @@ function bindImageSizeModal() {
       setImageSize(btn.getAttribute('data-size'));
     });
   });
-  var modal = document.getElementById('image-size-modal');
+  var modal = getEl('image-size-modal');
   if (modal) modal.addEventListener('click', function (e) {
     if (e.target === modal) closeImageSizeModal();
   });
@@ -2545,7 +2558,7 @@ function applyObjectVisibility() {
 }
 
 function showObjectVisibilityModal() {
-  var modal = document.getElementById('object-visibility-modal');
+  var modal = getEl('object-visibility-modal');
   var redCb = document.getElementById('obj-vis-red');
   var blueCb = document.getElementById('obj-vis-blue');
   var textCb = document.getElementById('obj-vis-text');
@@ -2557,7 +2570,7 @@ function showObjectVisibilityModal() {
 }
 
 function hideObjectVisibilityModal() {
-  var modal = document.getElementById('object-visibility-modal');
+  var modal = getEl('object-visibility-modal');
   if (modal) modal.classList.remove('active');
 }
 
@@ -2629,9 +2642,9 @@ function getPhotoIcon(color, sizePx) {
   return photoIconCache[key];
 }
 function showPhotoSelectBottomSheet(list) {
-  var sheet = document.getElementById('bottom-sheet-flow');
-  var content = document.getElementById('bottom-sheet-content');
-  var title = document.getElementById('bottom-sheet-title');
+  var sheet = getEl('bottom-sheet-flow');
+  var content = getEl('bottom-sheet-content');
+  var title = getEl('bottom-sheet-title');
   var closeBtn = document.getElementById('bottom-sheet-close');
   if (!sheet || !content) return;
 
@@ -2865,7 +2878,7 @@ function bindContextMenuCloseOnMap() {
       if (e.target && !contextMenuEl.contains(e.target)) hideContextMenu();
     }
     
-    var sheet = document.getElementById('bottom-sheet-flow');
+    var sheet = getEl('bottom-sheet-flow');
     if (sheet && sheet.classList.contains('active')) {
       if (e.target && !sheet.contains(e.target)) {
         hideStreetlightBottomSheet();
@@ -2877,7 +2890,7 @@ function bindContextMenuCloseOnMap() {
       if (e.target && !contextMenuEl.contains(e.target)) hideContextMenu();
     }
     
-    var sheet = document.getElementById('bottom-sheet-flow');
+    var sheet = getEl('bottom-sheet-flow');
     if (sheet && sheet.classList.contains('active')) {
       if (e.target && !sheet.contains(e.target)) {
         hideStreetlightBottomSheet();
@@ -2912,8 +2925,8 @@ function bindMapLongPress() {
     // 2m 이내 시설물 탐색
     var nearby = findNearbyFacilities(latLng, 2.0);
     nearby = nearby.filter(function (item) {
-      // 1. 유효한 시설물 유형인지 필터링
-      return detectFacilityType(item.name, item.layer) !== null;
+      // 1. 유효한 시설물 유형인지 필터링 (엑셀 B열 detectionLayers 매칭 지원)
+      return getMatchingFacilities(item.name, item.layer).length > 0;
     });
 
     // 거리순 정렬
@@ -2995,14 +3008,14 @@ function bindContextMenu() {
   if (!contextMenuEl) return;
   document.getElementById('camera-btn').addEventListener('click', function () {
     contextMenuEl.classList.remove('active');
-    var input = document.getElementById('camera-input');
+    var input = getEl('camera-input');
     if (input) { input.click(); }
   });
   document.getElementById('text-btn').addEventListener('click', function () {
     contextMenuEl.classList.remove('active');
     pendingAddPosition && showTextModal(null);
   });
-  document.getElementById('camera-input').addEventListener('change', function (e) {
+  getEl('camera-input').addEventListener('change', function (e) {
     var file = e.target && e.target.files[0];
     if (file) {
       if (isAddingSubPhoto) {
@@ -3367,9 +3380,9 @@ function showPhotoModal(photoId) {
   }
   
   editingPhotoId = photoId;
-  var modal = document.getElementById('photo-modal');
-  var img = document.getElementById('photo-modal-img');
-  var memo = document.getElementById('photo-modal-memo');
+  var modal = getEl('photo-modal');
+  var img = getEl('photo-modal-img');
+  var memo = getEl('photo-modal-memo');
   var titleEl = document.getElementById('photo-modal-title');
   var actionsEl = document.getElementById('photo-modal-actions');
   var noFileEl = document.getElementById('photo-modal-no-file');
@@ -3381,8 +3394,8 @@ function showPhotoModal(photoId) {
   if (noFileEl) noFileEl.style.display = 'none';
   
   // 메모 추천 드롭다운 연동 (직접입력 시 인라인 토글 방식)
-  var memoSuggest = document.getElementById('photo-modal-memo-suggest');
-  var memoInput = document.getElementById('photo-modal-memo');
+  var memoSuggest = getEl('photo-modal-memo-suggest');
+  var memoInput = getEl('photo-modal-memo');
   
   if (memoSuggest && memoInput) {
     memoSuggest.innerHTML = '';
@@ -3424,7 +3437,7 @@ function showPhotoModal(photoId) {
       if (val === '') {
         memoInput.style.display = 'none';
         memoInput.value = '';
-        var previewEl = document.getElementById('sw-spec-preview') || document.getElementById('pm-spec-preview');
+        var previewEl = getEl('sw-spec-preview') || getEl('pm-spec-preview');
         if (previewEl && typeof updateAllPreviewsPM === 'function') updateAllPreviewsPM();
       } else {
         // 사진 메모는 기존 방식 유지: 추천 선택 시도 즉시 입력창을 열어 편집 대기
@@ -3466,7 +3479,7 @@ function showPhotoModal(photoId) {
       }
 
       memoInput.style.display = 'none';
-      var previewEl = document.getElementById('sw-spec-preview') || document.getElementById('pm-spec-preview');
+      var previewEl = getEl('sw-spec-preview') || getEl('pm-spec-preview');
       if (previewEl && typeof updateAllPreviewsPM === 'function') updateAllPreviewsPM();
     };
 
@@ -3487,7 +3500,7 @@ function showPhotoModal(photoId) {
   img.style.display = 'block';
 
   // 사진추가 버튼 표시 (촬영 사진일 때만)
-  var addBtn = document.getElementById('photo-modal-add-btn');
+  var addBtn = getEl('photo-modal-add-btn');
   if (addBtn) addBtn.style.display = 'inline-block';
 
   // 기존 subPhoto object URL 해제 및 썸네일 컨테이너 초기화
@@ -3495,7 +3508,7 @@ function showPhotoModal(photoId) {
   subPhotoObjectUrls = [];
   isAddingSubPhoto = false;
 
-  var thumbContainer = document.getElementById('photo-modal-thumbnails');
+  var thumbContainer = getEl('photo-modal-thumbnails');
   if (thumbContainer) {
     thumbContainer.innerHTML = '';
   }
@@ -3560,7 +3573,7 @@ function showPhotoModal(photoId) {
 
     // 실시간 다중 폼 전체 미리보기 업데이트 함수 정의
     window.updateAllPreviewsPM = function () {
-      var previewEl = document.getElementById('pm-spec-preview');
+      var previewEl = getEl('pm-spec-preview');
       if (!previewEl) return;
       var cards = pmFormListContainer.querySelectorAll('.attr-card');
       var previews = [];
@@ -3576,8 +3589,8 @@ function showPhotoModal(photoId) {
       
       // 메모 값 수집
       var memoVal = '';
-      var memoSuggest = document.getElementById('photo-modal-memo-suggest');
-      var memoInput = document.getElementById('photo-modal-memo');
+      var memoSuggest = getEl('photo-modal-memo-suggest');
+      var memoInput = getEl('photo-modal-memo');
       if (memoSuggest) {
         if (memoSuggest.value === '직접입력' && memoInput && memoInput.style.display !== 'none') {
           memoVal = memoInput.value.trim();
@@ -3705,7 +3718,7 @@ function showPhotoModal(photoId) {
     }
 
     // 2) 썸네일 세팅
-    var thumbContainer = document.getElementById('photo-modal-thumbnails');
+    var thumbContainer = getEl('photo-modal-thumbnails');
     if (thumbContainer) {
       thumbContainer.innerHTML = '';
       var subs = record.subPhotos || [];
@@ -3754,18 +3767,18 @@ function showPhotoModal(photoId) {
 function showDxfImageModal(ref) {
   editingPhotoId = null;
   editingDxfImageRef = ref;
-  var modal = document.getElementById('photo-modal');
-  var img = document.getElementById('photo-modal-img');
-  var memo = document.getElementById('photo-modal-memo');
+  var modal = getEl('photo-modal');
+  var img = getEl('photo-modal-img');
+  var memo = getEl('photo-modal-memo');
   var titleEl = document.getElementById('photo-modal-title');
   var actionsEl = document.getElementById('photo-modal-actions');
   var noFileEl = document.getElementById('photo-modal-no-file');
   if (!modal || !img) return;
   if (titleEl) titleEl.textContent = '참조 이미지';
   if (actionsEl) actionsEl.style.display = 'none';
-  var addBtn = document.getElementById('photo-modal-add-btn');
+  var addBtn = getEl('photo-modal-add-btn');
   if (addBtn) addBtn.style.display = 'none';
-  var thumbContainer = document.getElementById('photo-modal-thumbnails');
+  var thumbContainer = getEl('photo-modal-thumbnails');
   if (thumbContainer) thumbContainer.innerHTML = '';
   img.onclick = null;
   memo.style.display = 'none';
@@ -3822,8 +3835,8 @@ function hidePhotoModal() {
   if (isNewPhotoPending && editingPhotoId) {
     rollbackPendingPhoto();
   }
-  var modal = document.getElementById('photo-modal');
-  var img = document.getElementById('photo-modal-img');
+  var modal = getEl('photo-modal');
+  var img = getEl('photo-modal-img');
   if (modal) modal.classList.remove('active');
   if (img) { img.src = ''; img.onclick = null; }
   editingPhotoId = null;
@@ -3832,9 +3845,9 @@ function hidePhotoModal() {
   // subPhoto object URL 정리
   subPhotoObjectUrls.forEach(function (u) { URL.revokeObjectURL(u); });
   subPhotoObjectUrls = [];
-  var addBtn = document.getElementById('photo-modal-add-btn');
+  var addBtn = getEl('photo-modal-add-btn');
   if (addBtn) addBtn.style.display = 'none';
-  var thumbContainer = document.getElementById('photo-modal-thumbnails');
+  var thumbContainer = getEl('photo-modal-thumbnails');
   if (thumbContainer) thumbContainer.innerHTML = '';
   if (dxfImageObjectUrl) {
     URL.revokeObjectURL(dxfImageObjectUrl);
@@ -3843,18 +3856,18 @@ function hidePhotoModal() {
 }
 
 function bindPhotoModal() {
-  var modal = document.getElementById('photo-modal');
+  var modal = getEl('photo-modal');
   var closeBtn = document.getElementById('photo-modal-close');
   var saveBtn = document.getElementById('photo-modal-save');
   var delBtn = document.getElementById('photo-modal-delete');
-  var memo = document.getElementById('photo-modal-memo');
-  var addBtn = document.getElementById('photo-modal-add-btn');
+  var memo = getEl('photo-modal-memo');
+  var addBtn = getEl('photo-modal-add-btn');
 
   if (addBtn) {
     addBtn.addEventListener('click', function () {
       if (!editingPhotoId) return;
       isAddingSubPhoto = true;
-      var cameraInput = document.getElementById('camera-input');
+      var cameraInput = getEl('camera-input');
       if (cameraInput) {
         cameraInput.click();
       }
@@ -3869,8 +3882,8 @@ function bindPhotoModal() {
 
     var promises = [];
     var memoVal = '';
-    var memoSuggest = document.getElementById('photo-modal-memo-suggest');
-    var memoInput = document.getElementById('photo-modal-memo');
+    var memoSuggest = getEl('photo-modal-memo-suggest');
+    var memoInput = getEl('photo-modal-memo');
     if (memoSuggest) {
       if (memoSuggest.value === '직접입력' && memoInput && memoInput.style.display !== 'none') {
         memoVal = memoInput.value.trim();
@@ -4054,7 +4067,7 @@ function bindPhotoModal() {
 
 function showTextModal(textId) {
   editingTextId = textId;
-  var modal = document.getElementById('text-modal');
+  var modal = getEl('text-modal');
   var title = document.getElementById('text-modal-title');
   var input = document.getElementById('text-modal-input');
   var delBtn = document.getElementById('text-modal-delete');
@@ -4074,12 +4087,12 @@ function showTextModal(textId) {
 }
 
 function hideTextModal() {
-  document.getElementById('text-modal').classList.remove('active');
+  getEl('text-modal').classList.remove('active');
   editingTextId = null;
 }
 
 function bindTextModal() {
-  var modal = document.getElementById('text-modal');
+  var modal = getEl('text-modal');
   var closeBtn = document.getElementById('text-modal-close');
   var saveBtn = document.getElementById('text-modal-save');
   var delBtn = document.getElementById('text-modal-delete');
@@ -4127,44 +4140,75 @@ if (typeof DxfParser === 'undefined' && typeof window !== 'undefined') {
 
 // --- 가로등/측구 자동 입력용 스마트 바텀 시트 흐름 구현 ---
 
-function detectFacilityType(name, layer) {
+function getMatchingFacilities(name, layer) {
   var n = String(name || '').trim();
   var l = String(layer || '').trim();
+  var cleanL = l.replace(/_T$/i, '');
+  var matched = [];
 
-  // '안내표지'가 들어오면 '도로표지'로 자동 매칭
-  if (l.indexOf('안내표지') >= 0 || n.indexOf('안내표지') >= 0) {
-    return '도로표지';
+  var cfg = window.FACILITY_CONFIG || (typeof FACILITY_CONFIG !== 'undefined' ? FACILITY_CONFIG : {});
+
+  // '안내표지' 특별 매칭
+  if ((l.indexOf('안내표지') >= 0 || n.indexOf('안내표지') >= 0) && cfg['도로표지']) {
+    matched.push('도로표지');
   }
 
-  // 1) 레이어로 매칭 (FACILITY_CONFIG에 정의된 layer와 완전 일치 검사 - _T 접미사 유연화 적용)
-  if (l) {
-    var cleanL = l.replace(/_T$/i, '').toLowerCase();
-    for (var key in FACILITY_CONFIG) {
-      var confLayer = FACILITY_CONFIG[key].layer;
-      if (confLayer) {
-        var cleanConfL = confLayer.replace(/_T$/i, '').toLowerCase();
-        if (cleanL === cleanConfL) {
-          return key;
+  for (var key in cfg) {
+    var itemCfg = cfg[key];
+    var isMatch = false;
+
+    // 1) detectionLayers 배열(엑셀 B열 감지 레이어) 매칭
+    if (itemCfg.detectionLayers && itemCfg.detectionLayers.length > 0) {
+      for (var i = 0; i < itemCfg.detectionLayers.length; i++) {
+        var dLayer = itemCfg.detectionLayers[i].trim();
+        if (dLayer && (cleanL.toLowerCase() === dLayer.toLowerCase() || l.toLowerCase() === dLayer.toLowerCase())) {
+          isMatch = true;
+          break;
         }
       }
     }
-  }
 
-  // 2) 객체명(텍스트명)으로 매칭 (FACILITY_CONFIG의 키와 완전 일치 검사)
-  if (n && FACILITY_CONFIG[n]) {
-    return n;
-  }
-
-  // 3) 객체명 대소문자 무관 완전 일치 검사 폴백
-  if (n) {
-    for (var key in FACILITY_CONFIG) {
-      if (key.toLowerCase() === n.toLowerCase()) {
-        return key;
+    // 2) 캐드 레이어명 매칭
+    if (!isMatch && itemCfg.layer) {
+      var cleanConfL = itemCfg.layer.replace(/_T$/i, '');
+      if (cleanL.toLowerCase() === cleanConfL.toLowerCase() || l.toLowerCase() === itemCfg.layer.toLowerCase()) {
+        isMatch = true;
       }
+    }
+
+    // 3) 시설물명/블록명 일치 매칭
+    if (!isMatch && n) {
+      if (key.toLowerCase() === n.toLowerCase() || n.indexOf(key) >= 0) {
+        isMatch = true;
+      }
+    }
+
+    if (isMatch && matched.indexOf(key) === -1) {
+      matched.push(key);
     }
   }
 
-  return null;
+  // 도로 감지 시 도로경계석 우선 정렬, 보도 감지 시 보도경계석 우선 정렬
+  if (cleanL === '도로') {
+    matched.sort(function (a, b) {
+      if (a === '도로경계석') return -1;
+      if (b === '도로경계석') return 1;
+      return 0;
+    });
+  } else if (cleanL === '보도') {
+    matched.sort(function (a, b) {
+      if (a === '보도경계석') return -1;
+      if (b === '보도경계석') return 1;
+      return 0;
+    });
+  }
+
+  return matched;
+}
+
+function detectFacilityType(name, layer) {
+  var matches = getMatchingFacilities(name, layer);
+  return matches.length > 0 ? matches[0] : null;
 }
 
 // 현재 도면 내 사진번호 레이어의 최대 숫자를 조회하고 일련번호로 가공하는 공통 함수
@@ -4310,12 +4354,22 @@ function getFieldSuggestions(fieldId, config, defaultOptions) {
 }
 
 // 속성 추가 선택기(드롭다운)의 옵션들을 사용자가 자주 입력한 시설물 빈도순으로 자동 정렬하여 반환하는 헬퍼 함수
+// (엑셀 B열 글자색이 파란색인 부속시설물만 한정 노출)
 function getAttributeAdderOptions(isBottomSheet) {
-  var baseOpts = [
-    '주의표지', '규제표지', '지시표지', '보조표지', '도로표지', 
-    '교통기타', 'CCTV', '새주소', '전광표지', '보안등', 
-    '신호등', '도로반사경', '가로등', '기타표지', '갈매기표지'
-  ];
+  var baseOpts = [];
+  for (var key in FACILITY_CONFIG) {
+    if (FACILITY_CONFIG[key] && FACILITY_CONFIG[key].isSubAttachable) {
+      baseOpts.push(key);
+    }
+  }
+  if (baseOpts.length === 0) {
+    // 부속시설물 플래그가 없는 경우 기본 목록 유지
+    baseOpts = [
+      '주의표지', '규제표지', '지시표지', '보조표지', '도로표지', 
+      '교통기타', 'CCTV', '새주소', '전광표지', '보안등(부착)', 
+      '도로반사경', '가로등(부착)', '기타표지'
+    ];
+  }
 
   var counts = {};
   baseOpts.forEach(function (opt) {
@@ -4524,10 +4578,13 @@ function renderMultiAttributeCard(container, type, cachedVals, prefixIdUnique) {
   // 전력주와 통신주는 캐드 전개 비대상 시설물이므로 속성 카드 노출을 원천 차단
   if (type === '전력주' || type === '통신주') return null;
   
+  var isSub = container.querySelectorAll('.attr-card').length > 0;
+  
   var card = document.createElement('div');
   card.className = 'attr-card';
   card.setAttribute('data-type', type);
   card.setAttribute('data-prefix-id', prefixIdUnique);
+  card.setAttribute('data-is-sub', isSub ? 'true' : 'false');
 
   var header = document.createElement('div');
   header.className = 'attr-card-header';
@@ -4544,7 +4601,7 @@ function renderMultiAttributeCard(container, type, cachedVals, prefixIdUnique) {
     if (confirm(type + ' 속성 폼을 삭제하시겠습니까?')) {
       card.remove();
       // 전체 제원 미리보기 갱신 트리거
-      var previewEl = document.getElementById('sw-spec-preview') || document.getElementById('pm-spec-preview');
+      var previewEl = getEl('sw-spec-preview') || getEl('pm-spec-preview');
       if (previewEl) {
         if (previewEl.id === 'pm-spec-preview') {
           if (typeof updateAllPreviewsPM === 'function') {
@@ -4585,8 +4642,8 @@ function renderMultiAttributeCard(container, type, cachedVals, prefixIdUnique) {
 
 // 다중 속성 일괄 제원 입력 바텀 시트 구현
 function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
-  var content = document.getElementById('bottom-sheet-content');
-  var title = document.getElementById('bottom-sheet-title');
+  var content = getEl('bottom-sheet-content');
+  var title = getEl('bottom-sheet-title');
   if (!content) return;
 
   if (title) title.textContent = '시설물 제원 입력';
@@ -4595,46 +4652,62 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
   var nextPhotoNum = getNextPhotoNumber();
   var primaryType = pendingFacilityType || '일반시설물';
 
-  // [오류 해결 1] 객체감지 진입 시 임시 추가사진 배열 초기화
-  var initialFileName = generatePhotoFileName(nextPhotoNum);
-  pendingStreetlightSubPhotos = [
-    { subIndex: 0, fileName: initialFileName, blob: fileBlob }
-  ];
+  if (fileBlob) {
+    // [오류 해결 1] 객체감지 진입 시 임시 추가사진 배열 초기화
+    var initialFileName = generatePhotoFileName(nextPhotoNum);
+    pendingStreetlightSubPhotos = [
+      { subIndex: 0, fileName: initialFileName, blob: fileBlob }
+    ];
 
-  var img = document.createElement('img');
-  img.className = 'form-preview-img';
-  img.style.cursor = 'pointer';
-  if (streetlightPreviewObjectUrl) {
-    URL.revokeObjectURL(streetlightPreviewObjectUrl);
+    var img = document.createElement('img');
+    img.className = 'form-preview-img';
+    img.style.cursor = 'pointer';
+    if (streetlightPreviewObjectUrl) {
+      URL.revokeObjectURL(streetlightPreviewObjectUrl);
+    }
+    streetlightPreviewObjectUrl = URL.createObjectURL(fileBlob);
+    img.src = streetlightPreviewObjectUrl;
+    content.appendChild(img);
+
+    // 📷 사진추가 버튼 & 썸네일 컨테이너 생성 및 추가
+    var photoControlWrap = document.createElement('div');
+    photoControlWrap.style.display = 'flex';
+    photoControlWrap.style.flexDirection = 'column';
+    photoControlWrap.style.gap = '5px';
+    photoControlWrap.style.marginBottom = '12px';
+
+    var addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'btn-add-photo';
+    addBtn.textContent = '📷 사진추가';
+    addBtn.style.alignSelf = 'flex-start';
+    addBtn.addEventListener('click', function () {
+      isAddingSubPhoto = true;
+      var cameraInput = getEl('camera-input');
+      if (cameraInput) cameraInput.click();
+    });
+    photoControlWrap.appendChild(addBtn);
+
+    var thumbContainer = document.createElement('div');
+    thumbContainer.className = 'photo-thumbnail-list';
+    thumbContainer.id = 'sw-thumbnails';
+    photoControlWrap.appendChild(thumbContainer);
+    content.appendChild(photoControlWrap);
+  } else {
+    // 사진 없는 글자 전용 등록 모드
+    pendingStreetlightSubPhotos = [];
+    var textOnlyNotice = document.createElement('div');
+    textOnlyNotice.style.background = '#e8eaf6';
+    textOnlyNotice.style.border = '1px solid #3f51b5';
+    textOnlyNotice.style.color = '#1a237e';
+    textOnlyNotice.style.padding = '10px 14px';
+    textOnlyNotice.style.borderRadius = '8px';
+    textOnlyNotice.style.fontSize = '13px';
+    textOnlyNotice.style.fontWeight = 'bold';
+    textOnlyNotice.style.marginBottom = '12px';
+    textOnlyNotice.innerHTML = '📝 <strong>글자만 등록 모드</strong> (사진 없이 도면 텍스트만 기록됩니다)';
+    content.appendChild(textOnlyNotice);
   }
-  streetlightPreviewObjectUrl = URL.createObjectURL(fileBlob);
-  img.src = streetlightPreviewObjectUrl;
-  content.appendChild(img);
-
-  // 📷 사진추가 버튼 & 썸네일 컨테이너 생성 및 추가
-  var photoControlWrap = document.createElement('div');
-  photoControlWrap.style.display = 'flex';
-  photoControlWrap.style.flexDirection = 'column';
-  photoControlWrap.style.gap = '5px';
-  photoControlWrap.style.marginBottom = '12px';
-
-  var addBtn = document.createElement('button');
-  addBtn.type = 'button';
-  addBtn.className = 'btn-add-photo';
-  addBtn.textContent = '📷 사진추가';
-  addBtn.style.alignSelf = 'flex-start';
-  addBtn.addEventListener('click', function () {
-    isAddingSubPhoto = true;
-    var cameraInput = document.getElementById('camera-input');
-    if (cameraInput) cameraInput.click();
-  });
-  photoControlWrap.appendChild(addBtn);
-
-  var thumbContainer = document.createElement('div');
-  thumbContainer.className = 'photo-thumbnail-list';
-  thumbContainer.id = 'sw-thumbnails';
-  photoControlWrap.appendChild(thumbContainer);
-  content.appendChild(photoControlWrap);
 
   // 썸네일 렌더링 헬퍼
   window.renderStreetlightThumbnails = function () {
@@ -4824,7 +4897,7 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
 
   // 실시간 다중 폼 전체 미리보기 업데이트 함수 정의
   window.updateAllPreviews = function () {
-    var previewEl = document.getElementById('sw-spec-preview');
+    var previewEl = getEl('sw-spec-preview');
     if (!previewEl) return;
     var cards = formListContainer.querySelectorAll('.attr-card');
     var previews = [];
@@ -5052,20 +5125,24 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
   var photoId = 'photo-' + Date.now();
   var numTextId = 'text-num-' + Date.now();
   
-  // 사진 번호 텍스트 객체 생성 및 texts 배열 등록
-  var numTextObj = {
-    id: numTextId,
-    x: insertionDxf.x,
-    y: insertionDxf.y,
-    text: formData.num,
-    fontSize: 12,
-    layer: '사진번호'
-  };
-  texts.push(numTextObj);
+  // 사진 파일이 있는 경우에만 사진 번호 텍스트 객체 생성 및 texts 배열 등록
+  if (fileBlob) {
+    var numTextObj = {
+      id: numTextId,
+      x: insertionDxf.x,
+      y: insertionDxf.y,
+      text: formData.num,
+      fontSize: 12,
+      layer: '사진번호'
+    };
+    texts.push(numTextObj);
+  }
 
   // 2. 다중 제원 텍스트 마커 생성 및 ID 목록 결합
   var specTextIds = [];
   var primarySpecTextId = null;
+
+  var cfg = window.FACILITY_CONFIG || (typeof FACILITY_CONFIG !== 'undefined' ? FACILITY_CONFIG : {});
 
   if (formData.attributes && formData.attributes.length > 0) {
     formData.attributes.forEach(function (attr, index) {
@@ -5077,16 +5154,38 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
         primarySpecTextId = specTextId;
       }
 
+      var colorNum = 7;
+      if (cfg[attr.type] && cfg[attr.type].color !== undefined) {
+        colorNum = cfg[attr.type].color;
+      }
+
       var specTextObj = {
         id: specTextId,
         x: insertionDxf.x,
         y: insertionDxf.y,
         text: attr.specText,
         fontSize: 12,
-        layer: attr.layer || '일반_T'
+        layer: attr.layer || '일반_T',
+        color: colorNum
       };
       texts.push(specTextObj);
     });
+  }
+
+  // 사진 없는 글자 전용 등록 모드인 경우
+  if (!fileBlob) {
+    window.localStore.saveProject(dxfFileFullName, { texts: texts, lastModified: new Date().toISOString() })
+    .then(function () {
+      drawTextMarkers();
+      showLoading(false);
+      hideStreetlightBottomSheet();
+      showToast('제원 텍스트 저장이 완료되었습니다.');
+    }).catch(function (err) {
+      showLoading(false);
+      console.error('제원 텍스트 저장 실패:', err);
+      alert('데이터 저장소에 기록하는 도중 오류가 발생해 저장하지 못했습니다.');
+    });
+    return;
   }
 
   var targetSize = getImageTargetSize();
@@ -5195,8 +5294,20 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
     }
   }
 
+  // 부속시설물 여부 확인 (두 번째 이후 카드)
+  var cardEl = container.parentNode;
+  var isSub = false;
+  if (cardEl && cardEl.getAttribute('data-is-sub') === 'true') {
+    isSub = true;
+  }
+
   // 2. 설정 테이블 필드 동적 생성 (datalist 통합 콤보박스 적용)
   config.fields.forEach(function (field, idx) {
+    // [사용자 요구사항] 부속시설물일 경우 지주 및 사진 항목 자동 생략
+    if (isSub && (field.isSupport || field.isPhoto || /지주|사진/.test(field.label))) {
+      return;
+    }
+
     var group = document.createElement('div');
     group.className = 'form-group';
 
@@ -5498,55 +5609,54 @@ function serializeFacilityForm(container, config, prefixId) {
   var customLayerInput = document.getElementById(prefixId + '-custom-layer');
   var finalLayer = (customLayerInput && customLayerInput.value.trim()) ? customLayerInput.value.trim() : config.layer;
 
-  // 제원 조립 처리 (포맷 규칙 준수: 맨 앞에 접두어 필수 포함)
-  var specText = '';
-  var prefixWord = (config.prefix !== undefined) ? config.prefix : config.title;
+  // 부속시설물 여부 확인
+  var cardEl = (container.closest ? container.closest('.attr-card') : null) || container.parentNode;
+  var isSub = false;
+  if (cardEl && cardEl.getAttribute && cardEl.getAttribute('data-is-sub') === 'true') {
+    isSub = true;
+  } else if (prefixId && (prefixId.indexOf('-attr-') >= 0 || prefixId.startsWith('sw-attr-') || prefixId.startsWith('pm-attr-'))) {
+    isSub = true;
+  }
 
-  if (config.title === '신호등') {
-    // 신호등용 맞춤 포맷팅
-    // 1. 형식*수량 조립 (예: 횡4*2)
-    var styleAndCount = vals.style + '*' + vals.count;
-    
-    // 2. 종류가 '보행'이면 마지막에 보행등 구분 추가
-    if (vals.type === '보행') {
-      var ped = '';
-      if (vals.pedestrianType === '보행등무') {
-        ped = '보행등무';
-      } else {
-        ped = (vals.pedestrianType || '보행등') + '*' + (vals.pedestrianCount || '1');
-      }
-      specText = (prefixWord ? prefixWord + '/' : '') + vals.type + '/' + styleAndCount + '/' + vals.support + '/' + ped;
-    } else {
-      specText = (prefixWord ? prefixWord + '/' : '') + vals.type + '/' + styleAndCount + '/' + vals.support;
+  // 제원 조립 처리 (포맷 규칙: 접두어 필수 포함, 부속시설물일 경우 앞에 + 자동 첨부)
+  var prefixWord = (config.prefix !== undefined && config.prefix !== '') ? config.prefix : config.title;
+  if (isSub && prefixWord) {
+    if (!prefixWord.startsWith('+')) {
+      prefixWord = '+' + prefixWord;
     }
-  } else if (config.title === '도로표지') {
-    // 예외 없이 항상 내용(빈칸 포함)을 포함하여 4개 파트로 표준 조립
-    var contentVal = vals.content || '--';
-    specText = (prefixWord ? prefixWord + '/' : '') + vals.direction + '/' + contentVal + '/' + vals.support;
-  } else if (config.joinFormat === 'dimension/type/wing/sump') {
-    // 배수암거, 통로박스 등 (접두어/가로*세로/재질/날개벽/집수정 등)
-    var dim = vals.width + '*' + vals.height;
-    specText = (prefixWord ? prefixWord + '/' : '') + dim + '/' + vals.type + '/' + (vals.wing || vals.traffic || vals.material || '--') + '/' + (vals.sump || '--');
-  } else if (config.joinFormat === 'bridgeName/material/dimension') {
-    // 교량 등 (접두어/교량명/재질/가로*세로)
-    var dim = vals.width + '*' + vals.height;
-    specText = (prefixWord ? prefixWord + '/' : '') + vals.bridgeName + '/' + vals.material + '/' + dim;
-  } else if (config.joinFormat === 'type/dimension') {
-    // 측구 (접두어/종류/가로*세로)
-    var dim = vals.width + '*' + vals.height;
-    specText = (prefixWord ? prefixWord + '/' : '') + vals.type + '/' + dim;
-  } else {
-    // 기본 포맷: 접두어/val1/val2/val3...
-    var parts = [];
-    if (prefixWord) {
-      parts.push(prefixWord);
-    }
+  }
+
+  var parts = [];
+  if (prefixWord) {
+    parts.push(prefixWord);
+  }
+
+  var specText = '';
+
+  if (config.fields && config.fields.length > 0) {
     config.fields.forEach(function (field) {
       // 고정 레이어명 필드(name)는 직렬화에서 생략
       if (field.id === 'name') return;
-      parts.push(vals[field.id]);
+
+      // [사용자 요구사항] 부속시설물일 경우 지주 및 사진 항목 자동 제외
+      if (isSub && (field.isSupport || field.isPhoto || /지주|사진/.test(field.label))) {
+        return;
+      }
+
+      var fieldVal = vals[field.id];
+      if (fieldVal === undefined || fieldVal === null) return;
+      fieldVal = String(fieldVal).trim();
+
+      // [사용자 요구사항] '삭제'를 선택했거나 공란/빈칸/-- 인 경우 해당 항목은 슬래시 조립에서 완전히 생략(skip)
+      if (fieldVal === '삭제' || fieldVal === '--' || fieldVal === '') {
+        return;
+      }
+
+      parts.push(fieldVal);
     });
     specText = parts.join('/');
+  } else {
+    specText = prefixWord || config.title;
   }
 
   // 통신주 및 전력주(체신주)는 오해 방지를 위해 미리보기 텍스트를 전개 제외로 표시
@@ -5766,9 +5876,9 @@ function findNearbyFacilities(latLng, maxDistM) {
 }
 
 function showStreetlightBottomSheet(list, dxfCoords, latLng) {
-  var sheet = document.getElementById('bottom-sheet-flow');
-  var content = document.getElementById('bottom-sheet-content');
-  var title = document.getElementById('bottom-sheet-title');
+  var sheet = getEl('bottom-sheet-flow');
+  var content = getEl('bottom-sheet-content');
+  var title = getEl('bottom-sheet-title');
   var closeBtn = document.getElementById('bottom-sheet-close');
   if (!sheet || !content) return;
 
@@ -5790,18 +5900,9 @@ function showStreetlightBottomSheet(list, dxfCoords, latLng) {
   generalPhotoDiv.style.fontWeight = 'bold';
   generalPhotoDiv.style.color = '#0d47a1';
   generalPhotoDiv.style.textAlign = 'center';
-  generalPhotoDiv.innerHTML = '일반사진 촬영';
+  generalPhotoDiv.innerHTML = '📷 일반사진 촬영';
   generalPhotoDiv.addEventListener('click', function () {
-    pendingAddPosition = { x: dxfCoords.x, y: dxfCoords.y };
-    pendingStreetlightItem = null;
-    pendingStreetlightDxfCoords = null;
-    pendingStreetlightLatLng = null;
-    pendingFacilityType = null;
-    isAddingSubPhoto = false;
-
-    var input = document.getElementById('camera-input');
-    if (input) { input.click(); }
-    hideStreetlightBottomSheet();
+    openFacilitySelectModal(dxfCoords, latLng);
   });
   btnRow.appendChild(generalPhotoDiv);
 
@@ -5814,7 +5915,7 @@ function showStreetlightBottomSheet(list, dxfCoords, latLng) {
   generalTextDiv.style.fontWeight = 'bold';
   generalTextDiv.style.color = '#4e342e';
   generalTextDiv.style.textAlign = 'center';
-  generalTextDiv.innerHTML = '텍스트 삽입';
+  generalTextDiv.innerHTML = '📝 텍스트 삽입';
   generalTextDiv.addEventListener('click', function () {
     pendingAddPosition = { x: dxfCoords.x, y: dxfCoords.y };
     hideStreetlightBottomSheet();
@@ -5831,16 +5932,101 @@ function showStreetlightBottomSheet(list, dxfCoords, latLng) {
     divider.style.margin = '10px 0';
     content.appendChild(divider);
 
+    var sectionTitle = document.createElement('div');
+    sectionTitle.style.fontSize = '12px';
+    sectionTitle.style.fontWeight = 'bold';
+    sectionTitle.style.color = '#555';
+    sectionTitle.style.marginBottom = '8px';
+    sectionTitle.textContent = '🔍 감지된 시설물 목록 (사진 또는 글자만 등록 선택)';
+    content.appendChild(sectionTitle);
+
     list.forEach(function (item) {
-      var div = document.createElement('div');
-      div.className = 'facility-list-item';
-      
-      div.textContent = item.name + ' (' + item.layer + ') — ' + item.distance.toFixed(1) + 'm';
-      
-      div.addEventListener('click', function () {
-        triggerStreetlightCamera(item, dxfCoords, latLng);
+      var matchedFacilities = getMatchingFacilities(item.name, item.layer);
+      if (matchedFacilities.length === 0) {
+        matchedFacilities = [item.name];
+      }
+
+      matchedFacilities.forEach(function (facType) {
+        var card = document.createElement('div');
+        card.className = 'facility-list-item';
+        card.style.display = 'flex';
+        card.style.flexDirection = 'column';
+        card.style.gap = '8px';
+        card.style.padding = '10px 12px';
+        card.style.marginBottom = '8px';
+        card.style.background = '#f9f9fb';
+        card.style.border = '1px solid #e5e5ea';
+        card.style.borderRadius = '8px';
+
+        var infoDiv = document.createElement('div');
+        infoDiv.style.display = 'flex';
+        infoDiv.style.justifyContent = 'space-between';
+        infoDiv.style.alignItems = 'center';
+
+        var nameSpan = document.createElement('span');
+        nameSpan.style.fontWeight = 'bold';
+        nameSpan.style.fontSize = '14px';
+        nameSpan.style.color = '#1c1c1e';
+        nameSpan.textContent = facType;
+
+        var subSpan = document.createElement('span');
+        subSpan.style.fontSize = '11px';
+        subSpan.style.color = '#8e8e93';
+        subSpan.textContent = item.layer + ' (' + item.distance.toFixed(1) + 'm)';
+
+        infoDiv.appendChild(nameSpan);
+        infoDiv.appendChild(subSpan);
+        card.appendChild(infoDiv);
+
+        // 액션 버튼 영역 (📷 사진촬영 vs 📝 글자만)
+        var actRow = document.createElement('div');
+        actRow.style.display = 'flex';
+        actRow.style.gap = '8px';
+
+        var photoBtn = document.createElement('button');
+        photoBtn.type = 'button';
+        photoBtn.className = 'btn';
+        photoBtn.style.flex = '1';
+        photoBtn.style.padding = '8px 4px';
+        photoBtn.style.fontSize = '12px';
+        photoBtn.style.fontWeight = 'bold';
+        photoBtn.style.background = '#007AFF';
+        photoBtn.style.color = '#fff';
+        photoBtn.style.border = 'none';
+        photoBtn.style.borderRadius = '6px';
+        photoBtn.style.cursor = 'pointer';
+        photoBtn.innerHTML = '📷 사진촬영';
+        photoBtn.onclick = function (e) {
+          e.stopPropagation();
+          var customItem = Object.assign({}, item, { type: facType, name: facType });
+          triggerStreetlightCamera(customItem, dxfCoords, latLng);
+        };
+
+        var textBtn = document.createElement('button');
+        textBtn.type = 'button';
+        textBtn.className = 'btn';
+        textBtn.style.flex = '1';
+        textBtn.style.padding = '8px 4px';
+        textBtn.style.fontSize = '12px';
+        textBtn.style.fontWeight = 'bold';
+        textBtn.style.background = '#5856D6';
+        textBtn.style.color = '#fff';
+        textBtn.style.border = 'none';
+        textBtn.style.borderRadius = '6px';
+        textBtn.style.cursor = 'pointer';
+        textBtn.innerHTML = '📝 글자만';
+        textBtn.onclick = function (e) {
+          e.stopPropagation();
+          var customItem = Object.assign({}, item, { type: facType, name: facType });
+          triggerStreetlightTextOnly(customItem, dxfCoords, latLng);
+        };
+
+        actRow.appendChild(photoBtn);
+        actRow.appendChild(textBtn);
+        card.appendChild(actRow);
+
+        content.appendChild(card);
       });
-      content.appendChild(div);
     });
   } else {
     var emptyDiv = document.createElement('div');
@@ -5861,7 +6047,7 @@ function showStreetlightBottomSheet(list, dxfCoords, latLng) {
 }
 
 function hideStreetlightBottomSheet() {
-  var sheet = document.getElementById('bottom-sheet-flow');
+  var sheet = getEl('bottom-sheet-flow');
   if (sheet) sheet.classList.remove('active');
   pendingStreetlightItem = null;
   pendingStreetlightDxfCoords = null;
@@ -5883,9 +6069,125 @@ function triggerStreetlightCamera(item, dxfCoords, latLng) {
   pendingStreetlightItem = item;
   pendingStreetlightDxfCoords = dxfCoords;
   pendingStreetlightLatLng = latLng;
-  pendingFacilityType = detectFacilityType(item.name, item.layer);
+  pendingFacilityType = item.type || detectFacilityType(item.name, item.layer) || item.name;
 
-  var cameraInput = document.getElementById('camera-input');
+  var cameraInput = getEl('camera-input');
+  if (cameraInput) {
+    cameraInput.click();
+  }
+}
+
+function triggerStreetlightTextOnly(item, dxfCoords, latLng) {
+  pendingStreetlightItem = item;
+  pendingStreetlightDxfCoords = dxfCoords;
+  pendingStreetlightLatLng = latLng;
+  pendingFacilityType = item.type || detectFacilityType(item.name, item.layer) || item.name;
+
+  hideStreetlightBottomSheet();
+  showStreetlightInputForm(null, item, dxfCoords, latLng);
+}
+
+// 미감지 시설물 선택 및 일반사진 연동 팝업 (방안 1)
+function openFacilitySelectModal(dxfCoords, latLng) {
+  hideStreetlightBottomSheet();
+
+  var modal = document.getElementById('facility-select-modal');
+  var closeBtn = document.getElementById('facility-select-close');
+  var selectEl = document.getElementById('facility-select-dropdown');
+  var btnCam = document.getElementById('btn-proceed-facility-camera');
+  var btnText = document.getElementById('btn-proceed-facility-textonly');
+  var btnGen = document.getElementById('btn-proceed-general-photo');
+
+  if (!modal || !selectEl) return;
+
+  // 전체 시설물 목록 가나다순 채우기
+  selectEl.innerHTML = '<option value="">선택 안 함 (기본 일반사진)</option>';
+  var cfg = window.FACILITY_CONFIG || (typeof FACILITY_CONFIG !== 'undefined' ? FACILITY_CONFIG : {});
+  var facKeys = Object.keys(cfg);
+  facKeys.sort(function (a, b) { return a.localeCompare(b, 'ko'); });
+
+  facKeys.forEach(function (k) {
+    var opt = document.createElement('option');
+    opt.value = k;
+    opt.textContent = k + ' [' + (cfg[k].prefix || k) + ']';
+    selectEl.appendChild(opt);
+  });
+
+  function updateBtnVisibility() {
+    var val = selectEl.value;
+    if (val) {
+      btnCam.style.display = 'block';
+      btnText.style.display = 'block';
+      btnCam.textContent = '📷 ' + val + ' 사진촬영 조사';
+      btnText.textContent = '📝 ' + val + ' 글자만 등록';
+      btnGen.style.display = 'none';
+    } else {
+      btnCam.style.display = 'none';
+      btnText.style.display = 'none';
+      btnGen.style.display = 'block';
+    }
+  }
+
+  selectEl.value = '';
+  updateBtnVisibility();
+  selectEl.onchange = updateBtnVisibility;
+
+  function closeModal() {
+    modal.classList.remove('active');
+  }
+
+  closeBtn.onclick = closeModal;
+
+  // 1) 시설물 사진촬영 조사
+  btnCam.onclick = function () {
+    var sel = selectEl.value;
+    closeModal();
+    if (sel && cfg[sel]) {
+      var item = {
+        name: sel,
+        layer: cfg[sel].layer || (sel + '_T'),
+        type: sel,
+        distance: 0,
+        coord: latLng
+      };
+      triggerStreetlightCamera(item, dxfCoords, latLng);
+    }
+  };
+
+  // 2) 시설물 글자만 등록
+  btnText.onclick = function () {
+    var sel = selectEl.value;
+    closeModal();
+    if (sel && cfg[sel]) {
+      var item = {
+        name: sel,
+        layer: cfg[sel].layer || (sel + '_T'),
+        type: sel,
+        distance: 0,
+        coord: latLng
+      };
+      triggerStreetlightTextOnly(item, dxfCoords, latLng);
+    }
+  };
+
+  // 3) 기본 일반사진 촬영
+  btnGen.onclick = function () {
+    closeModal();
+    pendingAddPosition = { x: dxfCoords.x, y: dxfCoords.y };
+    pendingStreetlightItem = null;
+    pendingStreetlightDxfCoords = null;
+    pendingStreetlightLatLng = null;
+    pendingFacilityType = null;
+    isAddingSubPhoto = false;
+
+    var input = getEl('camera-input');
+    if (input) { input.click(); }
+  };
+
+  modal.classList.add('active');
+}
+
+  var cameraInput = getEl('camera-input');
   if (cameraInput) {
     cameraInput.click();
   }
@@ -6066,7 +6368,7 @@ function openImageViewer(subs, startIndex) {
   imageViewerPhotos = subs || [];
   imageViewerIndex = startIndex >= 0 && startIndex < imageViewerPhotos.length ? startIndex : 0;
   
-  var viewer = document.getElementById('image-viewer-modal');
+  var viewer = getEl('image-viewer-modal');
   if (!viewer) return;
 
   // 네비게이션 버튼 표시 여부
@@ -6088,7 +6390,7 @@ function openImageViewer(subs, startIndex) {
 
 /** 이미지 슬라이더 닫기 */
 function closeImageViewer() {
-  var viewer = document.getElementById('image-viewer-modal');
+  var viewer = getEl('image-viewer-modal');
   if (viewer) viewer.classList.remove('active');
   if (imageViewerObjectUrl) {
     URL.revokeObjectURL(imageViewerObjectUrl);
@@ -6133,7 +6435,7 @@ function showImageViewerSlide(index) {
   }
   
   // 모달 썸네일 액티브 상태 동기화
-  var thumbContainer = document.getElementById('photo-modal-thumbnails');
+  var thumbContainer = getEl('photo-modal-thumbnails');
   if (thumbContainer) {
     var thumbs = thumbContainer.querySelectorAll('.photo-thumb-item');
     thumbs.forEach(function (t, i) {
@@ -6171,7 +6473,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // 터치 스와이프 지원 (모바일 슬라이드)
   var startX = 0;
   var endX = 0;
-  var viewer = document.getElementById('image-viewer-modal');
+  var viewer = getEl('image-viewer-modal');
   if (viewer) {
     viewer.addEventListener('touchstart', function (e) {
       startX = e.touches[0].clientX;
