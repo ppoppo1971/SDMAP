@@ -4387,6 +4387,23 @@ function openSuggestionPickerModal(targetInputId, fieldTitle, suggestions, field
     if (e.target === modal) closeModal();
   };
 
+  // 최상단 직접 입력 옵션 (방안 1: 이모지 제외, 깔끔한 텍스트만 표시)
+  var directItem = document.createElement('div');
+  directItem.className = 'suggestion-picker-item';
+  directItem.style.color = '#007AFF';
+  directItem.style.fontWeight = 'bold';
+  directItem.style.background = '#F0F8FF';
+  directItem.style.borderColor = '#B8D9FF';
+  directItem.textContent = '직접 입력';
+  directItem.addEventListener('click', function () {
+    closeModal();
+    setTimeout(function () {
+      targetInput.focus();
+      targetInput.select();
+    }, 50);
+  });
+  listEl.appendChild(directItem);
+
   // 공백 또는 초기화용 '--' 옵션 추가
   var clearItem = document.createElement('div');
   clearItem.className = 'suggestion-picker-item';
@@ -4974,8 +4991,8 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
   var previewGroup = document.createElement('div');
   previewGroup.className = 'form-group sticky-preview-box';
   previewGroup.innerHTML = 
-    '<label style="color:#5856D6; font-size:11px; font-weight:bold; margin-bottom:2px; display:block;">도면 저장 제원 일괄 미리보기</label>' +
-    '<div id="sw-spec-preview" style="font-size:12px; color:#1C1C1E; word-break:break-all; min-height:16px; white-space:pre-line; line-height:1.4;"></div>';
+    '<label style="color:#5856D6; font-size:12px; font-weight:bold; margin-bottom:4px; display:block;">도면 저장 제원 일괄 미리보기</label>' +
+    '<div id="sw-spec-preview" style="font-size:14px; font-weight:500; color:#1C1C1E; word-break:break-all; min-height:18px; white-space:pre-line; line-height:1.5;"></div>';
   content.appendChild(previewGroup);
 
   // 실시간 다중 폼 전체 미리보기 업데이트 함수 정의
