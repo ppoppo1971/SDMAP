@@ -3368,6 +3368,7 @@ function deserializeSpecText(specText, config) {
 }
 
 function showPhotoModal(photoId) {
+  clearDomCache();
   editingDxfImageRef = null;
   
   // 동일한 사진을 다시 여는 경우 기존 이미지 객체 URL을 해제하지 않고 유지하여 깜빡임 및 비동기 중단 버그 방지
@@ -3573,7 +3574,7 @@ function showPhotoModal(photoId) {
 
     // 실시간 다중 폼 전체 미리보기 업데이트 함수 정의
     window.updateAllPreviewsPM = function () {
-      var previewEl = getEl('pm-spec-preview');
+      var previewEl = document.getElementById('pm-spec-preview');
       if (!previewEl) return;
       var cards = pmFormListContainer.querySelectorAll('.attr-card');
       var previews = [];
@@ -3581,8 +3582,9 @@ function showPhotoModal(photoId) {
         var type = card.getAttribute('data-type');
         var prefixIdUnique = card.getAttribute('data-prefix-id');
         var config = FACILITY_CONFIG[type] || { title: type, fields: [] };
-        var result = serializeFacilityForm(card.querySelector('div'), config, prefixIdUnique);
-        if (result) {
+        var formBody = card.querySelector('.attr-card-body') || card.querySelectorAll('div')[1] || card;
+        var result = serializeFacilityForm(formBody, config, prefixIdUnique);
+        if (result && result.specText) {
           previews.push(result.specText);
         }
       });
@@ -3832,6 +3834,7 @@ function rollbackPendingPhoto() {
 }
 
 function hidePhotoModal() {
+  clearDomCache();
   if (isNewPhotoPending && editingPhotoId) {
     rollbackPendingPhoto();
   }
@@ -3920,8 +3923,8 @@ function bindPhotoModal() {
         var prefixIdUnique = card.getAttribute('data-prefix-id');
         var config = FACILITY_CONFIG[type];
         if (!config) return;
-
-        var result = serializeFacilityForm(card.querySelector('div'), config, prefixIdUnique);
+        var formBody = card.querySelector('.attr-card-body') || card.querySelectorAll('div')[1] || card;
+        var result = serializeFacilityForm(formBody, config, prefixIdUnique);
         if (!result) {
           serializeSuccess = false;
           return;
@@ -3933,6 +3936,13 @@ function bindPhotoModal() {
           specText: result.specText,
           values: result.values
         });
+
+        // 사용자가 직접 입력한 속성값들을 사용자 사전에 자동 누적 저장
+        if (result.values) {
+          for (var fId in result.values) {
+            saveFieldCustomSuggestion((config.title || config.layer) + '_' + fId, result.values[fId]);
+          }
+        }
       });
     }
 
@@ -4294,23 +4304,188 @@ function validatePhotoNumber(newNumStr, currentPhotoId) {
   return true;
 }
 
-// 특정 시설물 및 필드 ID에 매칭되는 이전 입력값들을 texts 이력에서 추출하여 빈도순 정렬하여 반환 (최대 15개 제한 + 누락 기본값 하단 추가)
+// 추천 단어 및 제외 목록(Blacklist) 로컬 저장소 관리
+function getFieldBlacklist(fieldKey) {
+  try {
+    var raw = localStorage.getItem('dmap:blacklistSuggestions');
+    var bl = raw ? JSON.parse(raw) : {};
+    return bl[fieldKey] || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function addFieldBlacklist(fieldKey, value) {
+  try {
+    var raw = localStorage.getItem('dmap:blacklistSuggestions');
+    var bl = raw ? JSON.parse(raw) : {};
+    if (!bl[fieldKey]) bl[fieldKey] = [];
+    if (bl[fieldKey].indexOf(value) === -1) {
+      bl[fieldKey].push(value);
+    }
+    localStorage.setItem('dmap:blacklistSuggestions', JSON.stringify(bl));
+  } catch (e) {
+    console.error('Blacklist save error:', e);
+  }
+}
+
+function getFieldCustomSuggestions(fieldKey) {
+  try {
+    var raw = localStorage.getItem('dmap:customSuggestions');
+    var cs = raw ? JSON.parse(raw) : {};
+    return cs[fieldKey] || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveFieldCustomSuggestion(fieldKey, value) {
+  if (!value) return;
+  var sVal = String(value).trim();
+  if (sVal === '' || sVal === '--' || sVal === '선택' || sVal === '직접입력' || sVal === '기타') return;
+  try {
+    var raw = localStorage.getItem('dmap:customSuggestions');
+    var cs = raw ? JSON.parse(raw) : {};
+    if (!cs[fieldKey]) cs[fieldKey] = {};
+    cs[fieldKey][sVal] = (cs[fieldKey][sVal] || 0) + 1;
+    localStorage.setItem('dmap:customSuggestions', JSON.stringify(cs));
+  } catch (e) {
+    console.error('Custom suggestion save error:', e);
+  }
+}
+
+function removeFieldCustomSuggestion(fieldKey, value) {
+  try {
+    var raw = localStorage.getItem('dmap:customSuggestions');
+    var cs = raw ? JSON.parse(raw) : {};
+    if (cs[fieldKey] && cs[fieldKey][value] !== undefined) {
+      delete cs[fieldKey][value];
+      localStorage.setItem('dmap:customSuggestions', JSON.stringify(cs));
+    }
+  } catch (e) {}
+}
+
+// 추천 목록 팝업 모달 표시 및 롱프레스(400ms) 삭제 핸들러 (안내문구 없이 깔끔하게 표시)
+function openSuggestionPickerModal(targetInputId, fieldTitle, suggestions, fieldKey, onSelect) {
+  var modal = document.getElementById('suggestion-picker-modal');
+  var titleEl = document.getElementById('suggestion-picker-title');
+  var listEl = document.getElementById('suggestion-picker-list');
+  var closeBtn = document.getElementById('suggestion-picker-close');
+  var targetInput = document.getElementById(targetInputId);
+
+  if (!modal || !listEl || !targetInput) return;
+
+  if (titleEl) titleEl.textContent = (fieldTitle ? fieldTitle + ' ' : '') + '목록 선택';
+  listEl.innerHTML = '';
+
+  function closeModal() {
+    modal.classList.remove('active');
+  }
+
+  if (closeBtn) closeBtn.onclick = closeModal;
+  modal.onclick = function (e) {
+    if (e.target === modal) closeModal();
+  };
+
+  // 공백 또는 초기화용 '--' 옵션 추가
+  var clearItem = document.createElement('div');
+  clearItem.className = 'suggestion-picker-item';
+  clearItem.style.color = '#8E8E93';
+  clearItem.textContent = '-- (선택 해제)';
+  clearItem.addEventListener('click', function () {
+    targetInput.value = '--';
+    if (onSelect) onSelect('--');
+    closeModal();
+  });
+  listEl.appendChild(clearItem);
+
+  if (!suggestions || suggestions.length === 0) {
+    var emptyEl = document.createElement('div');
+    emptyEl.style.padding = '15px';
+    emptyEl.style.textAlign = 'center';
+    emptyEl.style.color = '#999';
+    emptyEl.style.fontSize = '12px';
+    emptyEl.textContent = '등록된 추천 항목이 없습니다.';
+    listEl.appendChild(emptyEl);
+  } else {
+    suggestions.forEach(function (val) {
+      var itemEl = document.createElement('div');
+      itemEl.className = 'suggestion-picker-item';
+      itemEl.textContent = val;
+
+      var pressTimer = null;
+      var isLongPressed = false;
+
+      var handlePressStart = function () {
+        isLongPressed = false;
+        pressTimer = setTimeout(function () {
+          isLongPressed = true;
+          if (navigator.vibrate) {
+            try { navigator.vibrate(50); } catch (e) {}
+          }
+          if (confirm('"' + val + '" 항목을 추천 목록에서 삭제하시겠습니까?')) {
+            addFieldBlacklist(fieldKey, val);
+            removeFieldCustomSuggestion(fieldKey, val);
+            itemEl.remove();
+          }
+        }, 400); // 도면 객체 감지와 동일한 400ms
+      };
+
+      var handlePressEnd = function () {
+        if (pressTimer) {
+          clearTimeout(pressTimer);
+          pressTimer = null;
+        }
+      };
+
+      itemEl.addEventListener('touchstart', handlePressStart, { passive: true });
+      itemEl.addEventListener('touchend', function () {
+        handlePressEnd();
+        if (!isLongPressed) {
+          targetInput.value = val;
+          if (onSelect) onSelect(val);
+          closeModal();
+        }
+      });
+      itemEl.addEventListener('touchmove', handlePressEnd);
+
+      itemEl.addEventListener('mousedown', handlePressStart);
+      itemEl.addEventListener('mouseup', function () {
+        handlePressEnd();
+        if (!isLongPressed) {
+          targetInput.value = val;
+          if (onSelect) onSelect(val);
+          closeModal();
+        }
+      });
+      itemEl.addEventListener('mouseleave', handlePressEnd);
+
+      listEl.appendChild(itemEl);
+    });
+  }
+
+  modal.classList.add('active');
+}
+
+// 특정 시설물 및 필드 ID에 매칭되는 이전 입력값들을 texts 이력 및 localStorage에서 추출하여 빈도순 정렬하여 반환 (블랙리스트 제외)
 function getFieldSuggestions(fieldId, config, defaultOptions) {
   var counts = {};
-  var baseDefaults = []; // 누락된 기본 옵션들을 체크하기 위한 순수 목록 보관용
+  var baseDefaults = [];
+  var fieldKey = (config && (config.title || config.layer) ? (config.title || config.layer) : 'common') + '_' + fieldId;
+  var blacklist = getFieldBlacklist(fieldKey);
 
-  // 1. 기본 옵션 목록(사용자 지정 기본 목록)을 0회 카운트로 사전 등록
+  // 1. 기본 옵션 목록(사용자 지정 기본 목록)을 0회 카운트로 사전 등록 (블랙리스트 제외)
   if (defaultOptions && defaultOptions.length > 0) {
     defaultOptions.forEach(function (opt) {
       var val = String(opt).trim();
-      if (val !== '' && val !== '기타' && val !== '직접입력' && val !== '선택') {
-        counts[val] = 0; // 초기 빈도 0
+      if (val !== '' && val !== '기타' && val !== '직접입력' && val !== '선택' && val !== '--' && blacklist.indexOf(val) === -1) {
+        counts[val] = 0;
         baseDefaults.push(val);
       }
     });
   }
 
-  // 2. 현재 도면에서 실제로 입력된 값들을 집계하여 빈도수 가산
+  // 2. 현재 도면에서 실제로 입력된 값들을 집계하여 빈도수 가산 (블랙리스트 제외)
   if (window.texts && window.texts.length > 0 && config && config.layer) {
     var confClean = String(config.layer || '').replace(/_T$/i, '').toLowerCase();
     window.texts.forEach(function (t) {
@@ -4319,14 +4494,22 @@ function getFieldSuggestions(fieldId, config, defaultOptions) {
         var parsed = deserializeSpecText(t.text, config);
         if (parsed && parsed[fieldId] !== undefined) {
           var val = String(parsed[fieldId]).trim();
-          if (val !== '' && val !== '기타' && val !== '직접입력' && val !== '선택') {
+          if (val !== '' && val !== '기타' && val !== '직접입력' && val !== '선택' && val !== '--' && blacklist.indexOf(val) === -1) {
             counts[val] = (counts[val] || 0) + 1;
           }
         }
       }
     });
   }
-  
+
+  // 3. 브라우저 localStorage 사용자 사전에서도 집계 가산 (블랙리스트 제외)
+  var customStore = getFieldCustomSuggestions(fieldKey);
+  for (var cVal in customStore) {
+    if (blacklist.indexOf(cVal) === -1) {
+      counts[cVal] = (counts[cVal] || 0) + customStore[cVal];
+    }
+  }
+
   var list = Object.keys(counts).map(function (k) {
     return { val: k, count: counts[k] };
   });
@@ -4340,12 +4523,12 @@ function getFieldSuggestions(fieldId, config, defaultOptions) {
   // 정렬된 결과 값 리스트 추출
   var sortedValues = list.map(function (item) { return item.val; });
 
-  // 3. 상위 15개로 1차 제한
+  // 4. 상위 15개로 1차 제한
   var result = sortedValues.slice(0, 15);
 
-  // 4. 상위 15개 목록에 포함되지 않은 기본 설정값(defaultOptions)이 있다면 뒤에 추가로 병합
+  // 5. 상위 15개 목록에 포함되지 않은 기본 설정값(defaultOptions)이 있다면 뒤에 추가로 병합
   baseDefaults.forEach(function (defVal) {
-    if (result.indexOf(defVal) === -1) {
+    if (result.indexOf(defVal) === -1 && blacklist.indexOf(defVal) === -1) {
       result.push(defVal);
     }
   });
@@ -4415,11 +4598,14 @@ function isAutoGeneratedMemo(memo) {
   return s === '' || s.indexOf('시설물 조사') >= 0 || s.indexOf('시설물조사') >= 0;
 }
 
-// 과거 사진 메모 이력에서 빈도순 상위 10개 추출 (일반사진 / 시설물 구분 필터링 추가)
+// 과거 사진 메모 이력에서 빈도순 상위 10개 추출 (일반사진 / 시설물 구분 필터링 및 블랙리스트 제외 추가)
 function getMemoSuggestions(targetFacilityType) {
   var counts = {};
   var targetList = photos || [];
   var filterType = (targetFacilityType && targetFacilityType !== '일반시설물') ? targetFacilityType : '일반사진';
+  var fieldKey = 'memo_' + filterType;
+  var blacklist = getFieldBlacklist(fieldKey);
+
   if (targetList.length > 0) {
     targetList.forEach(function (p) {
       if (p.memo && String(p.memo).trim() !== '') {
@@ -4435,9 +4621,19 @@ function getMemoSuggestions(targetFacilityType) {
           if (photoType === '일반사진') return;
         }
         
-        counts[val] = (counts[val] || 0) + 1;
+        if (blacklist.indexOf(val) === -1) {
+          counts[val] = (counts[val] || 0) + 1;
+        }
       }
     });
+  }
+
+  // localStorage 사용자 사전에서도 가산
+  var customStore = getFieldCustomSuggestions(fieldKey);
+  for (var cVal in customStore) {
+    if (blacklist.indexOf(cVal) === -1) {
+      counts[cVal] = (counts[cVal] || 0) + customStore[cVal];
+    }
   }
   
   var list = Object.keys(counts).map(function (k) {
@@ -4522,39 +4718,13 @@ function triggerSubAttributesReset(container, config, prefixId, selectedSubType)
     if (idx === 0) return; // 상위 필드(종류)는 제외
     
     var inputId = prefixId + '-' + field.id;
-    var selEl = document.getElementById(inputId);
-    var etcEl = document.getElementById(inputId + '-etc');
-    
+    var inpEl = document.getElementById(inputId);
     var newVal = lastSpec[field.id];
     if (newVal === undefined) return;
     
     newVal = String(newVal).trim();
-    
-    if (selEl) {
-      // 드롭다운에 존재하는 옵션인지 확인
-      var exists = false;
-      for (var i = 0; i < selEl.options.length; i++) {
-        if (selEl.options[i].value === newVal) {
-          exists = true;
-          selEl.selectedIndex = i;
-          break;
-        }
-      }
-      
-      if (!exists && newVal !== '' && newVal !== '직접입력') {
-        // 추천 옵션에 없는 경우 옵션을 임시 추가
-        var opt = document.createElement('option');
-        opt.value = newVal;
-        opt.textContent = newVal;
-        selEl.add(opt, 1);
-        selEl.value = newVal;
-      }
-      
-      // 직접입력창 동기화 (우리는 초기화 시 무조건 100% 숨기지만, 값이 수집되도록 inner 값을 맞춤)
-      if (etcEl) {
-        etcEl.value = (newVal !== '직접입력') ? newVal : '';
-        etcEl.style.display = 'none'; // 무조건 숨김
-      }
+    if (inpEl) {
+      inpEl.value = (newVal !== '직접입력' && newVal !== '선택') ? newVal : '';
     }
   });
   
@@ -4601,7 +4771,7 @@ function renderMultiAttributeCard(container, type, cachedVals, prefixIdUnique) {
     if (confirm(type + ' 속성 폼을 삭제하시겠습니까?')) {
       card.remove();
       // 전체 제원 미리보기 갱신 트리거
-      var previewEl = getEl('sw-spec-preview') || getEl('pm-spec-preview');
+      var previewEl = document.getElementById('sw-spec-preview') || document.getElementById('pm-spec-preview');
       if (previewEl) {
         if (previewEl.id === 'pm-spec-preview') {
           if (typeof updateAllPreviewsPM === 'function') {
@@ -4621,6 +4791,7 @@ function renderMultiAttributeCard(container, type, cachedVals, prefixIdUnique) {
   card.appendChild(header);
 
   var formBody = document.createElement('div');
+  formBody.className = 'attr-card-body';
   card.appendChild(formBody);
   container.appendChild(card);
 
@@ -4642,6 +4813,7 @@ function renderMultiAttributeCard(container, type, cachedVals, prefixIdUnique) {
 
 // 다중 속성 일괄 제원 입력 바텀 시트 구현
 function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
+  clearDomCache();
   var content = getEl('bottom-sheet-content');
   var title = getEl('bottom-sheet-title');
   if (!content) return;
@@ -4748,9 +4920,11 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
   };
 
   // 메인 이미지 클릭 시 뷰어 연동
-  img.onclick = function () {
-    openImageViewer(pendingStreetlightSubPhotos, 0);
-  };
+  if (typeof img !== 'undefined' && img) {
+    img.onclick = function () {
+      openImageViewer(pendingStreetlightSubPhotos, 0);
+    };
+  }
 
   // 사진 번호 입력 필드 (공통)
   var numGroup = document.createElement('div');
@@ -4767,137 +4941,46 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
     });
   }
 
-  // 사진 메모 입력 필드 (공통 - 입력창 + 추천 선택 드롭다운 연계)
+  // 사진 메모 입력 필드 (공통 - 인라인 입력창 + 📋 추천 모달 버튼)
   var memoGroup = document.createElement('div');
   memoGroup.className = 'form-group';
-  var memoSuggestions = getMemoSuggestions(primaryType);
-  
   var memoHtml = '<label>메모 (사진메모)</label>' +
-                 '<select id="sw-form-memo-suggest" style="width:100%; padding:8px; border-radius:4px; border:1px solid #ccc; font-size:13px; margin-bottom:5px; background-color:#fff; color:#333;"></select>' +
-                 '<input type="text" id="sw-form-memo" placeholder="메모 직접 입력 후 완료(엔터/바깥터치)" style="display:none; width:100%; padding:8px; border-radius:4px; border:1px solid #ccc; font-size:13px;">';
-
+                 '<div class="combo-input-group">' +
+                 '  <input type="text" id="sw-form-memo" class="combo-input" placeholder="메모 직접 입력 (또는 📋 목록에서 선택)">' +
+                 '  <button type="button" id="sw-form-memo-btn" class="combo-list-btn" title="메모 목록 선택">📋</button>' +
+                 '</div>';
   memoGroup.innerHTML = memoHtml;
   content.appendChild(memoGroup);
 
-  var memoSuggestEl = memoGroup.querySelector('#sw-form-memo-suggest');
   var memoInputEl = memoGroup.querySelector('#sw-form-memo');
+  var memoBtnEl = memoGroup.querySelector('#sw-form-memo-btn');
 
-  if (memoSuggestEl && memoInputEl) {
-    // 직접입력 옵션 추가
-    var directOpt = document.createElement('option');
-    directOpt.value = '직접입력';
-    directOpt.textContent = '직접입력';
-    memoSuggestEl.appendChild(directOpt);
-
-    // 기본 선택 옵션으로 '선택' 추가
-    var defaultOpt = document.createElement('option');
-    defaultOpt.value = '';
-    defaultOpt.textContent = '선택';
-    defaultOpt.selected = true;
-    memoSuggestEl.insertBefore(defaultOpt, memoSuggestEl.firstChild);
-
-    memoSuggestions.forEach(function (sug) {
-      var opt = document.createElement('option');
-      opt.value = sug;
-      opt.textContent = sug;
-      memoSuggestEl.appendChild(opt);
+  if (memoInputEl && memoBtnEl) {
+    memoInputEl.addEventListener('input', function () {
+      if (typeof window.updateAllPreviews === 'function') window.updateAllPreviews();
     });
-
-    var handleMemoSelectChange = function () {
-      var val = memoSuggestEl.value;
-      if (val === '') {
-        memoInputEl.style.display = 'none';
-        memoInputEl.value = '';
-        if (typeof updateAllPreviews === 'function') updateAllPreviews();
-      } else {
-        // 사진 메모는 기존 방식 유지: 추천 선택 시 즉시 입력창을 열어 편집 대기
-        memoInputEl.style.display = 'block';
-        memoInputEl.value = (val === '직접입력') ? '' : val;
-        memoSuggestEl.value = '직접입력'; // 저장 동기화용 상태 고정
-        memoInputEl.focus();
-        setTimeout(function () {
-          memoInputEl.focus();
-          if (memoInputEl.type !== 'number') {
-            memoInputEl.select();
-          }
-        }, 10);
-      }
-    };
-
-    var commitMemoInput = function () {
-      if (memoSuggestEl.value !== '직접입력' || memoInputEl.style.display === 'none') return;
-      
-      var typedVal = memoInputEl.value.trim();
-      if (typedVal !== '') {
-        var exists = false;
-        for (var i = 0; i < memoSuggestEl.options.length; i++) {
-          if (memoSuggestEl.options[i].value === typedVal) {
-            exists = true;
-            memoSuggestEl.selectedIndex = i;
-            break;
-          }
-        }
-        if (!exists) {
-          var newOpt = document.createElement('option');
-          newOpt.value = typedVal;
-          newOpt.textContent = typedVal;
-          memoSuggestEl.add(newOpt, 2);
-          memoSuggestEl.value = typedVal;
-        }
-      } else {
-        memoSuggestEl.selectedIndex = 0;
-      }
-
-      memoInputEl.style.display = 'none';
-      if (typeof updateAllPreviews === 'function') updateAllPreviews();
-    };
-
-    memoSuggestEl.addEventListener('change', handleMemoSelectChange);
-    memoInputEl.addEventListener('keypress', function (e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        commitMemoInput();
-      }
+    memoInputEl.addEventListener('change', function () {
+      if (typeof window.updateAllPreviews === 'function') window.updateAllPreviews();
     });
-    memoInputEl.addEventListener('blur', function () {
-      setTimeout(commitMemoInput, 100);
+    memoBtnEl.addEventListener('click', function () {
+      var memoSuggestions = getMemoSuggestions(primaryType);
+      openSuggestionPickerModal('sw-form-memo', '사진메모', memoSuggestions, 'memo_' + (primaryType !== '일반시설물' ? primaryType : '일반사진'), function () {
+        if (typeof window.updateAllPreviews === 'function') window.updateAllPreviews();
+      });
     });
   }
 
-  // 동적 필드 카드들을 담을 수직 리스트 컨테이너 생성
-  var formListContainer = document.createElement('div');
-  formListContainer.id = 'sw-dynamic-form-list';
-  formListContainer.style.display = 'flex';
-  formListContainer.style.flexDirection = 'column';
-  formListContainer.style.gap = '15px';
-  content.appendChild(formListContainer);
-
-  // 1. 최초 롱프레스로 자동 인식된 주(Primary) 시설물 카드 1개 자동 렌더링
-  primaryType = pendingFacilityType || '일반시설물';
-  var cached = lastSpecs[primaryType] || {};
-  renderMultiAttributeCard(formListContainer, primaryType, cached, 'sw-primary');
-
-  // 구분선 삽입 (일괄 미리보기 위)
-  var swPreviewDivider = document.createElement('div');
-  swPreviewDivider.style.borderTop = '1.5px solid #8E8E93';
-  swPreviewDivider.style.marginTop = '15px';
-  content.appendChild(swPreviewDivider);
-
-  // 실시간 전체 제원 미리보기 필드 삽입 (가시성 확보용)
+  // 실시간 전체 제원 미리보기 필드 삽입 (바텀시트 상단 고정: sticky-preview-box)
   var previewGroup = document.createElement('div');
-  previewGroup.className = 'form-group';
-  previewGroup.style.background = '#F2F2F7';
-  previewGroup.style.padding = '8px 12px';
-  previewGroup.style.borderRadius = '8px';
-  previewGroup.style.border = '1px solid #E5E5EA';
+  previewGroup.className = 'form-group sticky-preview-box';
   previewGroup.innerHTML = 
-    '<label style="color:#5856D6; font-size:11px; margin-bottom:2px;">도면 저장 제원 일괄 미리보기</label>' +
-    '<div id="sw-spec-preview" style="font-size:12px; color:#1C1C1E; word-break:break-all; min-height:16px; white-space:pre-line;"></div>';
+    '<label style="color:#5856D6; font-size:11px; font-weight:bold; margin-bottom:2px; display:block;">도면 저장 제원 일괄 미리보기</label>' +
+    '<div id="sw-spec-preview" style="font-size:12px; color:#1C1C1E; word-break:break-all; min-height:16px; white-space:pre-line; line-height:1.4;"></div>';
   content.appendChild(previewGroup);
 
   // 실시간 다중 폼 전체 미리보기 업데이트 함수 정의
   window.updateAllPreviews = function () {
-    var previewEl = getEl('sw-spec-preview');
+    var previewEl = document.getElementById('sw-spec-preview');
     if (!previewEl) return;
     var cards = formListContainer.querySelectorAll('.attr-card');
     var previews = [];
@@ -4905,24 +4988,18 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
       var type = card.getAttribute('data-type');
       var prefixIdUnique = card.getAttribute('data-prefix-id');
       var config = FACILITY_CONFIG[type] || { title: type, fields: [] };
-      var result = serializeFacilityForm(card.querySelector('div'), config, prefixIdUnique);
-      if (result) {
+      var formBody = card.querySelector('.attr-card-body') || card.querySelectorAll('div')[1] || card;
+      var result = serializeFacilityForm(formBody, config, prefixIdUnique);
+      if (result && result.specText) {
         previews.push(result.specText);
       }
     });
 
     // 메모 값 수집
     var memoVal = '';
-    var memoSuggestEl = document.getElementById('sw-form-memo-suggest');
-    var memoInputEl = document.getElementById('sw-form-memo');
-    if (memoSuggestEl) {
-      if (memoSuggestEl.value === '직접입력' && memoInputEl && memoInputEl.style.display !== 'none') {
-        memoVal = memoInputEl.value.trim();
-      } else {
-        memoVal = memoSuggestEl.value.trim();
-      }
-    } else if (memoInputEl) {
-      memoVal = memoInputEl.value.trim();
+    var memoEl = document.getElementById('sw-form-memo');
+    if (memoEl) {
+      memoVal = memoEl.value.trim();
     }
 
     // HTML 안전 이스케이프 후 렌더링
@@ -4942,6 +5019,19 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
 
     previewEl.innerHTML = htmlContent;
   };
+
+  // 동적 필드 카드들을 담을 수직 리스트 컨테이너 생성
+  var formListContainer = document.createElement('div');
+  formListContainer.id = 'sw-dynamic-form-list';
+  formListContainer.style.display = 'flex';
+  formListContainer.style.flexDirection = 'column';
+  formListContainer.style.gap = '15px';
+  content.appendChild(formListContainer);
+
+  // 1. 최초 롱프레스로 자동 인식된 주(Primary) 시설물 카드 1개 자동 렌더링
+  primaryType = pendingFacilityType || '일반시설물';
+  var cached = lastSpecs[primaryType] || {};
+  renderMultiAttributeCard(formListContainer, primaryType, cached, 'sw-primary');
 
   // 구분선 삽입 (속성 추가 선택기 위)
   var swAddDivider = document.createElement('div');
@@ -5004,7 +5094,7 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
   submitBtn.type = 'button';
   submitBtn.className = 'btn';
   submitBtn.id = 'sw-form-submit';
-  submitBtn.style.cssText = 'background:#34C759; flex:1; padding:15px; font-weight:bold; font-size:15px; border-radius:10px;';
+  submitBtn.style.cssText = 'background:#34C759; flex:1; padding:11px; font-weight:bold; font-size:13px; border-radius:8px;';
   submitBtn.textContent = '제원 저장';
   
   btnContainer.appendChild(submitBtn);
@@ -5044,7 +5134,8 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
       var config = FACILITY_CONFIG[type];
       if (!config) return;
 
-      var result = serializeFacilityForm(card.querySelector('div'), config, prefixIdUnique);
+      var formBody = card.querySelector('.attr-card-body') || card.querySelectorAll('div')[1] || card;
+      var result = serializeFacilityForm(formBody, config, prefixIdUnique);
       if (!result) {
         serializeSuccess = false;
         return;
@@ -5056,6 +5147,13 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
         specText: result.specText,
         values: result.values
       });
+
+      // 사용자가 직접 입력한 속성값들을 사용자 사전에 자동 누적 저장
+      if (result.values) {
+        for (var fId in result.values) {
+          saveFieldCustomSuggestion((config.title || config.layer) + '_' + fId, result.values[fId]);
+        }
+      }
     });
 
     if (!serializeSuccess) {
@@ -5063,17 +5161,10 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
       return;
     }
 
-    var memoVal = '';
-    var memoSuggestEl = document.getElementById('sw-form-memo-suggest');
     var memoInputEl = document.getElementById('sw-form-memo');
-    if (memoSuggestEl) {
-      if (memoSuggestEl.value === '직접입력' && memoInputEl && memoInputEl.style.display !== 'none') {
-        memoVal = memoInputEl.value.trim();
-      } else {
-        memoVal = memoSuggestEl.value.trim();
-      }
-    } else if (memoInputEl) {
-      memoVal = memoInputEl.value.trim();
+    var memoVal = memoInputEl ? memoInputEl.value.trim() : '';
+    if (memoVal && !isAutoGeneratedMemo(memoVal)) {
+      saveFieldCustomSuggestion('memo_' + (primaryType !== '일반시설물' ? primaryType : '일반사진'), memoVal);
     }
 
     var finalFormData = {
@@ -5384,120 +5475,47 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       group.innerHTML = html;
       container.appendChild(group);
     } else {
-      // 선택(드롭다운) 상자 생성
-      html += '<select id="' + inputId + '">';
-      html += '<option value="--">--</option>';
-      html += '<option value="직접입력">직접입력</option>';
-
-      var opts = getFieldSuggestions(field.id, config, field.options);
-      opts = opts.filter(function (opt) {
-        return opt !== '기타' && opt !== '직접입력' && opt !== '선택' && opt !== '';
-      });
-
+      // 콤보 인풋 박스 생성 (인라인 직접 타이핑 + 우측 📋 추천 목록 모달 버튼)
       var strVal = String(val).trim();
-      var isOptionMatched = opts.indexOf(strVal) !== -1;
-      
-      // 추천 목록에 없지만 이미 채워진 데이터가 있는 경우, 드롭다운 옵션에 임시 추가하여 깔끔하게 선택되도록 처리
-      if (strVal !== '' && strVal !== '선택' && strVal !== '직접입력' && strVal !== '기타' && !isOptionMatched) {
-        opts.unshift(strVal);
-        isOptionMatched = true;
-      }
+      if (strVal === '선택' || strVal === '직접입력' || strVal === '기타') strVal = '';
 
-      opts.forEach(function (opt) {
-        var selected = (opt === strVal) ? ' selected' : '';
-        html += '<option value="' + opt + '"' + selected + '>' + opt + '</option>';
-      });
+      var stepAttr = isNumericField ? ' inputmode="decimal"' : '';
+      var placeholder = field.placeholder || (isNumericField ? '숫자 입력' : '직접 입력 (또는 📋 목록)');
+      var fieldKey = (config.title || config.layer || 'facility') + '_' + field.id;
 
-      html += '</select>';
+      html += '<div class="combo-input-group">';
+      html += '  <input type="text"' + stepAttr + ' id="' + inputId + '" class="combo-input" value="' + escapeHtml(strVal) + '" placeholder="' + placeholder + '">';
+      html += '  <button type="button" id="' + inputId + '-btn" class="combo-list-btn" title="추천 목록 선택">📋</button>';
+      html += '</div>';
 
-      // [요구사항] 초기 렌더링 시 텍스트 입력 상자는 무조건 숨김(display: none) 처리하여 깔끔한 화면 유지
-      var etcVal = (strVal !== '선택' && strVal !== '직접입력' && strVal !== '기타') ? strVal : '';
-      var etcDisplay = 'none';
-      var inputType = isNumericField ? 'number' : 'text';
-      var stepAttr = isNumericField ? ' step="any" inputmode="decimal"' : '';
-      var placeholder = field.placeholder || (isNumericField ? '숫자 입력 후 완료' : '직접 입력 후 완료(엔터/바깥터치)');
-
-      html += '<input type="' + inputType + '"' + stepAttr + ' id="' + inputId + '-etc" style="display:' + etcDisplay + '; margin-top:5px;" value="' + etcVal + '" placeholder="' + placeholder + '">';
       group.innerHTML = html;
       container.appendChild(group);
 
-      var selEl = group.querySelector('select');
-      var etcEl = group.querySelector('input');
+      var textInputEl = group.querySelector('input.combo-input');
+      var listBtnEl = group.querySelector('button.combo-list-btn');
 
-      if (selEl && etcEl) {
-        var handleSelectChange = function () {
-          var sVal = selEl.value;
-          if (sVal === '--' || sVal === '') {
-            etcEl.style.display = 'none';
-            etcEl.value = '';
-            updatePreview();
-          } else if (sVal === '직접입력') {
-            // 직접입력을 선택한 경우에만 인풋창을 노출하고 포커스
-            etcEl.style.display = 'block';
-            etcEl.value = '';
-            etcEl.focus();
-            setTimeout(function () {
-              etcEl.focus();
-            }, 10);
-          } else {
-            // 추천 항목을 선택한 경우: 인풋창은 숨기고 값만 주입한 뒤 확정
-            etcEl.style.display = 'none';
-            etcEl.value = sVal;
-            updatePreview();
-            
-            // 첫 번째 종류 필드가 변경된 경우 하위 속성 자동 연동 동기화 트리거
-            if (idx === 0) {
-              triggerSubAttributesReset(container, config, prefixId, sVal);
-            }
-          }
-        };
-
-        var commitDirectInput = function () {
-          if (selEl.value !== '직접입력' || etcEl.style.display === 'none') return;
-          
-          var typedVal = etcEl.value.trim();
-          if (typedVal !== '') {
-            var exists = false;
-            for (var i = 0; i < selEl.options.length; i++) {
-              if (selEl.options[i].value === typedVal) {
-                exists = true;
-                selEl.selectedIndex = i;
-                break;
-              }
-            }
-            if (!exists) {
-              var newOpt = document.createElement('option');
-              newOpt.value = typedVal;
-              newOpt.textContent = typedVal;
-              selEl.add(newOpt, 1);
-              selEl.value = typedVal;
-            }
-          } else {
-            // 빈 칸으로 두고 포커스를 잃으면 index 0 (선택안함 공란)으로 지정
-            selEl.selectedIndex = 0;
-          }
-          
-          etcEl.style.display = 'none';
+      if (textInputEl && listBtnEl) {
+        textInputEl.addEventListener('input', function () {
           updatePreview();
-          
-          // 첫 번째 종류 필드가 변경 완료된 경우 하위 속성 자동 연동 동기화 트리거
+        });
+        textInputEl.addEventListener('change', function () {
+          updatePreview();
           if (idx === 0) {
-            triggerSubAttributesReset(container, config, prefixId, selEl.value);
+            triggerSubAttributesReset(container, config, prefixId, this.value.trim());
           }
-        };
+        });
+        textInputEl.addEventListener('focus', function () {
+          if (!isNumericField) this.select();
+        });
 
-        selEl.addEventListener('change', handleSelectChange);
-        etcEl.addEventListener('keypress', function (e) {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            commitDirectInput();
-          }
-        });
-        etcEl.addEventListener('blur', function () {
-          setTimeout(commitDirectInput, 100);
-        });
-        etcEl.addEventListener('focus', function () {
-          if (this.type !== 'number') this.select();
+        listBtnEl.addEventListener('click', function () {
+          var currentOpts = getFieldSuggestions(field.id, config, field.options);
+          openSuggestionPickerModal(inputId, field.label, currentOpts, fieldKey, function (chosenVal) {
+            updatePreview();
+            if (idx === 0) {
+              triggerSubAttributesReset(container, config, prefixId, chosenVal);
+            }
+          });
         });
       }
     }
@@ -5526,22 +5544,23 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
     }
 
     // 이벤트 리스너 바인딩 (동적 필드 제어용)
-    var selEl = group.querySelector('select');
-    if (!field.readonly && selEl) {
+    var inputEl = group.querySelector('input.combo-input');
+    if (!field.readonly && inputEl) {
       // 동적 필드 제어 (신호등 종류 변경 시)
       if (config.title === '신호등' && field.id === 'type') {
         var handleTypeChange = function () {
-          var showPed = this.value === '보행';
+          var showPed = this.value.trim() === '보행';
           var pedTypeGrp = document.getElementById(prefixId + '-group-pedestrianType');
           var pedCountGrp = document.getElementById(prefixId + '-group-pedestrianCount');
           var pedTypeEl = document.getElementById(prefixId + '-pedestrianType');
-          var pedTypeVal = pedTypeEl ? pedTypeEl.value : '보행등무';
+          var pedTypeVal = pedTypeEl ? pedTypeEl.value.trim() : '보행등무';
           
           if (pedTypeGrp) pedTypeGrp.style.display = showPed ? 'flex' : 'none';
           if (pedCountGrp) pedCountGrp.style.display = (showPed && pedTypeVal !== '보행등무') ? 'flex' : 'none';
           updatePreview();
         };
-        selEl.addEventListener('change', handleTypeChange);
+        inputEl.addEventListener('input', handleTypeChange);
+        inputEl.addEventListener('change', handleTypeChange);
       }
 
       // 동적 필드 제어 (신호등 보행등 구분 변경 시)
@@ -5549,11 +5568,12 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
         var handlePedChange = function () {
           var pedCountGrp = document.getElementById(prefixId + '-group-pedestrianCount');
           if (pedCountGrp) {
-            pedCountGrp.style.display = (this.value !== '보행등무') ? 'flex' : 'none';
+            pedCountGrp.style.display = (this.value.trim() !== '보행등무') ? 'flex' : 'none';
           }
           updatePreview();
         };
-        selEl.addEventListener('change', handlePedChange);
+        inputEl.addEventListener('input', handlePedChange);
+        inputEl.addEventListener('change', handlePedChange);
       }
 
       // 도로표지 방향 변경 시 미리보기만 동기화
@@ -5561,7 +5581,8 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
         var handleDirChange = function () {
           updatePreview();
         };
-        selEl.addEventListener('change', handleDirChange);
+        inputEl.addEventListener('input', handleDirChange);
+        inputEl.addEventListener('change', handleDirChange);
       }
     }
   });
@@ -6063,6 +6084,7 @@ function hideStreetlightBottomSheet() {
     URL.revokeObjectURL(streetlightPreviewObjectUrl);
     streetlightPreviewObjectUrl = null;
   }
+  clearDomCache();
 }
 
 function triggerStreetlightCamera(item, dxfCoords, latLng) {

@@ -316,6 +316,75 @@
       width: 100%;
       box-sizing: border-box;
     }
+
+    /* 콤보 인풋 그룹 (인라인 타이핑 + 우측 📋 추천 목록 버튼) */
+    .combo-input-group {
+      display: flex;
+      gap: 4px;
+      align-items: stretch;
+      width: 100%;
+    }
+    .combo-input-group input.combo-input {
+      flex: 1;
+      min-width: 0;
+      padding: 8px 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #1c1c1e;
+      background: #fff;
+      box-sizing: border-box;
+    }
+    .combo-input-group .combo-list-btn {
+      flex-shrink: 0;
+      padding: 0 12px;
+      background: #f2f2f7;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+      touch-action: manipulation;
+    }
+    .combo-input-group .combo-list-btn:active {
+      background: #d1d1d6;
+    }
+
+    /* 실시간 상단 고정 제원 미리보기 */
+    .sticky-preview-box {
+      position: sticky;
+      top: -10px;
+      z-index: 25;
+      background: #f8f9fa;
+      border: 1.5px solid #5856D6;
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    }
+
+    /* 추천 항목 선택 모달 아이템 */
+    .suggestion-picker-item {
+      padding: 10px 12px;
+      background: #f8f9fa;
+      border: 1px solid #e5e5ea;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #1c1c1e;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .suggestion-picker-item:active {
+      background: #007aff;
+      color: #ffffff;
+      border-color: #007aff;
+    }
     .form-preview-img {
       width: 100%;
       max-height: 150px;
@@ -493,21 +562,35 @@
       transform: translateX(-50%) translateY(0);
     }
     
-    /* 다중 속성 입력 폼 카드 스타일 정의 */
+    /* 다중 속성 입력 폼 카드 스타일 정의 (약 70% 콤팩트 축소) */
+    .bottom-sheet .form-group {
+      gap: 4px;
+      margin-bottom: 6px;
+    }
+    .bottom-sheet .form-group label {
+      font-size: 10px;
+      margin-bottom: 2px;
+    }
+    .bottom-sheet .form-group input,
+    .bottom-sheet .form-group select {
+      padding: 6px 8px;
+      font-size: 11px;
+      border-radius: 6px;
+    }
     .attr-card {
       border-top: 1.5px solid #8E8E93;
-      padding-top: 15px;
-      margin-top: 15px;
+      padding-top: 8px;
+      margin-top: 8px;
       position: relative;
     }
     .attr-card-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 8px;
+      margin-bottom: 4px;
     }
     .attr-card-title {
-      font-size: 14px;
+      font-size: 11px;
       font-weight: bold;
       color: #8E24AA;
     }
@@ -515,7 +598,7 @@
       background: none;
       border: none;
       color: #FF3B30;
-      font-size: 18px;
+      font-size: 14px;
       font-weight: bold;
       cursor: pointer;
       padding: 0 4px;
@@ -524,6 +607,18 @@
     }
     .attr-card-delete:active {
       transform: scale(0.85);
+    }
+    .btn-add-photo {
+      padding: 4px 8px;
+      font-size: 11px;
+      border: 1px solid #8E24AA;
+      border-radius: 5px;
+      background: transparent;
+      color: #8E24AA;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      touch-action: manipulation;
     }
   </style>
 </head>
@@ -879,6 +974,17 @@
     </div>
   </div>
 
+  <!-- 추천 목록 팝업 모달 (방안 2-B 및 롱프레스 400ms 삭제) -->
+  <div class="modal" id="suggestion-picker-modal">
+    <div class="modal-content" style="max-width:320px; max-height:75vh; display:flex; flex-direction:column; padding:16px;">
+      <div class="modal-header" style="padding-bottom:8px; margin-bottom:10px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;">
+        <h3 id="suggestion-picker-title" style="margin:0; font-size:15px; color:#333;">항목 선택</h3>
+        <span class="close-btn" id="suggestion-picker-close" style="font-size:24px; cursor:pointer; color:#999; line-height:1;">&times;</span>
+      </div>
+      <div id="suggestion-picker-list" style="overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:6px;"></div>
+    </div>
+  </div>
+
   <script src="config.js"></script>
   <script src="facility-config.js"></script>
   <!-- 좌표계 변환: DXF 평면직각좌표(EPSG) → WGS84 (config.DXF_CRS 사용 시) -->
@@ -889,7 +995,7 @@
   <script src="dxf-to-geojson.js"></script>
   <!-- 사진 마커 클러스터링 (200~300장 대응) -->
   <script src="https://unpkg.com/@googlemaps/markerclusterer@2.5.3/dist/index.min.js"></script>
-  <script src="app.js?v=2.2"></script>
+  <script src="app.js?v=2.3"></script>
   <script>
     (function() {
       var key = window.DMAP_CONFIG && window.DMAP_CONFIG.GMAPS_API_KEY;
