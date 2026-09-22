@@ -1,5 +1,4 @@
-// 도로대장 도로조사 Service Worker (PWA 지원 및 네트워크 우선 캐싱)
-const CACHE_NAME = 'road-survey-cache-v1';
+const CACHE_NAME = 'road-survey-cache-v2';
 
 // 설치 시 즉시 활성화
 self.addEventListener('install', (event) => {

@@ -6187,12 +6187,6 @@ function openFacilitySelectModal(dxfCoords, latLng) {
   modal.classList.add('active');
 }
 
-  var cameraInput = getEl('camera-input');
-  if (cameraInput) {
-    cameraInput.click();
-  }
-}
-
 // 입력란 포커스 시 키보드 가림 방지 스크롤 자동 조정
 document.addEventListener('focusin', function (e) {
   var target = e.target;
