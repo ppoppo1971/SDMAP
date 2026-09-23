@@ -679,7 +679,7 @@
     <button class="slide-menu-item" id="menu-toggle-photo-number">번호보기 <span id="menu-photo-number-status" class="menu-item-sub"></span></button>
     <button class="slide-menu-item" id="menu-toggle-spec-text">제원보기 <span id="menu-spec-text-status" class="menu-item-sub"></span></button>
     <button class="slide-menu-item" id="menu-image-size">용량조정</button>
-    <button class="slide-menu-item" id="menu-export">자료 내보내기</button>
+    <button class="slide-menu-item" id="menu-storage-folder">📁 저장 폴더 설정 <span id="menu-storage-folder-name" class="menu-item-sub"></span></button>
     <button class="slide-menu-item" id="menu-delete-data">자료 삭제</button>
     <button class="slide-menu-item" id="menu-toggle-object-visibility">
       <span class="object-visibility-label">객체 숨기기</span>
@@ -713,74 +713,7 @@
     </div>
   </div>
 
-  <!-- 내보내기 방식 선택 모달 (ADMAP과 동일) -->
-  <div class="modal" id="export-method-modal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h3>내보내기 방식 선택</h3>
-        <span class="close-btn" id="export-method-close">&times;</span>
-      </div>
-      <div class="info-box" id="export-info-box">사진 0장, 총 0MB</div>
-      <div style="display:flex; flex-direction:column; gap:12px; margin:15px 0;">
-        <button type="button" class="btn" id="export-zip-btn" style="background:#007AFF; text-align:left; padding:15px;">
-          <strong>📁 ZIP 파일</strong><br>
-          <span style="font-size:12px; opacity:0.8;">하나의 압축 파일로 다운로드 (소용량 권장)</span>
-        </button>
-        <button type="button" class="btn btn-secondary" id="export-individual-btn" style="text-align:left; padding:15px;">
-          <strong>📷 개별 다운로드</strong><br>
-          <span style="font-size:12px; opacity:0.8;">파일을 하나씩 순차 다운로드 (대용량·안정성 권장)</span>
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 사진 압축 여부 선택 컨펌 모달 (2MB 초과 사진 대응) -->
-  <div class="modal" id="export-compress-confirm-modal">
-    <div class="modal-content" style="max-width:380px;">
-      <div class="modal-header">
-        <h3>고용량 사진 감지</h3>
-        <span class="close-btn" id="export-compress-confirm-close">&times;</span>
-      </div>
-      <div class="info-box" style="margin-bottom:15px; font-size:14px; line-height:1.5;">
-        2MB를 초과하는 고용량 사진이 포함되어 있습니다. <br>
-        모바일 환경에서 안전하게 다운로드하기 위해 <strong>사진을 약 500KB로 압축</strong>하여 다운로드하시겠습니까?
-      </div>
-      <div style="display:flex; flex-direction:column; gap:10px; margin: 15px 0;">
-        <button type="button" class="btn" id="export-compress-yes-btn" style="background:#007AFF; color:#fff; padding:12px; border:none; border-radius:8px; cursor:pointer;">
-          <strong>⚡ 예, 압축해서 다운로드 (권장)</strong>
-        </button>
-        <button type="button" class="btn btn-secondary" id="export-compress-no-btn" style="padding:12px; border:1px solid #ccc; border-radius:8px; cursor:pointer;">
-          📷 아니오, 원본 화질 유지
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 내보내기 진행 상태 모달 (진행률 바 & 분할 예비 버튼 리스트 제공) -->
-  <div class="modal" id="export-progress-modal">
-    <div class="modal-content" style="max-width:400px;">
-      <div class="modal-header">
-        <h3 id="export-progress-title">자료 내보내기 진행 중</h3>
-        <span class="close-btn" id="export-progress-close" style="display:none;">&times;</span>
-      </div>
-      <div style="margin: 15px 0;">
-        <div id="export-progress-container" style="background:#eee; border-radius:10px; height:20px; width:100%; overflow:hidden; margin-bottom:10px;">
-          <div id="export-progress-bar" style="background:#007AFF; width:0%; height:100%; transition: width 0.2s ease;"></div>
-        </div>
-        <div id="export-progress-status" style="font-size:14px; color:#555; text-align:center; min-height:20px; line-height:1.5;">준비 중...</div>
-      </div>
-      
-      <!-- 분할 다운로드 수동 예비 버튼 영역 -->
-      <div id="export-partition-container" style="display:none; flex-direction:column; gap:8px; padding:10px; background:#f5f5f7; border-radius:8px; margin-top:15px;">
-        <div style="font-size:12px; font-weight:bold; color:#666; margin-bottom:5px;">분할 파일 목록 (자동 차단 시 아래를 순서대로 클릭하세요)</div>
-        <div id="export-partition-list" style="display:flex; flex-direction:column; gap:8px;"></div>
-      </div>
-
-      <div style="margin-top:20px; display:flex; justify-content:center;">
-        <button type="button" class="btn" id="export-progress-done-btn" style="display:none; background:#34C759; color:#fff; width:100%; padding:12px; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">확인</button>
-      </div>
-    </div>
-  </div>
+  <!-- 내보내기 모달 제거됨 - 내부저장소 직접 저장 방식으로 전환 (0923_01) -->
 
   <!-- 자료 삭제 모달 (현재 도면의 모든 데이터 일괄 삭제) -->
   <div class="modal" id="delete-data-modal">
@@ -990,6 +923,7 @@
   <!-- 좌표계 변환: DXF 평면직각좌표(EPSG) → WGS84 (config.DXF_CRS 사용 시) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
   <script src="local-storage.js"></script>
+  <script src="local-fs.js"></script>
   <!-- DXF 파서: 로컬 libs (오프라인용). 없으면 npm run copy-libs 또는 ADMAP-main/libs에서 복사 -->
   <script src="libs/dxf-parser.min.js"></script>
   <script src="dxf-to-geojson.js"></script>

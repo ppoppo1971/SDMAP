@@ -3261,8 +3261,8 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
         if (val === undefined || val === null) return;
         val = String(val).trim();
 
-        // '삭제' 선택 또는 공란/빈칸/-- 인 경우 생략
-        if (val === '삭제' || val === '--' || val === '' || val === '선택' || val === '기타') {
+        // '삭제', '제외', '미표기', '없음' 선택 또는 공란/빈칸/-- 인 경우 생략
+        if (val === '삭제' || val === '제외' || val === '미표기' || val === '없음' || val === '--' || val === '' || val === '선택' || val === '기타') {
           return;
         }
 

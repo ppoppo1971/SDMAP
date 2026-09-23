@@ -122,6 +122,21 @@
           finalSubPhotos = existingRecord.subPhotos;
         }
 
+        // [0923_01] localFs가 활성화된 경우 IndexedDB에는 Blob을 저장하지 않음 (파일시스템에 직접 저장됨)
+        var useLocalFs = (window.localFs && window.localFs.isSupported() && window.localFs.hasBaseDir());
+
+        var recordBlob = useLocalFs ? null : finalBlob;
+        var recordSubPhotos = finalSubPhotos;
+        if (useLocalFs && recordSubPhotos) {
+          recordSubPhotos = recordSubPhotos.map(function (sp) {
+            return {
+              subIndex: sp.subIndex,
+              fileName: sp.fileName,
+              blob: null  // Blob은 파일시스템에만 저장
+            };
+          });
+        }
+
         var record = {
           id: String(photo.id),
           dxfFile: dxfFile,
@@ -129,7 +144,7 @@
           memo: photo.memo || '',
           x: photo.x, y: photo.y,
           width: photo.width, height: photo.height,
-          blob: finalBlob,
+          blob: recordBlob,
           createdAt: photo.createdAt || (existingRecord ? existingRecord.createdAt : new Date().toISOString()),
           updatedAt: new Date().toISOString(),
           numTextId: photo.numTextId || null,
@@ -137,7 +152,7 @@
           specTextIds: photo.specTextIds || null,
           additionalTypes: photo.additionalTypes || null,
           facilityType: photo.facilityType || null,
-          subPhotos: finalSubPhotos || null
+          subPhotos: recordSubPhotos || null
         };
 
         return new Promise(function (resolve, reject) {
@@ -742,7 +757,14 @@
 
   function getPhotoDataUrl(photoId) {
     return getPhotoById(photoId).then(function (r) {
-      return r && r.blob ? blobToDataUrl(r.blob) : null;
+      if (r && r.blob) return blobToDataUrl(r.blob);
+      // [0923_01] IndexedDB에 Blob이 없으면 내부저장소(파일시스템)에서 읽기 시도
+      if (r && r.fileName && r.dxfFile && window.localFs && window.localFs.isSupported() && window.localFs.hasBaseDir()) {
+        return window.localFs.getPhotoBlob(r.dxfFile, r.fileName).then(function (fileBlob) {
+          return fileBlob ? blobToDataUrl(fileBlob) : null;
+        }).catch(function () { return null; });
+      }
+      return null;
     });
   }
 
