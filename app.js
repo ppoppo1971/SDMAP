@@ -813,6 +813,14 @@ function bindUI() {
     if (contextMenuEl) contextMenuEl.classList.remove('active');
   });
 
+  // 상단 파일명/폴더 표시 클릭 시 저장 폴더 설정 호출
+  var fileNameDisplay = document.getElementById('file-name-display');
+  if (fileNameDisplay) {
+    fileNameDisplay.addEventListener('click', function () {
+      handleStorageFolderSetting();
+    });
+  }
+
   document.getElementById('menu-back-to-list').addEventListener('click', function () {
     slideMenu.classList.remove('active');
     menuOverlay.classList.remove('active');
@@ -1108,6 +1116,7 @@ function handleStorageFolderSetting() {
     window.localFs.pickBaseDirectory().then(function (handle) {
       if (handle) {
         updateStorageFolderMenuLabel();
+        updateFileNameDisplay();
         showToast('📁 저장 폴더가 설정되었습니다: ' + handle.name);
       }
     });
@@ -1476,8 +1485,28 @@ function applyDxfLoadResult(dxfFileNameStr, dxfDataResult, imageRefsWithFile) {
   loadMetadataAndDisplay(dxfFileFullName).then(function () {
     fitDxfToView();
   }).finally(function () {
-    setTimeout(function () { showLoading(false); }, 100);
+    setTimeout(function () { 
+      showLoading(false); 
+      checkPromptStorageFolder();
+    }, 100);
   });
+}
+
+// 도면 로드 후 저장 폴더 미설정 시 자동 설정 유도 안내창
+function checkPromptStorageFolder() {
+  if (window.localFs && window.localFs.isSupported() && !window.localFs.hasBaseDir()) {
+    setTimeout(function () {
+      if (confirm('촬영한 사진과 메타데이터를 저장할 내부 폴더가 설정되지 않았습니다.\n사진/데이터 저장을 위한 폴더를 선택하시겠습니까?')) {
+        window.localFs.pickBaseDirectory().then(function (handle) {
+          if (handle) {
+            updateStorageFolderMenuLabel();
+            updateFileNameDisplay();
+            showToast('📁 저장 폴더가 설정되었습니다: ' + handle.name);
+          }
+        });
+      }
+    }, 500);
+  }
 }
 
 function parseDxfWithWorker(text) {
@@ -1851,9 +1880,19 @@ function deleteDataForProject() {
     alert('저장된 자료가 없습니다.');
     return;
   }
-  if (!confirm('현재 도면의 모든 사진, 메모, 텍스트 데이터를 삭제하시겠습니까?\n이 작업은 복구할 수 없습니다.')) return;
+  if (!confirm('현재 도면의 모든 사진, 메모, 텍스트 데이터 및 저장소 파일을 삭제하시겠습니까?\n이 작업은 복구할 수 없습니다.')) return;
 
-  var beforeTextCount = texts.length;
+  var beforeTextCount = texts ? texts.length : 0;
+  var beforePhotoCount = photos ? photos.length : 0;
+
+  // 1. localFs 로컬 저장소 폴더 내 파일 일괄 삭제 연동
+  if (window.localFs && window.localFs.isSupported() && window.localFs.hasBaseDir() && typeof window.localFs.deleteDrawingFiles === 'function') {
+    window.localFs.deleteDrawingFiles(dxfFileFullName).catch(function (fsErr) {
+      console.warn('[localFs] 로컬 폴더 파일 일괄 삭제 오류:', fsErr);
+    });
+  }
+
+  // 2. localStore IndexedDB 데이터 삭제
   window.localStore.deleteProjectData(dxfFileFullName).then(function (deletedPhotoCount) {
     texts = [];
     photos = [];
@@ -1869,10 +1908,11 @@ function deleteDataForProject() {
     hideDeleteDataModal();
     hidePhotoModal();
 
-    if (deletedPhotoCount === 0 && beforeTextCount === 0) {
+    var actualPhotoDeleted = (deletedPhotoCount != null && deletedPhotoCount > 0) ? deletedPhotoCount : beforePhotoCount;
+    if (actualPhotoDeleted === 0 && beforeTextCount === 0) {
       alert('삭제할 데이터가 없습니다.');
     } else {
-      alert('사진 ' + deletedPhotoCount + '개, 텍스트 ' + beforeTextCount + '개 일괄 삭제 완료');
+      alert('사진 ' + actualPhotoDeleted + '개, 텍스트 ' + beforeTextCount + '개 및 저장 폴더 파일 일괄 삭제 완료');
     }
   }).catch(function (err) {
     console.error('자료 삭제 실패:', err);
@@ -2196,8 +2236,14 @@ function updateFileNameDisplay() {
   var el = document.getElementById('file-name-text');
   if (el) {
     var sizeText = imageSizeSetting === 'original' ? '원본' : imageSizeSetting;
-    el.textContent = (dxfFileName || '도면') + ' [' + sizeText + ']';
+    var folderText = '';
+    if (window.localFs && window.localFs.isSupported()) {
+      var fName = window.localFs.getBaseDirName();
+      folderText = fName ? ' 📁' + fName : ' 📁(폴더설정)';
+    }
+    el.textContent = (dxfFileName || '도면') + ' [' + sizeText + ']' + folderText;
   }
+  updateStorageFolderMenuLabel();
 }
 
 function setMapType(type) {
@@ -4287,6 +4333,22 @@ function openSuggestionPickerModal(targetInputId, fieldTitle, suggestions, field
   });
   listEl.appendChild(directItem);
 
+  function applySelection(chosenVal) {
+    targetInput.value = chosenVal;
+    try {
+      targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+      targetInput.dispatchEvent(new Event('change', { bubbles: true }));
+    } catch (e) {}
+    if (onSelect) onSelect(chosenVal);
+    if (typeof window.updateAllPreviews === 'function') {
+      window.updateAllPreviews();
+    }
+    if (typeof window.updateAllPreviewsPM === 'function') {
+      window.updateAllPreviewsPM();
+    }
+    closeModal();
+  }
+
   // 공백 또는 초기화용 옵션 추가 (시설물 옵션은 '-- (옵션생략)', 메모 필드는 '메모 비우기')
   var isMemoField = (targetInputId === 'sw-form-memo' || fieldTitle === '사진메모' || (fieldKey && fieldKey.indexOf('memo_') === 0));
   var clearItem = document.createElement('div');
@@ -4296,9 +4358,7 @@ function openSuggestionPickerModal(targetInputId, fieldTitle, suggestions, field
   clearItem.addEventListener('click', function (e) {
     e.stopPropagation();
     var clearVal = isMemoField ? '' : '--';
-    targetInput.value = clearVal;
-    if (onSelect) onSelect(clearVal);
-    closeModal();
+    applySelection(clearVal);
   });
   listEl.appendChild(clearItem);
 
@@ -4351,9 +4411,7 @@ function openSuggestionPickerModal(targetInputId, fieldTitle, suggestions, field
         e.stopPropagation();
         handlePressEnd(e);
         if (!isLongPressed) {
-          targetInput.value = val;
-          if (onSelect) onSelect(val);
-          closeModal();
+          applySelection(val);
         }
       });
       itemEl.addEventListener('touchmove', function (e) {
@@ -4369,9 +4427,7 @@ function openSuggestionPickerModal(targetInputId, fieldTitle, suggestions, field
         e.stopPropagation();
         handlePressEnd(e);
         if (!isLongPressed) {
-          targetInput.value = val;
-          if (onSelect) onSelect(val);
-          closeModal();
+          applySelection(val);
         }
       });
       itemEl.addEventListener('mouseleave', function (e) {
@@ -4452,6 +4508,67 @@ function getFieldSuggestions(fieldId, config, defaultOptions) {
   });
 
   return result;
+}
+
+// 그동안 입력된 사진메모들의 빈도수를 집계하여 빈도순으로 정렬된 추천 목록 반환
+function getPhotoMemoSuggestions() {
+  var counts = {};
+  var blacklist = getFieldBlacklist('common_photo_memo');
+
+  // 1. 현재 로드된 photos 배열에서 메모 집계
+  if (window.photos && window.photos.length > 0) {
+    window.photos.forEach(function (p) {
+      if (p && p.memo) {
+        var m = String(p.memo).trim();
+        if (m && m !== '--' && blacklist.indexOf(m) === -1) {
+          counts[m] = (counts[m] || 0) + 1;
+        }
+      }
+      if (p && p.subPhotos && p.subPhotos.length > 0) {
+        p.subPhotos.forEach(function (sp) {
+          if (sp && sp.memo) {
+            var sm = String(sp.memo).trim();
+            if (sm && sm !== '--' && blacklist.indexOf(sm) === -1) {
+              counts[sm] = (counts[sm] || 0) + 1;
+            }
+          }
+        });
+      }
+    });
+  }
+
+  // 2. localStorage 사용자 사전(memo_*)에서 집계
+  try {
+    if (typeof localStorage !== 'undefined') {
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (key && (key.indexOf('dmap_custom_sugg_memo_') === 0 || key === 'dmap_custom_sugg_common_photo_memo')) {
+          var itemStr = localStorage.getItem(key);
+          if (itemStr) {
+            var data = JSON.parse(itemStr);
+            for (var val in data) {
+              var cleanVal = String(val).trim();
+              if (cleanVal && blacklist.indexOf(cleanVal) === -1) {
+                counts[cleanVal] = (counts[cleanVal] || 0) + (data[cleanVal] || 1);
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {}
+
+  var list = Object.keys(counts).map(function (k) {
+    return { val: k, count: counts[k] };
+  });
+
+  // 빈도순 내림차순 정렬 (동일 빈도수 시 가나다순)
+  list.sort(function (a, b) {
+    if (b.count !== a.count) return b.count - a.count;
+    return a.val.localeCompare(b.val, 'ko');
+  });
+
+  return list.map(function (item) { return item.val; });
 }
 
 // 속성 추가 선택기(드롭다운)의 옵션들을 사용자가 자주 입력한 시설물 빈도순으로 자동 정렬하여 반환하는 헬퍼 함수
@@ -4745,8 +4862,17 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
   if (fileBlob) {
     // [오류 해결 1] 객체감지 진입 시 임시 추가사진 배열 초기화
     var initialFileName = generatePhotoFileName(nextPhotoNum);
+    // [갤럭시 성능 최적화] 사진 촬영 직후 백그라운드 사전 압축 즉시 시작 (유휴 시간 활용)
+    var targetSize = getImageTargetSize();
+    var mainCompressPromise = (targetSize != null)
+      ? compressImage(fileBlob, targetSize).catch(function (err) {
+          console.warn('사전 압축 실패, 원본 사용:', err);
+          return fileBlob;
+        })
+      : Promise.resolve(fileBlob);
+
     pendingStreetlightSubPhotos = [
-      { subIndex: 0, fileName: initialFileName, blob: fileBlob }
+      { subIndex: 0, fileName: initialFileName, blob: fileBlob, compressPromise: mainCompressPromise }
     ];
 
     var img = document.createElement('img');
@@ -4859,15 +4985,19 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
     });
   }
 
-  // 사진 메모 입력 필드 (단순 텍스트 입력창 - 📋 버튼 제거)
+  // 사진 메모 입력 필드 (인라인 콤보 인풋 + 📋 추천 목록)
   var memoGroup = document.createElement('div');
   memoGroup.className = 'form-group';
   var memoHtml = '<label>메모 (사진메모 - 선택사항)</label>' +
-                 '<input type="text" id="sw-form-memo" placeholder="메모 직접 입력 (필요 시)">';
+                 '<div class="combo-input-group">' +
+                 '  <input type="text" id="sw-form-memo" class="combo-input" placeholder="메모 직접 입력 (또는 📋 목록)">' +
+                 '  <button type="button" id="sw-form-memo-btn" class="combo-list-btn" title="추천 목록 선택">📋</button>' +
+                 '</div>';
   memoGroup.innerHTML = memoHtml;
   content.appendChild(memoGroup);
 
   var memoInputEl = memoGroup.querySelector('#sw-form-memo');
+  var memoListBtn = memoGroup.querySelector('#sw-form-memo-btn');
 
   if (memoInputEl) {
     memoInputEl.addEventListener('input', function () {
@@ -4875,6 +5005,16 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
     });
     memoInputEl.addEventListener('change', function () {
       if (typeof window.updateAllPreviews === 'function') window.updateAllPreviews();
+    });
+  }
+
+  if (memoListBtn && memoInputEl) {
+    memoListBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var suggestions = getPhotoMemoSuggestions();
+      openSuggestionPickerModal('sw-form-memo', '사진메모', suggestions, 'common_photo_memo', function (chosenVal) {
+        if (typeof window.updateAllPreviews === 'function') window.updateAllPreviews();
+      });
     });
   }
 
@@ -5241,13 +5381,20 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
 
     photos.push(photo);
 
+    // [갤럭시/아이폰 공통 체감 성능 혁신 1] 화면 마커 갱신, 바텀시트 닫기 및 피드백을 지체없이 즉시 완료!
+    cleanPhotoMemory(photo);
+    drawPhotoMarkers();
+    drawTextMarkers();
+    showLoading(false);
+    hideStreetlightBottomSheet();
+    showToast('제원 저장이 완료되었습니다.');
+
+    // [갤럭시/아이폰 공통 체감 성능 혁신 2] 무거운 스토리지 및 파일시스템 I/O는 백그라운드 비동기 처리
     Promise.all([
       window.localStore.savePhoto(dxfFileFullName, photo),
       window.localStore.saveProject(dxfFileFullName, { texts: texts, lastModified: new Date().toISOString() })
     ]).then(function () {
-      // [0923_01] 내부저장소(File System)에 사진 파일 및 메타데이터 직접 저장
       if (window.localFs && window.localFs.isSupported() && window.localFs.hasBaseDir()) {
-        // 서브사진(다중 촬영) 각각을 도면 폴더에 .jpg 파일로 저장
         var fsPromises = [];
         if (finalSubPhotos && finalSubPhotos.length > 0) {
           finalSubPhotos.forEach(function (sp) {
@@ -5263,34 +5410,38 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
           );
         }
         Promise.all(fsPromises).then(function () {
-          console.log('[localFs] 사진 파일 저장 완료 (' + fsPromises.length + '건)');
-          // 메타데이터 JSON도 함께 갱신
           saveMetadataToLocalFs();
         }).catch(function (fsErr) {
-          console.warn('[localFs] 사진 파일 저장 실패 (IndexedDB에는 저장됨):', fsErr);
+          console.warn('[localFs] 백그라운드 사진 파일 저장 실패:', fsErr);
         });
       }
-
-      cleanPhotoMemory(photo);
-      drawPhotoMarkers();
-      drawTextMarkers();
-      showLoading(false);
-      hideStreetlightBottomSheet();
-      showToast('제원 저장이 완료되었습니다.');
     }).catch(function (err) {
-      showLoading(false);
-      console.error('제원 저장 실패:', err);
-      alert('데이터 저장소에 기록하는 도중 오류가 발생해 저장하지 못했습니다.');
+      console.error('데이터 저장소 백그라운드 기록 오류:', err);
     });
   }
 
-  if (targetSize != null) {
-    compressImage(fileBlob, targetSize).then(finishSave).catch(function () {
-      finishSave(fileBlob);
-    });
-  } else {
+  // [갤럭시 최적화 3] 사전 백그라운드 압축된 Promise 활용 (입력 중 이미 완료되어 대기시간 0초)
+  var firstPhotoObj = pendingStreetlightSubPhotos && pendingStreetlightSubPhotos[0];
+  var mainCompressPromise = (firstPhotoObj && firstPhotoObj.compressPromise)
+    ? firstPhotoObj.compressPromise
+    : (targetSize != null ? compressImage(fileBlob, targetSize).catch(function () { return fileBlob; }) : Promise.resolve(fileBlob));
+
+  var allSubPromises = (pendingStreetlightSubPhotos || []).map(function (sp) {
+    return sp.compressPromise || Promise.resolve(sp.blob || fileBlob);
+  });
+
+  Promise.all([mainCompressPromise, Promise.all(allSubPromises)]).then(function (results) {
+    var compressedMainBlob = results[0];
+    var compressedSubBlobs = results[1];
+    if (pendingStreetlightSubPhotos) {
+      pendingStreetlightSubPhotos.forEach(function (sp, i) {
+        if (compressedSubBlobs[i]) sp.blob = compressedSubBlobs[i];
+      });
+    }
+    finishSave(compressedMainBlob);
+  }).catch(function () {
     finishSave(fileBlob);
-  }
+  });
 }// 동적 시설물 제원 폼 렌더러
 function renderFacilityForm(container, config, cachedVals, prefixId) {
   if (!container || !config) return;
@@ -5412,76 +5563,18 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       html += '<input type="text" readonly id="' + inputId + '" value="' + val + '">';
       group.innerHTML = html;
       container.appendChild(group);
-    } else if (isPhotoField) {
-      // 사진 항목 전용 1클릭 토글 버튼 UI (방안 2)
-      var curVal = String(val).trim();
-      var isExcluded = (curVal === '삭제' || curVal === '제외' || curVal === '미표기' || curVal === '없음');
-      var effectiveVal = isExcluded ? '삭제' : '사진';
-
-      html += '<div class="photo-segment-container" style="display:flex; gap:6px; width:100%; align-items:center;">';
-      html += '  <button type="button" id="' + inputId + '-opt-include" class="btn photo-seg-btn' + (!isExcluded ? ' active' : '') + '" style="flex:1; padding:9px 6px; font-size:13px; font-weight:bold; border-radius:6px; cursor:pointer; transition:all 0.2s; ' + (!isExcluded ? 'background:#007AFF; color:#fff; border:1px solid #007AFF;' : 'background:#F2F2F7; color:#555; border:1px solid #D1D1D6;') + '">📷 사진 표기</button>';
-      html += '  <button type="button" id="' + inputId + '-opt-exclude" class="btn photo-seg-btn' + (isExcluded ? ' active' : '') + '" style="flex:1; padding:9px 6px; font-size:13px; font-weight:bold; border-radius:6px; cursor:pointer; transition:all 0.2s; ' + (isExcluded ? 'background:#FF3B30; color:#fff; border:1px solid #FF3B30;' : 'background:#F2F2F7; color:#555; border:1px solid #D1D1D6;') + '">❌ 미표기 (삭제)</button>';
-      html += '  <input type="hidden" id="' + inputId + '" class="combo-input" value="' + effectiveVal + '">';
-      html += '  <button type="button" id="' + inputId + '-btn" class="combo-list-btn" title="추천 목록 선택" style="flex-shrink:0;">📋</button>';
-      html += '</div>';
-
-      group.innerHTML = html;
-      container.appendChild(group);
-
-      var hiddenInput = group.querySelector('#' + inputId);
-      var btnInclude = group.querySelector('#' + inputId + '-opt-include');
-      var btnExclude = group.querySelector('#' + inputId + '-opt-exclude');
-      var listBtnEl = group.querySelector('button.combo-list-btn');
-
-      function setPhotoOption(targetVal) {
-        var isEx = (targetVal === '삭제' || targetVal === '제외' || targetVal === '미표기' || targetVal === '없음');
-        hiddenInput.value = isEx ? '삭제' : (targetVal || '사진');
-        if (isEx) {
-          btnExclude.style.background = '#FF3B30';
-          btnExclude.style.color = '#fff';
-          btnExclude.style.borderColor = '#FF3B30';
-          btnInclude.style.background = '#F2F2F7';
-          btnInclude.style.color = '#555';
-          btnInclude.style.borderColor = '#D1D1D6';
-        } else {
-          btnInclude.style.background = '#007AFF';
-          btnInclude.style.color = '#fff';
-          btnInclude.style.borderColor = '#007AFF';
-          btnExclude.style.background = '#F2F2F7';
-          btnExclude.style.color = '#555';
-          btnExclude.style.borderColor = '#D1D1D6';
-        }
-        updatePreview();
-      }
-
-      if (btnInclude && btnExclude) {
-        btnInclude.addEventListener('click', function (e) {
-          e.stopPropagation();
-          setPhotoOption('사진');
-        });
-        btnExclude.addEventListener('click', function (e) {
-          e.stopPropagation();
-          setPhotoOption('삭제');
-        });
-      }
-
-      if (listBtnEl) {
-        listBtnEl.addEventListener('click', function (e) {
-          e.stopPropagation();
-          var fieldKey = (config.title || config.layer || 'facility') + '_' + field.id;
-          var currentOpts = getFieldSuggestions(field.id, config, field.options);
-          openSuggestionPickerModal(inputId, field.label, currentOpts, fieldKey, function (chosenVal) {
-            setPhotoOption(chosenVal);
-          });
-        });
-      }
     } else {
+      // 사진 필드일 경우 기본값 '사진' 보장
+      if (isPhotoField && !val) {
+        val = '사진';
+      }
+
       // 콤보 인풋 박스 생성 (인라인 직접 타이핑 + 우측 📋 추천 목록 모달 버튼)
       var strVal = String(val).trim();
       if (strVal === '선택' || strVal === '직접입력' || strVal === '기타') strVal = '';
 
       var stepAttr = isNumericField ? ' inputmode="decimal"' : '';
-      var placeholder = field.placeholder || (isNumericField ? '숫자 입력' : '직접 입력 (또는 📋 목록)');
+      var placeholder = field.placeholder || (isPhotoField ? '사진 (또는 📋)' : (isNumericField ? '숫자 입력' : '직접 입력 (또는 📋 목록)'));
       var fieldKey = (config.title || config.layer || 'facility') + '_' + field.id;
 
       html += '<div class="combo-input-group">';
@@ -5498,9 +5591,13 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       if (textInputEl && listBtnEl) {
         textInputEl.addEventListener('input', function () {
           updatePreview();
+          if (typeof window.updateAllPreviews === 'function') window.updateAllPreviews();
+          if (typeof window.updateAllPreviewsPM === 'function') window.updateAllPreviewsPM();
         });
         textInputEl.addEventListener('change', function () {
           updatePreview();
+          if (typeof window.updateAllPreviews === 'function') window.updateAllPreviews();
+          if (typeof window.updateAllPreviewsPM === 'function') window.updateAllPreviewsPM();
           if (idx === 0) {
             triggerSubAttributesReset(container, config, prefixId, this.value.trim());
           }
@@ -5513,6 +5610,8 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
           var currentOpts = getFieldSuggestions(field.id, config, field.options);
           openSuggestionPickerModal(inputId, field.label, currentOpts, fieldKey, function (chosenVal) {
             updatePreview();
+            if (typeof window.updateAllPreviews === 'function') window.updateAllPreviews();
+            if (typeof window.updateAllPreviewsPM === 'function') window.updateAllPreviewsPM();
             if (idx === 0) {
               triggerSubAttributesReset(container, config, prefixId, chosenVal);
             }
@@ -6285,29 +6384,27 @@ function addSubPhotoToPendingStreetlight(file) {
   var nextSubSuffix = pendingStreetlightSubPhotos.length;
   var newFileName = generatePhotoFileName(numTextVal + '_' + nextSubSuffix);
 
-  function finish(blob) {
-    pendingStreetlightSubPhotos.push({
-      subIndex: nextSubSuffix,
-      fileName: newFileName,
-      blob: blob
-    });
-    isAddingSubPhoto = false;
-    showToast('추가 사진이 등록되었습니다. (총 ' + pendingStreetlightSubPhotos.length + '장)');
-    if (typeof window.renderStreetlightThumbnails === 'function') {
-      window.renderStreetlightThumbnails();
-    }
-  }
+  // [갤럭시/아이폰 최적화] 촬영 즉시 백그라운드 사전 압축 시작 및 즉시 썸네일 등록
+  var subCompressPromise = (targetSize != null)
+    ? compressImage(file, targetSize).catch(function () { return file; })
+    : Promise.resolve(file);
 
-  if (targetSize != null) {
-    compressImage(file, targetSize).then(finish).catch(function () {
-      finish(file);
-    });
-  } else {
-    var reader = new FileReader();
-    reader.onload = function (e) {
-      fetch(e.target.result).then(function (r) { return r.blob(); }).then(finish);
-    };
-    reader.readAsDataURL(file);
+  var subItem = {
+    subIndex: nextSubSuffix,
+    fileName: newFileName,
+    blob: file,
+    compressPromise: subCompressPromise
+  };
+  pendingStreetlightSubPhotos.push(subItem);
+
+  subCompressPromise.then(function (compressedBlob) {
+    subItem.blob = compressedBlob;
+  });
+
+  isAddingSubPhoto = false;
+  showToast('추가 사진이 등록되었습니다. (총 ' + pendingStreetlightSubPhotos.length + '장)');
+  if (typeof window.renderStreetlightThumbnails === 'function') {
+    window.renderStreetlightThumbnails();
   }
 }
 

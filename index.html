@@ -97,9 +97,16 @@
     #viewer-ui > * { pointer-events: auto; }
     .file-name-display {
       position: fixed; top: 10px; left: 50%; transform: translateX(-50%); color: #007AFF;
-      font-size: 12px; font-weight: 600; z-index: 11; pointer-events: none;
-      max-width: 80vw; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      text-shadow: 0 0 3px white, 0 0 5px white;
+      font-size: 12px; font-weight: 600; z-index: 11; pointer-events: auto; cursor: pointer;
+      max-width: 85vw; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      background: rgba(255, 255, 255, 0.88); padding: 4px 12px; border-radius: 14px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+      border: 1px solid rgba(0, 122, 255, 0.15);
+      transition: all 0.2s ease;
+    }
+    .file-name-display:active {
+      transform: translateX(-50%) scale(0.97);
+      background: rgba(240, 245, 255, 0.95);
     }
     .hamburger-btn {
       position: fixed; top: 20px; right: 20px; z-index: 12;

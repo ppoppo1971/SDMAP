@@ -281,6 +281,42 @@
     }
   }
 
+  // 도면 폴더 전체(사진 및 메타데이터 일괄) 삭제
+  async function deleteDrawingFiles(drawingName) {
+    var baseDir = await getBaseDirectory();
+    if (!baseDir) return false;
+
+    var cleanName = sanitizeDrawingName(drawingName);
+    try {
+      if (typeof baseDir.removeEntry === 'function') {
+        try {
+          await baseDir.removeEntry(cleanName, { recursive: true });
+          console.log('[localFs] 도면 폴더 일괄 삭제 완료:', cleanName);
+          return true;
+        } catch (subErr) {
+          // 재귀 삭제 실패 시 하위 파일 개별 순회 삭제 시도
+        }
+      }
+
+      var folderHandle = await getDrawingFolder(drawingName, false);
+      if (folderHandle) {
+        if (folderHandle.values) {
+          for await (var entry of folderHandle.values()) {
+            try {
+              await folderHandle.removeEntry(entry.name, { recursive: entry.kind === 'directory' });
+            } catch (delErr) {
+              console.warn('[localFs] 파일 삭제 실패:', entry.name, delErr);
+            }
+          }
+        }
+      }
+      return true;
+    } catch (err) {
+      console.warn('[localFs] 도면 폴더 삭제 중 오류:', err);
+      return false;
+    }
+  }
+
   // AutoCAD 사진 및 문자 자동 삽입용 AutoLISP 스크립트 본문 생성
   function getLspScriptContent() {
     return [
@@ -640,6 +676,7 @@
     loadMetadataFile: loadMetadataFile,
     getPhotoBlob: getPhotoBlob,
     deletePhotoFile: deletePhotoFile,
+    deleteDrawingFiles: deleteDrawingFiles,
     getBaseDirName: getBaseDirName,
     hasBaseDir: function () {
       return !!(_baseDirHandle || localStorage.getItem('sdmap_base_dir_name'));
