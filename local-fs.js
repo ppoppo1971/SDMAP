@@ -147,23 +147,26 @@
     return clean.replace(/[\\/:*?"<>|]/g, '_').trim();
   }
 
-  // 도면별 서브폴더 핸들 가져오기 (없으면 생성)
-  async function getDrawingFolder(drawingName, autoCreate) {
-    if (autoCreate === undefined) autoCreate = true;
+  // 루트 폴더 핸들 가져오기 (권한 검증 포함)
+  async function getBaseDirectory() {
     if (!_baseDirHandle) {
       _baseDirHandle = await loadSavedBaseDirHandle();
     }
-    if (!_baseDirHandle) {
-      return null;
-    }
+    if (!_baseDirHandle) return null;
     var hasPermission = await verifyPermission(_baseDirHandle, true);
-    if (!hasPermission) {
-      return null;
-    }
+    if (!hasPermission) return null;
+    return _baseDirHandle;
+  }
+
+  // 도면별 서브폴더 핸들 가져오기 (없으면 생성)
+  async function getDrawingFolder(drawingName, autoCreate) {
+    if (autoCreate === undefined) autoCreate = true;
+    var baseDir = await getBaseDirectory();
+    if (!baseDir) return null;
 
     var folderName = sanitizeDrawingName(drawingName);
     try {
-      return await _baseDirHandle.getDirectoryHandle(folderName, { create: autoCreate });
+      return await baseDir.getDirectoryHandle(folderName, { create: autoCreate });
     } catch (e) {
       console.warn('[localFs] 도면 폴더 접근 실패:', e);
       return null;
@@ -678,6 +681,7 @@
     deletePhotoFile: deletePhotoFile,
     deleteDrawingFiles: deleteDrawingFiles,
     getBaseDirName: getBaseDirName,
+    getBaseDirectory: getBaseDirectory,
     hasBaseDir: function () {
       return !!(_baseDirHandle || localStorage.getItem('sdmap_base_dir_name'));
     }

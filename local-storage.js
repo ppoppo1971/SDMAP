@@ -233,8 +233,7 @@
             var project = req.result;
             if (project) {
               project.texts = [];
-              if (project.dxfData) delete project.dxfData;
-              if (project.dxfImageRefs) delete project.dxfImageRefs;
+              // 도면 자체(DXF 형상 캐시)는 보존하여 도면 유지를 보장
               project.lastModified = new Date().toISOString();
               projStore.put(project);
             }
