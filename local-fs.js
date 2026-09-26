@@ -99,8 +99,7 @@
   // 폴더 읽기/쓰기 권한 검사 및 요청
   async function verifyPermission(handle, readWrite) {
     if (!handle) return false;
-    var options = {};
-    if (readWrite) options.mode = 'readwrite';
+    var options = { mode: readWrite ? 'readwrite' : 'read' };
     try {
       if ((await handle.queryPermission(options)) === 'granted') {
         return true;
@@ -109,6 +108,12 @@
         return true;
       }
     } catch (e) {
+      // 비동기 컨텍스트(User activation required)로 인해 팝업이 차단된 경우에도 읽기 권한이 이미 있다면 통과
+      try {
+        if ((await handle.queryPermission({ mode: 'read' })) === 'granted') {
+          return true;
+        }
+      } catch (qe) {}
       console.warn('[localFs] 권한 요청 중 예외:', e);
     }
     return false;
@@ -209,15 +214,29 @@
     if (!drawingName) return null;
 
     var cleanName = sanitizeDrawingName(drawingName);
+    var isWrite = !!autoCreate;
 
-    // 1. 기존에 영구 보존된 도면 전용 폴더 핸들이 있는지 우선 확인
-    var existingFolder = await loadDrawingFolderHandle(drawingName);
-    if (existingFolder) {
-      var perm = await verifyPermission(existingFolder, true);
-      if (perm) return existingFolder;
+    // 1. 메모리 캐시에 이미 유효한 폴더 핸들이 존재하면 즉시 반환 (초고속 폴더 접근)
+    if (_drawingFolderHandles[cleanName]) {
+      return _drawingFolderHandles[cleanName];
     }
 
-    // 2. 루트 작업 폴더 아래에서 [도면명] 하위 폴더 생성/가져오기
+    // 2. 기존에 영구 보존된 도면 전용 폴더 핸들이 있는지 확인
+    var existingFolder = await loadDrawingFolderHandle(drawingName);
+    if (existingFolder) {
+      // 읽기 모드(사진 미리보기 등)일 때는 불필요한 쓰기 권한 재요청 없이 즉시 활용
+      if (!isWrite) {
+        _drawingFolderHandles[cleanName] = existingFolder;
+        return existingFolder;
+      }
+      var perm = await verifyPermission(existingFolder, isWrite);
+      if (perm) {
+        _drawingFolderHandles[cleanName] = existingFolder;
+        return existingFolder;
+      }
+    }
+
+    // 3. 루트 작업 폴더 아래에서 [도면명] 하위 폴더 생성/가져오기
     var baseDir = await getBaseDirectory();
     if (!baseDir) return null;
 

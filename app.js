@@ -3552,13 +3552,14 @@ function showPhotoModal(photoId) {
       }
     }
 
-    // [0925_01 혁신] 모든 서브사진(메인 포함)의 Blob을 사전에 일괄 비동기 프리패치하여 썸네일 누락 및 깜빡임 원천 차단
+    // [0925_01 혁신] 병렬 충돌 없는 순차(Sequential) 디스크 읽기로 로컬 폴더에서 모든 서브사진(메인 포함) 100% 안전 로드
     if (record.subPhotos && record.subPhotos.length > 0) {
-      var fetchPromises = record.subPhotos.map(async function (spObj) {
-        if (spObj.blob) return spObj.blob;
+      for (var si = 0; si < record.subPhotos.length; si++) {
+        var spObj = record.subPhotos[si];
+        if (spObj.blob) continue;
         if (spObj.fileName && window._photoBlobCache && window._photoBlobCache[spObj.fileName]) {
           spObj.blob = window._photoBlobCache[spObj.fileName];
-          return spObj.blob;
+          continue;
         }
         if (spObj.fileName && window.localFs && window.localFs.isSupported() && window.localFs.hasBaseDir()) {
           try {
@@ -3566,15 +3567,12 @@ function showPhotoModal(photoId) {
             if (b) {
               spObj.blob = b;
               if (window._photoBlobCache) window._photoBlobCache[spObj.fileName] = b;
-              return b;
             }
-          } catch (e) {}
+          } catch (e) {
+            console.warn('[showPhotoModal] 서브사진 파일 읽기 예외:', spObj.fileName, e);
+          }
         }
-        return null;
-      });
-      try {
-        await Promise.all(fetchPromises);
-      } catch (pe) {}
+      }
     }
 
     // 메인 Blob 동기화
@@ -4486,10 +4484,18 @@ function getFieldSuggestions(fieldId, config, defaultOptions) {
   var fieldKey = (config && (config.title || config.layer) ? (config.title || config.layer) : 'common') + '_' + fieldId;
   var blacklist = getFieldBlacklist(fieldKey);
 
+  var isPhotoField = (fieldId === 'photo' || /사진/.test(fieldKey) || (config && config.fields && config.fields.some(function (f) {
+    return f.id === fieldId && (f.isPhoto || f.label === '사진' || /사진/.test(f.label));
+  })));
+
   // 1. 기본 옵션 목록(사용자 지정 기본 목록)을 0회 카운트로 사전 등록 (블랙리스트 제외)
   if (defaultOptions && defaultOptions.length > 0) {
     defaultOptions.forEach(function (opt) {
       var val = String(opt).trim();
+      // [사용자 요구사항] 사진 항목에서는 '삭제', '제외' 등 오해를 유발하는 옵션을 원천 제외하여 표시하지 않음
+      if (isPhotoField && (val === '삭제' || val === '제외' || val === '미표기')) {
+        return;
+      }
       if (val !== '' && val !== '기타' && val !== '직접입력' && val !== '선택' && val !== '--' && blacklist.indexOf(val) === -1) {
         counts[val] = 0;
         baseDefaults.push(val);
@@ -4506,6 +4512,9 @@ function getFieldSuggestions(fieldId, config, defaultOptions) {
         var parsed = deserializeSpecText(t.text, config);
         if (parsed && parsed[fieldId] !== undefined) {
           var val = String(parsed[fieldId]).trim();
+          if (isPhotoField && (val === '삭제' || val === '제외' || val === '미표기')) {
+            return;
+          }
           if (val !== '' && val !== '기타' && val !== '직접입력' && val !== '선택' && val !== '--' && blacklist.indexOf(val) === -1) {
             counts[val] = (counts[val] || 0) + 1;
           }
@@ -5227,6 +5236,19 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
 
     saveStreetlightData(finalFormData, fileBlob, item, dxfCoords, latLng);
   });
+
+  // [0925_01 필수 버그 수정] 시설물 선택 또는 감지 후 폼 구성이 완료되면 바텀시트를 화면에 확실하게 활성화!
+  var sheet = getEl('bottom-sheet-flow');
+  if (sheet) {
+    sheet.classList.add('active');
+    var contentEl = getEl('bottom-sheet-content');
+    if (contentEl) contentEl.scrollTop = 0;
+  }
+  var closeBtn = document.getElementById('bottom-sheet-close');
+  if (closeBtn && !closeBtn._bound) {
+    closeBtn.addEventListener('click', hideStreetlightBottomSheet);
+    closeBtn._bound = true;
+  }
 }
 
 function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
