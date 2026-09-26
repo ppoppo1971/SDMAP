@@ -1107,9 +1107,41 @@ function handleStorageFolderSetting() {
     return;
   }
 
+  if (typeof window.localFs.checkFolderStatus === 'function' && dxfFileFullName) {
+    window.localFs.checkFolderStatus(dxfFileFullName).then(function (status) {
+      if (status !== 'granted') {
+        // 권한이 만료되었거나 폴더가 없는 경우 즉시 권한 승인/설정 모달 호출
+        window.localFs.ensureStorageReady(dxfFileFullName).then(function (ready) {
+          updateStorageFolderMenuLabel();
+          updateFileNameDisplay();
+          if (ready) {
+            showToast('📁 저장 폴더 및 권한이 정상 확보되었습니다.');
+          }
+        });
+      } else {
+        // 이미 정상인 경우, 사용자가 폴더 변경을 원하는지 확인
+        var currentFolder = window.localFs.getBaseDirName();
+        var msg = '현재 저장 폴더: 📁 ' + (currentFolder || '설정됨') + ' (정상 연결됨)\n\n저장 폴더를 다른 폴더로 변경하시겠습니까?';
+        if (confirm(msg)) {
+          window.localFs.pickBaseDirectory().then(function (handle) {
+            if (handle) {
+              if (dxfFileFullName && typeof window.localFs.getDrawingFolder === 'function') {
+                window.localFs.getDrawingFolder(dxfFileFullName, true).catch(function () {});
+              }
+              updateStorageFolderMenuLabel();
+              updateFileNameDisplay();
+              showToast('📁 저장 폴더가 변경되었습니다: ' + handle.name);
+            }
+          });
+        }
+      }
+    });
+    return;
+  }
+
   var currentFolder = window.localFs.getBaseDirName();
   var msg = currentFolder
-    ? '현재 저장 폴더: \ud83d\udcc1 ' + currentFolder + '\n\n저장 폴더를 변경하시겠습니까?\n(도면별 하위 폴더가 자동 생성됩니다)'
+    ? '현재 저장 폴더: 📁 ' + currentFolder + '\n\n저장 폴더를 변경하시겠습니까?\n(도면별 하위 폴더가 자동 생성됩니다)'
     : '사진과 메타데이터를 저장할 폴더를 선택해주세요.\n도면별로 하위 폴더가 자동 생성됩니다.';
 
   if (confirm(msg)) {
@@ -1500,6 +1532,24 @@ function applyDxfLoadResult(dxfFileNameStr, dxfDataResult, imageRefsWithFile) {
 // 도면 로드 후 저장 폴더 미설정 시 자동 설정 유도 안내창 및 도면 폴더 자동 생성
 function checkPromptStorageFolder() {
   if (!window.localFs || !window.localFs.isSupported()) return;
+
+  if (typeof window.localFs.ensureStorageReady === 'function' && dxfFileFullName) {
+    setTimeout(function () {
+      if (typeof window.localFs.checkFolderStatus === 'function') {
+        window.localFs.checkFolderStatus(dxfFileFullName).then(function (status) {
+          if (status !== 'granted') {
+            window.localFs.ensureStorageReady(dxfFileFullName).then(function (ready) {
+              if (ready) {
+                updateStorageFolderMenuLabel();
+                updateFileNameDisplay();
+              }
+            });
+          }
+        });
+      }
+    }, 600);
+    return;
+  }
 
   if (!window.localFs.hasBaseDir()) {
     setTimeout(function () {
@@ -2254,19 +2304,52 @@ function fitDxfToView() {
 
 function updateFileNameDisplay() {
   var el = document.getElementById('file-name-text');
-  if (el) {
-    var sizeText = imageSizeSetting === 'original' ? '원본' : imageSizeSetting;
-    var folderText = '';
-    if (window.localFs && window.localFs.isSupported()) {
-      if (window.localFs.hasBaseDir()) {
-        var cleanDxf = (dxfFileName || '').replace(/\.[^/.]+$/, '').trim();
-        folderText = cleanDxf ? ' 📁' + cleanDxf : ' 📁' + window.localFs.getBaseDirName();
-      } else {
-        folderText = ' 📁(저장폴더 설정필요)';
-      }
-    }
-    el.textContent = (dxfFileName || '도면') + ' [' + sizeText + ']' + folderText;
+  if (!el) return;
+
+  var sizeText = imageSizeSetting === 'original' ? '원본' : imageSizeSetting;
+  var drawingNameClean = (dxfFileName || '도면').replace(/\.[^/.]+$/, '').trim();
+  var baseLabel = escapeHtml(drawingNameClean) + ' [' + escapeHtml(sizeText) + ']';
+
+  if (!window.localFs || !window.localFs.isSupported()) {
+    el.innerHTML = '<span class="fn-title">' + baseLabel + '</span>' +
+      ' <span class="folder-badge badge-gray" style="display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:10px; font-size:11px; background:#f0f0f0; color:#616161; font-weight:bold; border:1px solid #d0d0d0; margin-left:4px; vertical-align:middle;">📁 내부DB 모드</span>';
+    updateStorageFolderMenuLabel();
+    return;
   }
+
+  if (!window.localFs.hasBaseDir()) {
+    el.innerHTML = '<span class="fn-title">' + baseLabel + '</span>' +
+      ' <span class="folder-badge badge-red" style="display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:10px; font-size:11px; background:#ffebee; color:#c62828; font-weight:bold; border:1px solid #ef9a9a; margin-left:4px; vertical-align:middle;">🔴 📁 폴더설정필요</span>';
+    updateStorageFolderMenuLabel();
+    return;
+  }
+
+  var folderName = window.localFs.getBaseDirName();
+  if (dxfFileName) {
+    folderName = (dxfFileName || '').replace(/\.[^/.]+$/, '').trim() || folderName;
+  }
+
+  if (typeof window.localFs.checkFolderStatus === 'function' && dxfFileFullName) {
+    window.localFs.checkFolderStatus(dxfFileFullName).then(function (status) {
+      if (status === 'granted') {
+        el.innerHTML = '<span class="fn-title">' + baseLabel + '</span>' +
+          ' <span class="folder-badge badge-green" style="display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:10px; font-size:11px; background:#e8f5e9; color:#1b5e20; font-weight:bold; border:1px solid #a5d6a7; margin-left:4px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle;">🟢 📁 ' + escapeHtml(folderName) + ' (정상)</span>';
+      } else if (status === 'prompt') {
+        el.innerHTML = '<span class="fn-title">' + baseLabel + '</span>' +
+          ' <span class="folder-badge badge-orange" style="display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:10px; font-size:11px; background:#fff3e0; color:#e65100; font-weight:bold; border:1px solid #ffcc80; margin-left:4px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle;">🟠 📁 ' + escapeHtml(folderName) + ' (권한필요)</span>';
+      } else {
+        el.innerHTML = '<span class="fn-title">' + baseLabel + '</span>' +
+          ' <span class="folder-badge badge-red" style="display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:10px; font-size:11px; background:#ffebee; color:#c62828; font-weight:bold; border:1px solid #ef9a9a; margin-left:4px; vertical-align:middle;">🔴 📁 ' + escapeHtml(folderName) + ' (접근불가)</span>';
+      }
+    }).catch(function () {
+      el.innerHTML = '<span class="fn-title">' + baseLabel + '</span>' +
+        ' <span class="folder-badge badge-green" style="display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:10px; font-size:11px; background:#e8f5e9; color:#1b5e20; font-weight:bold; border:1px solid #a5d6a7; margin-left:4px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle;">🟢 📁 ' + escapeHtml(folderName) + '</span>';
+    });
+  } else {
+    el.innerHTML = '<span class="fn-title">' + baseLabel + '</span>' +
+      ' <span class="folder-badge badge-green" style="display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:10px; font-size:11px; background:#e8f5e9; color:#1b5e20; font-weight:bold; border:1px solid #a5d6a7; margin-left:4px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle;">🟢 📁 ' + escapeHtml(folderName) + '</span>';
+  }
+
   updateStorageFolderMenuLabel();
 }
 
@@ -2898,6 +2981,14 @@ function bindContextMenu() {
   if (!contextMenuEl) return;
   document.getElementById('camera-btn').addEventListener('click', function () {
     contextMenuEl.classList.remove('active');
+    if (window.localFs && typeof window.localFs.ensureStorageReady === 'function') {
+      window.localFs.ensureStorageReady(dxfFileFullName).then(function (ready) {
+        if (!ready) return;
+        var input = getEl('camera-input');
+        if (input) { input.click(); }
+      });
+      return;
+    }
     var input = getEl('camera-input');
     if (input) { input.click(); }
   });
@@ -3104,6 +3195,8 @@ function addPhotoAtPosition(xy, file) {
 
     // [0925_01 버그수정] blob 참조를 closure 변수에 보존 (cleanPhotoMemory가 null 처리하기 전)
     var savedBlob = blob;
+    window._photoBlobCache = window._photoBlobCache || {};
+    if (savedBlob && mainFileName) window._photoBlobCache[mainFileName] = savedBlob;
 
     Promise.all([
       window.localStore.savePhoto(dxfFileFullName, photo),
@@ -3801,6 +3894,17 @@ function bindPhotoModal() {
   if (addBtn) {
     addBtn.addEventListener('click', function () {
       if (!editingPhotoId) return;
+      if (window.localFs && typeof window.localFs.ensureStorageReady === 'function') {
+        window.localFs.ensureStorageReady(dxfFileFullName).then(function (ready) {
+          if (!ready) return;
+          isAddingSubPhoto = true;
+          var cameraInput = getEl('camera-input');
+          if (cameraInput) {
+            cameraInput.click();
+          }
+        });
+        return;
+      }
       isAddingSubPhoto = true;
       var cameraInput = getEl('camera-input');
       if (cameraInput) {
@@ -4526,6 +4630,9 @@ function getFieldSuggestions(fieldId, config, defaultOptions) {
   // 3. 브라우저 localStorage 사용자 사전에서도 집계 가산 (블랙리스트 제외)
   var customStore = getFieldCustomSuggestions(fieldKey);
   for (var cVal in customStore) {
+    if (isPhotoField && (cVal === '삭제' || cVal === '제외' || cVal === '미표기')) {
+      continue;
+    }
     if (blacklist.indexOf(cVal) === -1) {
       counts[cVal] = (counts[cVal] || 0) + customStore[cVal];
     }
@@ -4901,6 +5008,15 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
     addBtn.textContent = '📷 사진추가';
     addBtn.style.alignSelf = 'flex-start';
     addBtn.addEventListener('click', function () {
+      if (window.localFs && typeof window.localFs.ensureStorageReady === 'function') {
+        window.localFs.ensureStorageReady(dxfFileFullName).then(function (ready) {
+          if (!ready) return;
+          isAddingSubPhoto = true;
+          var cameraInput = getEl('camera-input');
+          if (cameraInput) cameraInput.click();
+        });
+        return;
+      }
       isAddingSubPhoto = true;
       var cameraInput = getEl('camera-input');
       if (cameraInput) cameraInput.click();
@@ -6234,6 +6350,22 @@ function hideStreetlightBottomSheet() {
 }
 
 function triggerStreetlightCamera(item, dxfCoords, latLng) {
+  if (window.localFs && typeof window.localFs.ensureStorageReady === 'function') {
+    window.localFs.ensureStorageReady(dxfFileFullName).then(function (ready) {
+      if (!ready) return;
+      pendingStreetlightItem = item;
+      pendingStreetlightDxfCoords = dxfCoords;
+      pendingStreetlightLatLng = latLng;
+      pendingFacilityType = item.type || detectFacilityType(item.name, item.layer) || item.name;
+
+      var cameraInput = getEl('camera-input');
+      if (cameraInput) {
+        cameraInput.click();
+      }
+    });
+    return;
+  }
+
   pendingStreetlightItem = item;
   pendingStreetlightDxfCoords = dxfCoords;
   pendingStreetlightLatLng = latLng;
@@ -6341,6 +6473,21 @@ function openFacilitySelectModal(dxfCoords, latLng) {
   // 3) 기본 일반사진 촬영
   btnGen.onclick = function () {
     closeModal();
+    if (window.localFs && typeof window.localFs.ensureStorageReady === 'function') {
+      window.localFs.ensureStorageReady(dxfFileFullName).then(function (ready) {
+        if (!ready) return;
+        pendingAddPosition = { x: dxfCoords.x, y: dxfCoords.y };
+        pendingStreetlightItem = null;
+        pendingStreetlightDxfCoords = null;
+        pendingStreetlightLatLng = null;
+        pendingFacilityType = null;
+        isAddingSubPhoto = false;
+
+        var input = getEl('camera-input');
+        if (input) { input.click(); }
+      });
+      return;
+    }
     pendingAddPosition = { x: dxfCoords.x, y: dxfCoords.y };
     pendingStreetlightItem = null;
     pendingStreetlightDxfCoords = null;

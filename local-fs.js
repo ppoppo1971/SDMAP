@@ -153,12 +153,13 @@
   }
 
   // 루트 폴더 핸들 가져오기 (권한 검증 포함)
-  async function getBaseDirectory() {
+  async function getBaseDirectory(readWrite) {
+    if (readWrite === undefined) readWrite = true;
     if (!_baseDirHandle) {
       _baseDirHandle = await loadSavedBaseDirHandle();
     }
     if (!_baseDirHandle) return null;
-    var hasPermission = await verifyPermission(_baseDirHandle, true);
+    var hasPermission = await verifyPermission(_baseDirHandle, readWrite);
     if (!hasPermission) return null;
     return _baseDirHandle;
   }
@@ -237,7 +238,7 @@
     }
 
     // 3. 루트 작업 폴더 아래에서 [도면명] 하위 폴더 생성/가져오기
-    var baseDir = await getBaseDirectory();
+    var baseDir = await getBaseDirectory(isWrite);
     if (!baseDir) return null;
 
     try {
@@ -249,6 +250,72 @@
     } catch (e) {
       console.warn('[localFs] 도면 폴더 접근 실패:', e);
       return null;
+    }
+  }
+
+  // [0925_01 핵심] 저장 환경 사전 철저 검사 (촬영/저장 전 실행: 정상 저장이 보장되지 않으면 작업을 원천 차단)
+  async function ensureStorageReady(drawingName) {
+    if (!isSupported()) {
+      return true; // File System Access API 미지원 환경(iOS 등)은 IndexedDB 모드로 작업 허용
+    }
+
+    if (!drawingName) {
+      alert('작업 대상 도면이 지정되지 않았습니다.');
+      return false;
+    }
+
+    // 1. 루트 작업 폴더가 설정되어 있는지 검사
+    var baseDir = await getBaseDirectory();
+    if (!baseDir) {
+      var proceed = confirm(
+        '⚠️ 사진 및 데이터를 저장할 폴더가 설정되지 않았거나 접근 권한이 필요합니다.\n\n' +
+        '작업 결과가 안전하게 폴더에 저장되도록 저장 폴더를 선택(또는 권한 허용)해 주세요.'
+      );
+      if (proceed) {
+        baseDir = await pickBaseDirectory();
+      }
+      if (!baseDir) {
+        alert('저장 폴더가 지정되지 않아 사진 촬영 및 저장을 진행할 수 없습니다.');
+        return false;
+      }
+    }
+
+    // 2. 도면 전용 폴더 및 쓰기(readwrite) 권한 확인/생성
+    var folder = await getDrawingFolder(drawingName, true);
+    if (!folder) {
+      alert('⚠️ 도면 저장 폴더에 접근할 수 없습니다. 저장 폴더를 다시 지정해 주세요.');
+      var newBase = await pickBaseDirectory();
+      if (newBase) {
+        folder = await getDrawingFolder(drawingName, true);
+      }
+      if (!folder) {
+        alert('저장 폴더 환경이 준비되지 않아 작업을 시작할 수 없습니다.');
+        return false;
+      }
+    }
+
+    // 3. 쓰기 권한 최종 확인 (사용자 클릭 제스처 스택에서 호출되므로 권한 요청 팝업이 확실하게 뜸)
+    var writePerm = await verifyPermission(folder, true);
+    if (!writePerm) {
+      alert('⚠️ 저장 폴더 쓰기 권한이 허용되지 않아 사진 촬영 및 저장을 진행할 수 없습니다.');
+      return false;
+    }
+
+    return true;
+  }
+
+  // 폴더 권한 및 상태 비동기 쿼리 (팝업 없이 상태만 확인)
+  async function checkFolderStatus(drawingName) {
+    if (!isSupported()) return 'unsupported';
+    if (!drawingName) return 'no_drawing';
+    var cleanName = sanitizeDrawingName(drawingName);
+    var handle = _drawingFolderHandles[cleanName] || await loadDrawingFolderHandle(drawingName) || _baseDirHandle;
+    if (!handle) return 'no_folder';
+    try {
+      var q = await handle.queryPermission({ mode: 'readwrite' });
+      return q; // 'granted', 'prompt', 'denied'
+    } catch (e) {
+      return 'prompt';
     }
   }
 
@@ -755,6 +822,8 @@
     deleteDrawingFiles: deleteDrawingFiles,
     getBaseDirName: getBaseDirName,
     getBaseDirectory: getBaseDirectory,
+    ensureStorageReady: ensureStorageReady,
+    checkFolderStatus: checkFolderStatus,
     hasBaseDir: function () {
       return !!(_baseDirHandle || localStorage.getItem('sdmap_base_dir_name'));
     }
