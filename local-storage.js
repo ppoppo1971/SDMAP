@@ -150,6 +150,7 @@
           numTextId: photo.numTextId || null,
           specTextId: photo.specTextId || null,
           specTextIds: photo.specTextIds || null,
+          specValuesList: photo.specValuesList || (existingRecord ? existingRecord.specValuesList : null),
           additionalTypes: photo.additionalTypes || null,
           facilityType: photo.facilityType || null,
           subPhotos: recordSubPhotos || null

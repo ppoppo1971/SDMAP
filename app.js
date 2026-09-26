@@ -3259,15 +3259,51 @@ function deserializeSpecText(specText, config) {
       values['type3'] = parts[3] || '';
     }
   } else {
-    var valIdx = 0;
-    config.fields.forEach(function (field) {
-      if (field.id === 'name') {
-        values['name'] = config.title;
-        return;
-      }
-      values[field.id] = parts[valIdx] !== undefined ? parts[valIdx] : (field.default || '');
-      valIdx++;
+    // [0925_01 혁신] 지능형 옵션 필드 역파서: 생략된 옵션(--)이 있을 때 뒤 필드가 당겨져 들어가는 현상 원천 차단
+    var pIdx = 0;
+    var targetFields = (config.fields || []).filter(function (f) { return f.id !== 'name'; });
+    
+    // 기본적으로 빈칸('')으로 초기화
+    targetFields.forEach(function (f) {
+      values[f.id] = '';
     });
+
+    targetFields.forEach(function (field, fIdx) {
+      if (pIdx >= parts.length) return;
+      var curPart = parts[pIdx];
+
+      var matchesField = false;
+      if (field.options && field.options.length > 0) {
+        matchesField = (field.options.indexOf(curPart) !== -1);
+      } else {
+        matchesField = true;
+      }
+
+      // 현재 part가 이 필드와 맞지 않고, 뒤에 오는 다른 필드의 선택지와 맞다면 이 필드는 생략된 것으로 판단
+      if (!matchesField) {
+        var laterFieldMatches = false;
+        for (var k = fIdx + 1; k < targetFields.length; k++) {
+          var laterF = targetFields[k];
+          if (laterF.options && laterF.options.indexOf(curPart) !== -1) {
+            laterFieldMatches = true;
+            break;
+          }
+        }
+        if (laterFieldMatches) {
+          // 현재 필드는 사용자가 생략한 것이므로 건너뛰고 빈칸('') 유지
+          return;
+        }
+      }
+
+      values[field.id] = curPart;
+      pIdx++;
+    });
+
+    if (config.fields) {
+      config.fields.forEach(function (f) {
+        if (f.id === 'name') values['name'] = config.title;
+      });
+    }
   }
 
   return values;
@@ -3354,31 +3390,21 @@ function showPhotoModal(photoId) {
       });
     }
 
-    // 폼 카드를 담을 리스트 컨테이너 생성
+    // [0925_01 통일] 실시간 제원 일괄 미리보기 필드를 바텀시트와 동일하게 상단 고정(sticky-preview-box)으로 배치!
+    var previewGroup = document.createElement('div');
+    previewGroup.className = 'form-group sticky-preview-box';
+    previewGroup.innerHTML = 
+      '<label style="color:#5856D6; font-size:12px; font-weight:bold; margin-bottom:4px; display:block;">도면 수정 제원 일괄 미리보기</label>' +
+      '<div id="pm-spec-preview" style="font-size:13px; font-weight:500; color:#1C1C1E; word-break:break-all; min-height:18px; white-space:pre-line; line-height:1.4;"></div>';
+    dynamicFieldsContainer.appendChild(previewGroup);
+
+    // 폼 카드를 담을 리스트 컨테이너 생성 (미리보기 박스 아래에 배치되어 스크롤됨)
     var pmFormListContainer = document.createElement('div');
     pmFormListContainer.id = 'pm-dynamic-form-list';
     pmFormListContainer.style.display = 'flex';
     pmFormListContainer.style.flexDirection = 'column';
     pmFormListContainer.style.gap = '15px';
     dynamicFieldsContainer.appendChild(pmFormListContainer);
-
-    // 구분선 삽입 (일괄 미리보기 위)
-    var pmPreviewDivider = document.createElement('div');
-    pmPreviewDivider.style.borderTop = '1.5px solid #8E8E93';
-    pmPreviewDivider.style.marginTop = '15px';
-    dynamicFieldsContainer.appendChild(pmPreviewDivider);
-
-    // 실시간 미리보기용 컨테이너 생성
-    var previewGroup = document.createElement('div');
-    previewGroup.className = 'form-group';
-    previewGroup.style.background = '#F2F2F7';
-    previewGroup.style.padding = '8px 12px';
-    previewGroup.style.borderRadius = '8px';
-    previewGroup.style.border = '1px solid #E5E5EA';
-    previewGroup.innerHTML = 
-      '<label style="color:#5856D6; font-size:11px; margin-bottom:2px;">수정 저장 제원 일괄 미리보기</label>' +
-      '<div id="pm-spec-preview" style="font-size:12px; color:#1C1C1E; word-break:break-all; min-height:16px; white-space:pre-line;"></div>';
-    dynamicFieldsContainer.appendChild(previewGroup);
 
     // 실시간 다중 폼 전체 미리보기 업데이트 함수 정의
     window.updateAllPreviewsPM = function () {
@@ -3442,7 +3468,8 @@ function showPhotoModal(photoId) {
         }
 
         var config = FACILITY_CONFIG[fType] || { title: fType, fields: [] };
-        var parsedValues = deserializeSpecText(specTextObj.text, config);
+        // [0925_01 혁신] 저장된 원본 JSON 속성값(specValues)이 존재하면 우선 사용하여 사용자가 '--' 생략한 옵션 100% 무손실 복원
+        var parsedValues = specTextObj.specValues || (p.specValuesList && p.specValuesList[idx]) || deserializeSpecText(specTextObj.text, config);
         var uniquePrefix = 'pm-old-' + idx + '-' + Date.now();
         renderMultiAttributeCard(pmFormListContainer, fType, parsedValues, uniquePrefix);
       }
@@ -3511,52 +3538,55 @@ function showPhotoModal(photoId) {
   // 비동기로 DB에서 온전한 레코드를 조회하고, Blob이 파일시스템에만 있는 경우 직접 읽어서 메인 이미지 및 썸네일 렌더링
   window.localStore.getPhotoById(photoId).then(async function (record) {
     if (editingPhotoId !== photoId) return; // 비동기 레이스 컨디션 방지
+    if (!record) record = p;
     if (!record) return;
 
-    // [0923_01] IndexedDB에 blob이 없고 localFs가 활성화된 경우 파일시스템에서 직접 읽어옴
-    if (!record.blob && record.fileName && window._photoBlobCache && window._photoBlobCache[record.fileName]) {
-      record.blob = window._photoBlobCache[record.fileName];
-    }
-    if (window.localFs && window.localFs.isSupported() && window.localFs.hasBaseDir()) {
-      if (!record.blob && record.fileName) {
-        try {
-          record.blob = await window.localFs.getPhotoBlob(dxfFileFullName, record.fileName);
-          if (record.blob && window._photoBlobCache) window._photoBlobCache[record.fileName] = record.blob;
-        } catch (e) {}
-      }
-      if (record.subPhotos && record.subPhotos.length > 0) {
-        for (var si = 0; si < record.subPhotos.length; si++) {
-          var spObj = record.subPhotos[si];
-          if (!spObj.blob && spObj.fileName) {
-            if (window._photoBlobCache && window._photoBlobCache[spObj.fileName]) {
-              spObj.blob = window._photoBlobCache[spObj.fileName];
-            } else {
-              try {
-                spObj.blob = await window.localFs.getPhotoBlob(dxfFileFullName, spObj.fileName);
-                if (spObj.blob && window._photoBlobCache) window._photoBlobCache[spObj.fileName] = spObj.blob;
-              } catch (e) {}
-            }
-          }
-        }
+    // subPhotos 배열 보정: 메모리에 남아있는 p.subPhotos가 있거나 단일 사진인 경우 안전하게 구성
+    if (!record.subPhotos || record.subPhotos.length === 0) {
+      if (p && p.subPhotos && p.subPhotos.length > 0) {
+        record.subPhotos = p.subPhotos;
+      } else {
+        var baseFile = record.fileName || (p && p.fileName) || '';
+        var baseBlob = record.blob || (p && p.blob) || (baseFile && window._photoBlobCache ? window._photoBlobCache[baseFile] : null);
+        record.subPhotos = [{ subIndex: 0, fileName: baseFile, blob: baseBlob }];
       }
     }
 
-    // 메모리 내 blob이 남아있다면 대체 활용 및 동기화
-    if (!record.blob && p && p.blob) {
-      record.blob = p.blob;
-    } else if (record.blob && p) {
-      p.blob = record.blob;
+    // [0925_01 혁신] 모든 서브사진(메인 포함)의 Blob을 사전에 일괄 비동기 프리패치하여 썸네일 누락 및 깜빡임 원천 차단
+    if (record.subPhotos && record.subPhotos.length > 0) {
+      var fetchPromises = record.subPhotos.map(async function (spObj) {
+        if (spObj.blob) return spObj.blob;
+        if (spObj.fileName && window._photoBlobCache && window._photoBlobCache[spObj.fileName]) {
+          spObj.blob = window._photoBlobCache[spObj.fileName];
+          return spObj.blob;
+        }
+        if (spObj.fileName && window.localFs && window.localFs.isSupported() && window.localFs.hasBaseDir()) {
+          try {
+            var b = await window.localFs.getPhotoBlob(dxfFileFullName, spObj.fileName);
+            if (b) {
+              spObj.blob = b;
+              if (window._photoBlobCache) window._photoBlobCache[spObj.fileName] = b;
+              return b;
+            }
+          } catch (e) {}
+        }
+        return null;
+      });
+      try {
+        await Promise.all(fetchPromises);
+      } catch (pe) {}
     }
+
+    // 메인 Blob 동기화
     if (!record.blob && record.subPhotos && record.subPhotos.length > 0 && record.subPhotos[0].blob) {
       record.blob = record.subPhotos[0].blob;
     }
-    if (record.subPhotos && p && p.subPhotos) {
-      record.subPhotos.forEach(function (rsp, idx) {
-        if (!rsp.blob && p.subPhotos[idx] && p.subPhotos[idx].blob) {
-          rsp.blob = p.subPhotos[idx].blob;
-        }
-      });
+    if (p) {
+      p.subPhotos = record.subPhotos;
+      if (record.blob) p.blob = record.blob;
     }
+
+    if (editingPhotoId !== photoId) return;
 
     // 1) 메인 이미지 세팅
     if (record.blob) {
@@ -3577,7 +3607,7 @@ function showPhotoModal(photoId) {
       }
     }
 
-    // 2) 썸네일 세팅
+    // 2) 썸네일 세팅 (두 장 이상일 때 썸네일 목록 100% 온전 렌더링)
     var thumbContainer = getEl('photo-modal-thumbnails');
     if (thumbContainer) {
       thumbContainer.innerHTML = '';
@@ -3591,30 +3621,13 @@ function showPhotoModal(photoId) {
           thumbDiv.className = 'photo-thumb-item' + (idx === 0 ? ' active' : '');
           var thumbImg = document.createElement('img');
           
-          if (sp.blob) {
-            var objUrl = URL.createObjectURL(sp.blob);
+          var targetBlob = sp.blob || (sp.fileName && window._photoBlobCache ? window._photoBlobCache[sp.fileName] : null);
+          if (targetBlob) {
+            var objUrl = URL.createObjectURL(targetBlob);
             subPhotoObjectUrls.push(objUrl);
             thumbImg.src = objUrl;
-          } else if (sp.fileName) {
-            // 비동기로 메모리 캐시 또는 디스크에서 단독 복원 시도
-            (function (targetImg, curSp) {
-              if (window._photoBlobCache && window._photoBlobCache[curSp.fileName]) {
-                curSp.blob = window._photoBlobCache[curSp.fileName];
-                var u = URL.createObjectURL(curSp.blob);
-                subPhotoObjectUrls.push(u);
-                targetImg.src = u;
-              } else if (window.localFs && window.localFs.isSupported() && window.localFs.hasBaseDir()) {
-                window.localFs.getPhotoBlob(dxfFileFullName, curSp.fileName).then(function (b) {
-                  if (b) {
-                    curSp.blob = b;
-                    if (window._photoBlobCache) window._photoBlobCache[curSp.fileName] = b;
-                    var u = URL.createObjectURL(b);
-                    subPhotoObjectUrls.push(u);
-                    targetImg.src = u;
-                  }
-                }).catch(function () {});
-              }
-            })(thumbImg, sp);
+          } else {
+            thumbImg.alt = '사진 ' + (idx + 1);
           }
 
           thumbDiv.appendChild(thumbImg);
@@ -3629,10 +3642,10 @@ function showPhotoModal(photoId) {
             thumbContainer.querySelectorAll('.photo-thumb-item').forEach(function (t, i) {
               t.classList.toggle('active', i === idx);
             });
-            var targetBlob = sp.blob || (window._photoBlobCache && sp.fileName ? window._photoBlobCache[sp.fileName] : null);
-            if (targetBlob && img) {
+            var clickBlob = sp.blob || (window._photoBlobCache && sp.fileName ? window._photoBlobCache[sp.fileName] : null);
+            if (clickBlob && img) {
               if (dxfImageObjectUrl) URL.revokeObjectURL(dxfImageObjectUrl);
-              dxfImageObjectUrl = URL.createObjectURL(targetBlob);
+              dxfImageObjectUrl = URL.createObjectURL(clickBlob);
               img.src = dxfImageObjectUrl;
               img.onclick = function () {
                 openImageViewer(subs, idx);
@@ -3918,7 +3931,8 @@ function bindPhotoModal() {
         y: p.y,
         text: attr.specText,
         fontSize: 12,
-        layer: attr.layer || '일반_T'
+        layer: attr.layer || '일반_T',
+        specValues: attr.values // [0925_01 혁신] 원본 JSON 속성값 보존
       };
       texts.push(specTextObj);
 
@@ -3929,6 +3943,7 @@ function bindPhotoModal() {
     // 5. 사진 레코드 메타데이터 최종 업데이트
     p.specTextId = primarySpecTextId;
     p.specTextIds = newSpecTextIds;
+    p.specValuesList = attributeDataList.map(function (a) { return a.values; });
     p.facilityType = attributeDataList[0] ? attributeDataList[0].type : '일반사진';
     
     var additionalTypes = [];
@@ -5294,7 +5309,8 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
         text: attr.specText,
         fontSize: 12,
         layer: attr.layer || '일반_T',
-        color: colorNum
+        color: colorNum,
+        specValues: attr.values // [0925_01] 원본 속성값 보존
       };
       texts.push(specTextObj);
     });
@@ -5363,6 +5379,7 @@ function saveStreetlightData(formData, fileBlob, item, dxfCoords, latLng) {
       numTextId: numTextId,
       specTextId: primarySpecTextId, // 구버전 DB 호환성
       specTextIds: specTextIds,      // 다중 속성 ID 배열 (신규)
+      specValuesList: (formData.attributes || []).map(function (a) { return a.values; }),
       facilityType: primaryType,     // 주 시설물 종류
       additionalTypes: additionalTypes, // 부속 시설물 종류 배열
       subPhotos: finalSubPhotos
@@ -5727,13 +5744,9 @@ function serializeFacilityForm(container, config, prefixId) {
       }
     }
 
-    // 빈칸 입력 검사 및 기본값 자동 보정 (기본값 무 설정 시 '--' 지정)
-    if (val === '' || val === '직접입력') {
-      if (isSelectEmpty) {
-        val = '--';
-      } else {
-        val = (field.default !== undefined && field.default !== '') ? field.default : '--';
-      }
+    // [0925_01 버그수정] 사용자가 '--'를 선택했거나 빈칸으로 비운 경우, 기본값으로 강제 치환하지 않고 '--' (생략)으로 확실하게 보존!
+    if (val === '' || val === '--' || val === '직접입력' || val === '삭제' || val === '제외' || val === '미표기' || val === '없음') {
+      val = '--';
     }
     vals[field.id] = val;
   });
@@ -6441,15 +6454,15 @@ function addSubPhotoToCurrentPhoto(file) {
       return;
     }
 
-    if (!record.subPhotos) {
+    if (!record.subPhotos || record.subPhotos.length === 0) {
       record.subPhotos = [];
-      if (record.blob) {
-        record.subPhotos.push({
-          subIndex: 0,
-          fileName: record.fileName || generatePhotoFileName(numTextVal),
-          blob: record.blob
-        });
-      }
+      var mainFile = record.fileName || (p && p.fileName) || generatePhotoFileName(numTextVal);
+      var mainBlob = record.blob || (p && p.blob) || (mainFile && window._photoBlobCache ? window._photoBlobCache[mainFile] : null);
+      record.subPhotos.push({
+        subIndex: 0,
+        fileName: mainFile,
+        blob: mainBlob
+      });
     }
 
     var nextSubSuffix = record.subPhotos.length;

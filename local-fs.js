@@ -158,15 +158,75 @@
     return _baseDirHandle;
   }
 
-  // 도면별 서브폴더 핸들 가져오기 (없으면 생성)
+  // 도면별 독립 폴더 핸들 맵 (도면명 -> DirectoryHandle)
+  var _drawingFolderHandles = {};
+
+  // 도면별 폴더 핸들 영구 저장
+  async function saveDrawingFolderHandle(drawingName, handle) {
+    if (!drawingName || !handle) return;
+    var cleanName = sanitizeDrawingName(drawingName);
+    _drawingFolderHandles[cleanName] = handle;
+    return openDb().then(function (db) {
+      return new Promise(function (resolve) {
+        try {
+          var tx = db.transaction(HANDLE_STORE, 'readwrite');
+          tx.objectStore(HANDLE_STORE).put(handle, 'folder_' + cleanName);
+          tx.oncomplete = function () { resolve(); };
+          tx.onerror = function () { resolve(); };
+        } catch (e) { resolve(); }
+      });
+    });
+  }
+
+  // 도면별 폴더 핸들 불러오기
+  async function loadDrawingFolderHandle(drawingName) {
+    if (!drawingName) return null;
+    var cleanName = sanitizeDrawingName(drawingName);
+    if (_drawingFolderHandles[cleanName]) return _drawingFolderHandles[cleanName];
+
+    return openDb().then(function (db) {
+      return new Promise(function (resolve) {
+        try {
+          var tx = db.transaction(HANDLE_STORE, 'readonly');
+          var req = tx.objectStore(HANDLE_STORE).get('folder_' + cleanName);
+          req.onsuccess = function () {
+            if (req.result) {
+              _drawingFolderHandles[cleanName] = req.result;
+              resolve(req.result);
+            } else {
+              resolve(null);
+            }
+          };
+          req.onerror = function () { resolve(null); };
+        } catch (e) { resolve(null); }
+      });
+    });
+  }
+
+  // 도면별 서브폴더 핸들 가져오기 (없으면 생성 및 IndexedDB 영구 보존)
   async function getDrawingFolder(drawingName, autoCreate) {
     if (autoCreate === undefined) autoCreate = true;
+    if (!drawingName) return null;
+
+    var cleanName = sanitizeDrawingName(drawingName);
+
+    // 1. 기존에 영구 보존된 도면 전용 폴더 핸들이 있는지 우선 확인
+    var existingFolder = await loadDrawingFolderHandle(drawingName);
+    if (existingFolder) {
+      var perm = await verifyPermission(existingFolder, true);
+      if (perm) return existingFolder;
+    }
+
+    // 2. 루트 작업 폴더 아래에서 [도면명] 하위 폴더 생성/가져오기
     var baseDir = await getBaseDirectory();
     if (!baseDir) return null;
 
-    var folderName = sanitizeDrawingName(drawingName);
     try {
-      return await baseDir.getDirectoryHandle(folderName, { create: autoCreate });
+      var subFolder = await baseDir.getDirectoryHandle(cleanName, { create: autoCreate });
+      if (subFolder) {
+        await saveDrawingFolderHandle(drawingName, subFolder);
+      }
+      return subFolder;
     } catch (e) {
       console.warn('[localFs] 도면 폴더 접근 실패:', e);
       return null;
@@ -201,17 +261,11 @@
       var jsonStr = JSON.stringify(metadata, null, 2);
       var blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
 
-      // 도면명_metadata.json 저장
+      // [0925_01 최적화] 도면명_metadata.json 단일 파일로 깔끔하게 저장 (중복 metadata.json 제거)
       var fileHandle = await folderHandle.getFileHandle(metaFileName, { create: true });
       var writable = await fileHandle.createWritable();
       await writable.write(blob);
       await writable.close();
-
-      // 호환성을 위해 metadata.json 도 함께 기록
-      var standardHandle = await folderHandle.getFileHandle('metadata.json', { create: true });
-      var standardWritable = await standardHandle.createWritable();
-      await standardWritable.write(blob);
-      await standardWritable.close();
 
       // AutoCAD 자동 전개용 AutoLISP 스크립트 (SDInsertPhotos.lsp) 함께 생성
       try {
