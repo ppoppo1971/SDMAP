@@ -1068,8 +1068,8 @@
     </div>
     <div id="fc-focus-ring" class="fc-focus-ring"></div>
     <div class="fast-camera-bottom-bar">
-      <div class="fc-lens-controls" id="fc-lens-controls" style="display:none;">
-        <button type="button" class="fc-lens-btn" data-zoom="0.5" id="fc-lens-05">0.5X</button>
+      <div class="fc-lens-controls" id="fc-lens-controls">
+        <button type="button" class="fc-lens-btn" data-zoom="0.5" id="fc-lens-05">.5X</button>
         <button type="button" class="fc-lens-btn active" data-zoom="1" id="fc-lens-1">1X</button>
         <button type="button" class="fc-lens-btn" data-zoom="2" id="fc-lens-2">2X</button>
       </div>
@@ -1087,13 +1087,13 @@
   <!-- 좌표계 변환: DXF 평면직각좌표(EPSG) → WGS84 (config.DXF_CRS 사용 시) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
   <script src="local-storage.js"></script>
-  <script src="local-fs.js?v=2.6"></script>
+  <script src="local-fs.js?v=2.7"></script>
   <!-- DXF 파서: 로컬 libs (오프라인용). 없으면 npm run copy-libs 또는 ADMAP-main/libs에서 복사 -->
   <script src="libs/dxf-parser.min.js"></script>
   <script src="dxf-to-geojson.js"></script>
   <!-- 사진 마커 클러스터링 (200~300장 대응) -->
   <script src="https://unpkg.com/@googlemaps/markerclusterer@2.5.3/dist/index.min.js"></script>
-  <script src="app.js?v=2.6"></script>
+  <script src="app.js?v=2.7"></script>
   <script>
     (function() {
       var key = window.DMAP_CONFIG && window.DMAP_CONFIG.GMAPS_API_KEY;

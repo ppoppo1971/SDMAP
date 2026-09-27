@@ -2833,10 +2833,15 @@ function bindContextMenuCloseOnMap() {
     
     var sheet = getEl('bottom-sheet-flow');
     if (sheet && sheet.classList.contains('active')) {
+      if (typeof isCameraCapturing !== 'undefined' && isCameraCapturing) {
+        return; // 카메라 촬영 중에는 바텀시트 유지
+      }
       var isModalActive = document.querySelector('.modal.active');
       var isInsideModal = e.target && e.target.closest && e.target.closest('.modal');
-      if (isModalActive || isInsideModal) {
-        return; // 모달이 열려있거나 모달 내부를 터치하는 중에는 바텀시트 유지
+      var isFastCamActive = document.querySelector('#fast-camera-modal:not(.hidden)');
+      var isInsideFastCam = e.target && e.target.closest && e.target.closest('#fast-camera-modal');
+      if (isModalActive || isInsideModal || isFastCamActive || isInsideFastCam) {
+        return; // 모달이 열려있거나 모달/카메라 내부를 터치하는 중에는 바텀시트 유지
       }
       if (e.target && !sheet.contains(e.target)) {
         hideStreetlightBottomSheet();
@@ -2850,10 +2855,15 @@ function bindContextMenuCloseOnMap() {
     
     var sheet = getEl('bottom-sheet-flow');
     if (sheet && sheet.classList.contains('active')) {
+      if (typeof isCameraCapturing !== 'undefined' && isCameraCapturing) {
+        return; // 카메라 촬영 중에는 바텀시트 유지
+      }
       var isModalActive = document.querySelector('.modal.active');
       var isInsideModal = e.target && e.target.closest && e.target.closest('.modal');
-      if (isModalActive || isInsideModal) {
-        return; // 모달이 열려있거나 모달 내부를 클릭하는 중에는 바텀시트 유지
+      var isFastCamActive = document.querySelector('#fast-camera-modal:not(.hidden)');
+      var isInsideFastCam = e.target && e.target.closest && e.target.closest('#fast-camera-modal');
+      if (isModalActive || isInsideModal || isFastCamActive || isInsideFastCam) {
+        return; // 모달이 열려있거나 모달/카메라 내부를 클릭하는 중에는 바텀시트 유지
       }
       if (e.target && !sheet.contains(e.target)) {
         hideStreetlightBottomSheet();
@@ -2972,12 +2982,14 @@ function bindMapLongPress() {
 // ==========================================
 var cameraModeSetting = localStorage.getItem('sdmap_camera_mode') || 'fast';
 var fastCameraSizeSetting = localStorage.getItem('sdmap_fast_cam_size') || '1MB';
+var isCameraCapturing = false; // 카메라 촬영 중 플래그 (바텀시트 외부클릭 시 조사대상 데이터 유실 방지)
 var fastCameraStream = null;
 var fastCameraTrack = null;
 var fastCameraCallback = null;
 var fastCameraCurrentZoom = 1.0;
 var fastCameraIsTorchOn = false;
 var fastCameraUltraWideDeviceId = null;
+var fastCameraMainDeviceId = null;
 var fastCameraCurrentDeviceId = null;
 var fastCameraEventsBound = false;
 
@@ -3036,9 +3048,11 @@ function toggleCameraMode() {
 
 /** 통합 사진 캡처 라우터 (저장소 상태 검증 후 설정된 모드에 따라 카메라 실행) */
 function triggerCameraCapture() {
+  isCameraCapturing = true;
   if (window.localFs && typeof window.localFs.ensureStorageReady === 'function') {
     window.localFs.ensureStorageReady(dxfFileFullName).then(function (ready) {
       if (!ready) {
+        isCameraCapturing = false;
         isAddingSubPhoto = false;
         return;
       }
@@ -3060,6 +3074,7 @@ function launchCameraByMode() {
 
 /** 촬영된 사진 File을 상태(일반/객체감지/추가사진)에 맞게 처리 */
 function handleCapturedPhoto(file) {
+  isCameraCapturing = false;
   if (!file) return;
   if (isAddingSubPhoto) {
     if (editingPhotoId) {
@@ -3108,36 +3123,87 @@ function openFastCameraModal(callback) {
       console.warn('Video play warning:', e);
     });
 
-    setupFastCameraCapabilities(fastCameraTrack);
+    setupFastCameraCapabilities(fastCameraTrack, 1.0);
   }).catch(function (err) {
     console.warn('Fast camera getUserMedia failed, fallback to native camera:', err);
-    closeFastCameraModal(true);
+    closeFastCameraModal(false);
+    isCameraCapturing = true;
     showToast('인앱 카메라 실행 실패: 기본 카메라로 전환합니다.');
     var input = getEl('camera-input');
     if (input) input.click();
   });
 }
 
+/** 다중 후면 카메라(초광각 0.5X / 표준 1X) 디바이스 탐색 및 캐싱 */
+function detectCameraDevices() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+  navigator.mediaDevices.enumerateDevices().then(function (devices) {
+    var videoDevices = devices.filter(function (d) { return d.kind === 'videoinput'; });
+    if (!videoDevices || videoDevices.length === 0) return;
+
+    // 후면 카메라 식별 (전면/셀카 제외)
+    var backDevices = videoDevices.filter(function (d) {
+      var lbl = (d.label || '').toLowerCase();
+      return lbl.indexOf('front') === -1 && lbl.indexOf('selfie') === -1 && lbl.indexOf('전면') === -1 && lbl.indexOf('user') === -1;
+    });
+    if (backDevices.length === 0) backDevices = videoDevices;
+
+    // 1. 초광각(0.5X) 디바이스 식별
+    var ultraWide = backDevices.find(function (d) {
+      var lbl = (d.label || '').toLowerCase();
+      return lbl.indexOf('ultra') !== -1 || lbl.indexOf('0.5') !== -1 || lbl.indexOf('초광각') !== -1 ||
+             lbl.indexOf('wide-angle') !== -1 || lbl.indexOf('wide angle') !== -1 ||
+             lbl.indexOf('camera2 2') !== -1 || lbl.indexOf('camera 2') !== -1;
+    });
+
+    // 라벨에 명시적 키워드가 없지만 후면 카메라가 2개 이상인 경우 (일반적인 갤럭시/안드로이드):
+    if (!ultraWide && backDevices.length >= 2) {
+      ultraWide = backDevices[1];
+    }
+
+    if (ultraWide && ultraWide.deviceId) {
+      fastCameraUltraWideDeviceId = ultraWide.deviceId;
+    }
+
+    // 2. 메인(1X) 디바이스 식별
+    var mainDev = backDevices.find(function (d) {
+      var lbl = (d.label || '').toLowerCase();
+      return (lbl.indexOf('0') !== -1 || lbl.indexOf('main') !== -1 || lbl.indexOf('standard') !== -1) &&
+             (d.deviceId !== fastCameraUltraWideDeviceId);
+    }) || backDevices[0];
+
+    if (mainDev && mainDev.deviceId) {
+      fastCameraMainDeviceId = mainDev.deviceId;
+    }
+  }).catch(function (e) {
+    console.warn('[FastCamera] 디바이스 탐색 에러:', e);
+  });
+}
+
 /** 카메라 제어 기능(줌, 플래시, 렌즈 등) 초기화 */
-function setupFastCameraCapabilities(track) {
+function setupFastCameraCapabilities(track, preserveZoom) {
   var torchBtn = document.getElementById('fc-torch-btn');
   var lensControls = document.getElementById('fc-lens-controls');
   var btn05 = document.getElementById('fc-lens-05');
   var btn1 = document.getElementById('fc-lens-1');
   var btn2 = document.getElementById('fc-lens-2');
 
-  fastCameraIsTorchOn = false;
-  fastCameraCurrentZoom = 1.0;
+  var currentZoom = (preserveZoom != null) ? preserveZoom : (fastCameraCurrentZoom || 1.0);
+  fastCameraCurrentZoom = currentZoom;
 
-  if (btn1) {
-    if (btn05) btn05.classList.remove('active');
-    btn1.classList.add('active');
-    if (btn2) btn2.classList.remove('active');
-  }
+  if (btn05) btn05.classList.toggle('active', currentZoom === 0.5);
+  if (btn1) btn1.classList.toggle('active', currentZoom === 1);
+  if (btn2) btn2.classList.toggle('active', currentZoom === 2);
+
+  // 세 가지 렌즈 배율(.5X, 1X, 2X) 모두 상시 노출
+  if (lensControls) lensControls.style.display = 'inline-flex';
+  if (btn05) btn05.style.display = 'inline-block';
+  if (btn1) btn1.style.display = 'inline-block';
+  if (btn2) btn2.style.display = 'inline-block';
 
   if (!track || typeof track.getCapabilities !== 'function') {
     if (torchBtn) torchBtn.style.display = 'none';
-    if (lensControls) lensControls.style.display = 'none';
+    detectCameraDevices();
     return;
   }
 
@@ -3154,39 +3220,7 @@ function setupFastCameraCapabilities(track) {
     }
   }
 
-  // 줌 지원 여부
-  if (capabilities.zoom) {
-    var minZoom = capabilities.zoom.min || 1;
-    var maxZoom = capabilities.zoom.max || 1;
-    var has05 = minZoom <= 0.6;
-    var has2 = maxZoom >= 1.8;
-
-    if (lensControls) {
-      lensControls.style.display = 'flex';
-    }
-    if (btn05) {
-      btn05.style.display = has05 ? 'inline-block' : 'none';
-    }
-    if (btn2) {
-      btn2.style.display = has2 ? 'inline-block' : 'none';
-    }
-  } else {
-    // 다중 후면 카메라 장치(광각/초광각) 감지 시도
-    if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
-      navigator.mediaDevices.enumerateDevices().then(function (devices) {
-        var videoDevices = devices.filter(function (d) { return d.kind === 'videoinput'; });
-        var wideDev = videoDevices.filter(function (d) {
-          var l = (d.label || '').toLowerCase();
-          return l.indexOf('wide') !== -1 || l.indexOf('0.5') !== -1 || l.indexOf('ultra') !== -1;
-        })[0];
-        if (wideDev && wideDev.deviceId) {
-          fastCameraUltraWideDeviceId = wideDev.deviceId;
-          if (lensControls) lensControls.style.display = 'flex';
-          if (btn05) btn05.style.display = 'inline-block';
-        }
-      }).catch(function () {});
-    }
-  }
+  detectCameraDevices();
 }
 
 /** 줌 배율 직접 적용 (하드웨어 제약 내) */
@@ -3216,28 +3250,78 @@ function setFastCameraZoom(targetZoom) {
   if (btn1) btn1.classList.toggle('active', targetZoom === 1);
   if (btn2) btn2.classList.toggle('active', targetZoom === 2);
 
-  if (fastCameraTrack && typeof fastCameraTrack.getCapabilities === 'function') {
-    var caps = fastCameraTrack.getCapabilities();
-    if (caps.zoom) {
-      var minZ = caps.zoom.min || 1;
-      var maxZ = caps.zoom.max || 1;
-      if (targetZoom >= minZ && targetZoom <= maxZ) {
-        applyFastCameraZoomValue(targetZoom);
+  // 1) 0.5X (초광각) 선택 시
+  if (targetZoom === 0.5) {
+    // A. 현재 트랙에서 하드웨어 줌 0.5/0.6 지원 시 바로 적용
+    if (fastCameraTrack && typeof fastCameraTrack.getCapabilities === 'function') {
+      var caps = fastCameraTrack.getCapabilities();
+      if (caps.zoom && caps.zoom.min <= 0.6) {
+        applyFastCameraZoomValue(0.5);
         return;
       }
     }
+
+    // B. 다중 렌즈 디바이스(초광각 카메라 센서)로 전환
+    if (fastCameraUltraWideDeviceId && fastCameraCurrentDeviceId !== fastCameraUltraWideDeviceId) {
+      switchFastCameraDevice(fastCameraUltraWideDeviceId, 0.5);
+      return;
+    }
+
+    // C. 디바이스 목록 즉시 재검색 후 초광각 디바이스 전환 시도
+    if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+      navigator.mediaDevices.enumerateDevices().then(function (devices) {
+        var videoDevices = devices.filter(function (d) { return d.kind === 'videoinput'; });
+        var backDevices = videoDevices.filter(function (d) {
+          var lbl = (d.label || '').toLowerCase();
+          return lbl.indexOf('front') === -1 && lbl.indexOf('selfie') === -1 && lbl.indexOf('전면') === -1;
+        });
+        if (backDevices.length >= 2) {
+          var candidate = backDevices.find(function (d) {
+            var lbl = (d.label || '').toLowerCase();
+            return lbl.indexOf('ultra') !== -1 || lbl.indexOf('0.5') !== -1 || lbl.indexOf('wide') !== -1 ||
+                   lbl.indexOf('camera2 2') !== -1 || lbl.indexOf('camera 2') !== -1;
+          }) || backDevices[1];
+
+          if (candidate && candidate.deviceId) {
+            fastCameraUltraWideDeviceId = candidate.deviceId;
+            switchFastCameraDevice(candidate.deviceId, 0.5);
+            return;
+          }
+        }
+        applyFastCameraZoomValue(1.0);
+      }).catch(function () {
+        applyFastCameraZoomValue(1.0);
+      });
+      return;
+    }
+
+    applyFastCameraZoomValue(1.0);
+    return;
   }
 
-  // 0.5X 요청 시 하드웨어 초광각 렌즈 디바이스 전환 지원
-  if (targetZoom === 0.5 && fastCameraUltraWideDeviceId) {
-    switchFastCameraDevice(fastCameraUltraWideDeviceId);
-  } else if (targetZoom === 1 && fastCameraCurrentDeviceId) {
-    switchFastCameraDevice(null);
+  // 2) 1X (표준) 선택 시
+  if (targetZoom === 1) {
+    if (fastCameraCurrentDeviceId && fastCameraCurrentDeviceId === fastCameraUltraWideDeviceId) {
+      switchFastCameraDevice(fastCameraMainDeviceId || null, 1.0);
+      return;
+    }
+    applyFastCameraZoomValue(1.0);
+    return;
+  }
+
+  // 3) 2X (망원) 선택 시
+  if (targetZoom === 2) {
+    if (fastCameraCurrentDeviceId && fastCameraCurrentDeviceId === fastCameraUltraWideDeviceId) {
+      switchFastCameraDevice(fastCameraMainDeviceId || null, 2.0);
+      return;
+    }
+    applyFastCameraZoomValue(2.0);
+    return;
   }
 }
 
 /** 후면 광각/기본 카메라 디바이스 전환 */
-function switchFastCameraDevice(deviceId) {
+function switchFastCameraDevice(deviceId, targetZoom) {
   fastCameraCurrentDeviceId = deviceId;
   if (fastCameraStream) {
     try {
@@ -3245,7 +3329,9 @@ function switchFastCameraDevice(deviceId) {
     } catch (e) {}
   }
   var constraints = {
-    video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: 'environment' } },
+    video: deviceId
+      ? { deviceId: { exact: deviceId }, width: { ideal: 1920, max: 3840 }, height: { ideal: 1080, max: 2160 } }
+      : { facingMode: { ideal: 'environment' }, width: { ideal: 1920, max: 3840 }, height: { ideal: 1080, max: 2160 } },
     audio: false
   };
   navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
@@ -3256,9 +3342,15 @@ function switchFastCameraDevice(deviceId) {
       video.srcObject = stream;
       video.play().catch(function () {});
     }
-    setupFastCameraCapabilities(fastCameraTrack);
+    setupFastCameraCapabilities(fastCameraTrack, targetZoom);
+    if (targetZoom && targetZoom >= 1.0) {
+      applyFastCameraZoomValue(targetZoom);
+    }
   }).catch(function (e) {
     console.warn('Switch camera device failed:', e);
+    if (deviceId) {
+      switchFastCameraDevice(null, targetZoom || 1.0);
+    }
   });
 }
 
@@ -3346,6 +3438,7 @@ function captureFastCamera() {
   canvas.toBlob(function (blob) {
     if (!blob) {
       showToast('사진 캡처에 실패했습니다.');
+      isCameraCapturing = false;
       return;
     }
 
@@ -3379,8 +3472,18 @@ function closeFastCameraModal(isCanceled) {
   if (video) video.srcObject = null;
   fastCameraCurrentDeviceId = null;
   fastCameraIsTorchOn = false;
+  fastCameraCurrentZoom = 1.0;
   if (isCanceled) {
-    isAddingSubPhoto = false;
+    isCameraCapturing = false;
+    if (isAddingSubPhoto) {
+      isAddingSubPhoto = false;
+      return;
+    }
+    pendingStreetlightItem = null;
+    pendingStreetlightDxfCoords = null;
+    pendingStreetlightLatLng = null;
+    pendingFacilityType = null;
+    pendingAddPosition = null;
   }
 }
 
@@ -3455,13 +3558,21 @@ function bindContextMenu() {
     contextMenuEl.classList.remove('active');
     pendingAddPosition && showTextModal(null);
   });
-  getEl('camera-input').addEventListener('change', function (e) {
-    var file = e.target && e.target.files[0];
-    if (file) {
-      handleCapturedPhoto(file);
-    }
-    e.target.value = '';
-  });
+  var camInput = getEl('camera-input');
+  if (camInput) {
+    camInput.addEventListener('change', function (e) {
+      var file = e.target && e.target.files[0];
+      if (file) {
+        handleCapturedPhoto(file);
+      } else {
+        isCameraCapturing = false;
+      }
+      e.target.value = '';
+    });
+    camInput.addEventListener('cancel', function () {
+      isCameraCapturing = false;
+    });
+  }
 }
 
 function compressImage(file, targetSize) {
@@ -6785,6 +6896,9 @@ function showStreetlightBottomSheet(list, dxfCoords, latLng) {
 }
 
 function hideStreetlightBottomSheet() {
+  if (typeof isCameraCapturing !== 'undefined' && isCameraCapturing) {
+    return; // 카메라 촬영 세션 중에는 바텀시트 데이터 및 상태 초기화 금지
+  }
   var sheet = getEl('bottom-sheet-flow');
   if (sheet) sheet.classList.remove('active');
   pendingStreetlightItem = null;
@@ -6811,6 +6925,10 @@ function triggerStreetlightCamera(item, dxfCoords, latLng) {
   pendingFacilityType = item.type || detectFacilityType(item.name, item.layer) || item.name;
   isAddingSubPhoto = false;
 
+  // 바텀시트 활성 클래스를 제거하여 카메라 조작 중 외부 터치 이벤트에 의한 오작동 차단
+  var sheet = getEl('bottom-sheet-flow');
+  if (sheet) sheet.classList.remove('active');
+
   triggerCameraCapture();
 }
 
@@ -6820,7 +6938,9 @@ function triggerStreetlightTextOnly(item, dxfCoords, latLng) {
   pendingStreetlightLatLng = latLng;
   pendingFacilityType = item.type || detectFacilityType(item.name, item.layer) || item.name;
 
-  hideStreetlightBottomSheet();
+  // 기존 바텀시트 닫고 제원 입력 폼으로 전환 (pending 데이터 보존)
+  var sheet = getEl('bottom-sheet-flow');
+  if (sheet) sheet.classList.remove('active');
   showStreetlightInputForm(null, item, dxfCoords, latLng);
 }
 
