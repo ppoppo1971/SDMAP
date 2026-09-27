@@ -96,6 +96,22 @@
     });
   }
 
+  // 루트 폴더 핸들 삭제 (디스크에서 삭제된 경우 등)
+  function clearBaseDirHandle() {
+    _baseDirHandle = null;
+    _baseDirName = '';
+    _drawingFolderHandles = {};
+    try {
+      localStorage.removeItem('sdmap_base_dir_name');
+    } catch (e) {}
+    openDb().then(function (db) {
+      try {
+        var tx = db.transaction(HANDLE_STORE, 'readwrite');
+        tx.objectStore(HANDLE_STORE).clear();
+      } catch (e) {}
+    }).catch(function () {});
+  }
+
   // 폴더 읽기/쓰기 권한 검사 및 요청
   async function verifyPermission(handle, readWrite) {
     if (!handle) return false;
@@ -229,12 +245,21 @@
     var cleanName = sanitizeDrawingName(drawingName);
     var isWrite = !!autoCreate;
 
-    // 1. 메모리 캐시 확인 및 실제 디스크 존재 검증
+    // 1. 메모리 및 IndexedDB 캐시 확인
     var cached = _drawingFolderHandles[cleanName];
+    if (!cached) {
+      cached = await loadDrawingFolderHandle(cleanName);
+    }
     if (cached) {
+      if (!isWrite) {
+        // 읽기 전용 경로는 추가 디스크 I/O나 권한 요청 없이 즉시 캐시 핸들 반환 (SecurityError 원천 차단)
+        return cached;
+      }
       try {
-        var it = cached.values();
-        await it.next();
+        if (typeof cached.values === 'function') {
+          var it = cached.values();
+          await it.next();
+        }
         return cached; // 실제 디스크에 정상 존재
       } catch (e) {
         delete _drawingFolderHandles[cleanName];
@@ -242,7 +267,17 @@
     }
 
     // 2. 루트 작업 폴더(예: 평택) 가져오기
-    var baseDir = await getBaseDirectory(isWrite);
+    var baseDir = null;
+    if (!isWrite) {
+      // 읽기 경로: 이미 로드된 핸들 재사용 (requestPermission 팝업 요청 회피)
+      if (!_baseDirHandle) {
+        _baseDirHandle = await loadSavedBaseDirHandle();
+      }
+      baseDir = _baseDirHandle;
+    } else {
+      // 쓰기 경로: 권한 확인 및 필요 시 요청
+      baseDir = await getBaseDirectory(true);
+    }
     if (!baseDir) return null;
 
     // 3. 루트 작업 폴더 아래에서 [도면명] 서브폴더 가져오기 / 자동 생성
@@ -250,6 +285,7 @@
       var subFolder = await baseDir.getDirectoryHandle(cleanName, { create: autoCreate });
       if (subFolder) {
         _drawingFolderHandles[cleanName] = subFolder;
+        saveDrawingFolderHandle(cleanName, subFolder).catch(function () {});
         return subFolder;
       }
     } catch (e) {
@@ -336,11 +372,16 @@
 
     // 2. 루트 폴더가 실제 디스크에 존재하는지 검증 (디스크에서 삭제된 경우 NotFoundError)
     try {
-      var iter = _baseDirHandle.values();
-      await iter.next();
+      if (typeof _baseDirHandle.values === 'function') {
+        var iter = _baseDirHandle.values();
+        await iter.next();
+      } else if (typeof _baseDirHandle.entries === 'function') {
+        var iter2 = _baseDirHandle.entries();
+        await iter2.next();
+      }
     } catch (e) {
       if (e.name === 'NotFoundError') {
-        _baseDirHandle = null;
+        clearBaseDirHandle();
         return 'no_folder';
       }
     }
@@ -441,20 +482,35 @@
   // 도면 폴더에서 사진 Blob 가져오기
   async function getPhotoBlob(drawingName, fileName) {
     if (!drawingName || !fileName) return null;
-    var folderHandle = await getDrawingFolder(drawingName, false);
-    if (!folderHandle) {
-      folderHandle = await getDrawingFolder(drawingName, true);
-    }
-    if (!folderHandle) return null;
 
-    try {
-      var fileHandle = await folderHandle.getFileHandle(fileName);
-      var file = await fileHandle.getFile();
-      return file;
-    } catch (err) {
-      console.warn('[localFs] 사진 파일 읽기 실패:', fileName, err);
-      return null;
+    // 1. 도면 서브폴더(예: 01)에서 검색 (읽기 전용: create: false, 비동기 팝업 권한 요청 배제)
+    var folderHandle = await getDrawingFolder(drawingName, false);
+    if (folderHandle) {
+      try {
+        var fileHandle = await folderHandle.getFileHandle(fileName, { create: false });
+        var file = await fileHandle.getFile();
+        if (file) return file;
+      } catch (err) {
+        // 도면 서브폴더에 없는 경우 루트 폴더 검색으로 폴백 진행
+      }
     }
+
+    // 2. 상위 루트 작업 폴더(예: 평택)에서 검색 (이전 버전 호환성)
+    if (!_baseDirHandle) {
+      _baseDirHandle = await loadSavedBaseDirHandle();
+    }
+    if (_baseDirHandle) {
+      try {
+        var rootFileHandle = await _baseDirHandle.getFileHandle(fileName, { create: false });
+        var rootFile = await rootFileHandle.getFile();
+        if (rootFile) return rootFile;
+      } catch (e) {
+        // 루트 폴더에도 없음
+      }
+    }
+
+    console.warn('[localFs] 사진 파일 읽기 실패:', fileName);
+    return null;
   }
 
   // 도면 폴더에서 사진 파일 삭제
@@ -871,6 +927,7 @@
     getBaseDirectory: getBaseDirectory,
     ensureStorageReady: ensureStorageReady,
     checkFolderStatus: checkFolderStatus,
+    clearBaseDirHandle: clearBaseDirHandle,
     sanitizeDrawingName: sanitizeDrawingName,
     getDrawingFolderName: sanitizeDrawingName,
     hasBaseDir: function () {

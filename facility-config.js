@@ -2199,7 +2199,6 @@
         "type": "select",
         "options": [
           "양면",
-          "삭제",
           "기타"
         ],
         "default": "양면",
@@ -2305,7 +2304,6 @@
         "type": "select",
         "options": [
           "양면",
-          "삭제",
           "기타"
         ],
         "default": "양면",
@@ -2410,7 +2408,6 @@
         "type": "select",
         "options": [
           "양면",
-          "삭제",
           "기타"
         ],
         "default": "양면",
@@ -2512,7 +2509,6 @@
         "type": "select",
         "options": [
           "양면",
-          "삭제",
           "기타"
         ],
         "default": "양면",
@@ -2651,7 +2647,6 @@
         "type": "select",
         "options": [
           "양면",
-          "삭제",
           "기타"
         ],
         "default": "양면",

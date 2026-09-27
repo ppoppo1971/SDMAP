@@ -1210,10 +1210,20 @@ function saveMetadataToLocalFs() {
       var photoNumVal = numTextObj ? String(numTextObj.text || '') : '';
 
       if (p.subPhotos && p.subPhotos.length > 0) {
+        var sList = p.subPhotos.map(function (s, sIdx) {
+          return {
+            subIndex: s.subIndex !== undefined ? s.subIndex : sIdx,
+            fileName: s.fileName || ''
+          };
+        });
+        var sFiles = sList.map(function (s) { return s.fileName; });
+
         p.subPhotos.forEach(function (sp, spIdx) {
           var isPrimary = (sp.subIndex === 0 || spIdx === 0);
           metadata.photos.push({
             id: isPrimary ? p.id : (p.id + '_sub_' + (sp.subIndex || spIdx)),
+            isSubPhoto: !isPrimary,
+            parentPhotoId: isPrimary ? null : p.id,
             photoNumber: photoNumVal,
             fileName: sp.fileName || '',
             x: p.x,
@@ -1227,12 +1237,17 @@ function saveMetadataToLocalFs() {
             specTextId: isPrimary ? (p.specTextId || null) : null,
             specTextIds: isPrimary ? (p.specTextIds || null) : null,
             createdAt: p.createdAt || '',
-            subPhotoFiles: isPrimary && p.subPhotos ? p.subPhotos.map(function(s) { return s.fileName || ''; }) : null
+            subPhotos: isPrimary ? sList : null,
+            subPhotoFiles: isPrimary ? sFiles : null
           });
         });
       } else {
+        var singleList = p.fileName ? [{ subIndex: 0, fileName: p.fileName }] : [];
+        var singleFiles = p.fileName ? [p.fileName] : [];
         metadata.photos.push({
           id: p.id,
+          isSubPhoto: false,
+          parentPhotoId: null,
           photoNumber: photoNumVal,
           fileName: p.fileName || '',
           x: p.x,
@@ -1246,7 +1261,8 @@ function saveMetadataToLocalFs() {
           specTextId: p.specTextId || null,
           specTextIds: p.specTextIds || null,
           createdAt: p.createdAt || '',
-          subPhotoFiles: p.fileName ? [p.fileName] : []
+          subPhotos: singleList,
+          subPhotoFiles: singleFiles
         });
       }
     });
@@ -2561,7 +2577,57 @@ function loadMetadataAndDisplay(dxfFile) {
       try {
         var fsMeta = await window.localFs.loadMetadataFile(dxfFile);
         if (fsMeta && fsMeta.photos && fsMeta.photos.length > 0) {
-          loadedPhotos = fsMeta.photos;
+          var primaryMap = {};
+          var orphanSubs = [];
+
+          fsMeta.photos.forEach(function (rawP) {
+            var isSub = rawP.isSubPhoto === true || (rawP.id && String(rawP.id).indexOf('_sub_') !== -1);
+            if (isSub) {
+              orphanSubs.push(rawP);
+            } else {
+              primaryMap[rawP.id] = rawP;
+              if (!rawP.subPhotos) {
+                rawP.subPhotos = [];
+              }
+              if (rawP.subPhotos.length === 0 && rawP.subPhotoFiles && rawP.subPhotoFiles.length > 0) {
+                rawP.subPhotos = rawP.subPhotoFiles.map(function (fn, sIdx) {
+                  return { subIndex: sIdx, fileName: fn };
+                });
+              } else if (rawP.subPhotos.length === 0 && rawP.fileName) {
+                rawP.subPhotos = [{ subIndex: 0, fileName: rawP.fileName }];
+              }
+            }
+          });
+
+          orphanSubs.forEach(function (subP) {
+            var parentId = subP.parentPhotoId;
+            if (!parentId && subP.id) {
+              var idx = String(subP.id).indexOf('_sub_');
+              if (idx !== -1) parentId = String(subP.id).substring(0, idx);
+            }
+            if (parentId && primaryMap[parentId]) {
+              var parent = primaryMap[parentId];
+              if (!parent.subPhotos) parent.subPhotos = [];
+              var exists = parent.subPhotos.some(function (sp) {
+                return sp.fileName === subP.fileName;
+              });
+              if (!exists) {
+                parent.subPhotos.push({
+                  subIndex: parent.subPhotos.length,
+                  fileName: subP.fileName || ''
+                });
+              }
+            }
+          });
+
+          var restoredList = [];
+          for (var rk in primaryMap) {
+            if (Object.prototype.hasOwnProperty.call(primaryMap, rk)) {
+              restoredList.push(primaryMap[rk]);
+            }
+          }
+          loadedPhotos = restoredList;
+
           if (fsMeta.texts && fsMeta.texts.length > 0) {
             project.texts = fsMeta.texts;
           }
@@ -2575,8 +2641,52 @@ function loadMetadataAndDisplay(dxfFile) {
       }
     }
 
+    // [0925_01] IndexedDB에 이전 버전의 평탄화된 서브사진 항목(_sub_)이 남아있을 경우 주 사진과 분리하여 병합
+    var cleanedLoadedPhotos = [];
+    var subRecords = [];
+    (loadedPhotos || []).forEach(function (lp) {
+      var isSub = lp.isSubPhoto === true || (lp.id && String(lp.id).indexOf('_sub_') !== -1);
+      if (isSub) {
+        subRecords.push(lp);
+      } else {
+        cleanedLoadedPhotos.push(lp);
+      }
+    });
+
+    subRecords.forEach(function (sRec) {
+      var parentId = sRec.parentPhotoId;
+      if (!parentId && sRec.id) {
+        var idx = String(sRec.id).indexOf('_sub_');
+        if (idx !== -1) parentId = String(sRec.id).substring(0, idx);
+      }
+      if (parentId) {
+        var parent = cleanedLoadedPhotos.filter(function (cp) { return String(cp.id) === String(parentId); })[0];
+        if (parent) {
+          if (!parent.subPhotos) parent.subPhotos = [];
+          var exists = parent.subPhotos.some(function (sp) { return sp.fileName === sRec.fileName; });
+          if (!exists) {
+            parent.subPhotos.push({
+              subIndex: parent.subPhotos.length,
+              fileName: sRec.fileName || ''
+            });
+          }
+        }
+      }
+    });
+    loadedPhotos = cleanedLoadedPhotos;
+
     texts = project.texts || [];
     loadedPhotos.forEach(function (p) {
+      // subPhotos 복원: p.subPhotos가 없거나 1개뿐인데 p.subPhotoFiles에 더 많은 사진이 있는 경우 보정
+      var sList = p.subPhotos;
+      if ((!sList || sList.length <= 1) && p.subPhotoFiles && p.subPhotoFiles.length > 1) {
+        sList = p.subPhotoFiles.map(function (fn, sIdx) {
+          return { subIndex: sIdx, fileName: fn };
+        });
+      } else if (!sList && p.fileName) {
+        sList = [{ subIndex: 0, fileName: p.fileName }];
+      }
+
       photos.push({
         id: p.id, x: p.x, y: p.y, width: p.width, height: p.height,
         blob: p.blob, memo: p.memo || '', fileName: p.fileName || '',
@@ -2586,7 +2696,8 @@ function loadMetadataAndDisplay(dxfFile) {
         specTextIds: p.specTextIds || null,
         facilityType: p.facilityType,
         additionalTypes: p.additionalTypes || null,
-        subPhotos: p.subPhotos || null
+        subPhotos: sList || null,
+        subPhotoFiles: p.subPhotoFiles || (sList ? sList.map(function (s) { return s.fileName; }) : null)
       });
     });
     drawPhotoMarkers();
@@ -4227,11 +4338,20 @@ function showPhotoModal(photoId) {
     if (!record) record = p;
     if (!record) return;
 
-    // subPhotos 배열 보정: 메모리에 남아있는 p.subPhotos가 있거나 단일 사진인 경우 안전하게 구성
-    // subPhotos 배열 보정: 메모리에 남아있는 p.subPhotos가 있거나 단일 사진인 경우 안전하게 구성
+    var targetDrawing = (record && record.dxfFile) || dxfFileFullName;
+
+    // subPhotos 배열 보정: 메모리에 남아있는 p.subPhotos가 있거나 subPhotoFiles가 있는 경우 안전하게 복원
     if (!record.subPhotos || record.subPhotos.length === 0) {
       if (p && p.subPhotos && p.subPhotos.length > 0) {
         record.subPhotos = p.subPhotos;
+      } else if (record.subPhotoFiles && record.subPhotoFiles.length > 0) {
+        record.subPhotos = record.subPhotoFiles.map(function (fn, sIdx) {
+          return { subIndex: sIdx, fileName: fn };
+        });
+      } else if (p && p.subPhotoFiles && p.subPhotoFiles.length > 0) {
+        record.subPhotos = p.subPhotoFiles.map(function (fn, sIdx) {
+          return { subIndex: sIdx, fileName: fn };
+        });
       } else {
         var baseFile = record.fileName || (p && p.fileName) || '';
         var baseBlob = record.blob || (p && p.blob) || (baseFile && window._photoBlobCache ? window._photoBlobCache[baseFile] : null);
@@ -4239,6 +4359,20 @@ function showPhotoModal(photoId) {
       }
     } else if (p && p.subPhotos && p.subPhotos.length > record.subPhotos.length) {
       record.subPhotos = p.subPhotos;
+    } else if (record.subPhotoFiles && record.subPhotoFiles.length > record.subPhotos.length) {
+      for (var fi = record.subPhotos.length; fi < record.subPhotoFiles.length; fi++) {
+        record.subPhotos.push({
+          subIndex: fi,
+          fileName: record.subPhotoFiles[fi]
+        });
+      }
+    } else if (p && p.subPhotoFiles && p.subPhotoFiles.length > record.subPhotos.length) {
+      for (var pfi = record.subPhotos.length; pfi < p.subPhotoFiles.length; pfi++) {
+        record.subPhotos.push({
+          subIndex: pfi,
+          fileName: p.subPhotoFiles[pfi]
+        });
+      }
     }
 
     // [0925_01 혁신] 병렬 충돌 없는 순차(Sequential) 디스크 읽기로 로컬 폴더에서 모든 서브사진(메인 포함) 100% 안전 로드
@@ -4252,7 +4386,7 @@ function showPhotoModal(photoId) {
         }
         if (spObj.fileName && window.localFs && window.localFs.isSupported()) {
           try {
-            var b = await window.localFs.getPhotoBlob(dxfFileFullName, spObj.fileName);
+            var b = await window.localFs.getPhotoBlob(targetDrawing, spObj.fileName);
             if (b) {
               spObj.blob = b;
               if (window._photoBlobCache) window._photoBlobCache[spObj.fileName] = b;
@@ -4315,7 +4449,7 @@ function showPhotoModal(photoId) {
             thumbImg.src = objUrl;
           } else if (sp.fileName && window.localFs && window.localFs.isSupported()) {
             thumbImg.alt = '로딩 중...';
-            window.localFs.getPhotoBlob(dxfFileFullName, sp.fileName).then(function (b) {
+            window.localFs.getPhotoBlob(targetDrawing, sp.fileName).then(function (b) {
               if (b) {
                 sp.blob = b;
                 if (window._photoBlobCache) window._photoBlobCache[sp.fileName] = b;
@@ -4353,7 +4487,7 @@ function showPhotoModal(photoId) {
                 openImageViewer(subs, idx);
               };
             } else if (sp.fileName && window.localFs && window.localFs.isSupported()) {
-              window.localFs.getPhotoBlob(dxfFileFullName, sp.fileName).then(function (b) {
+              window.localFs.getPhotoBlob(targetDrawing, sp.fileName).then(function (b) {
                 if (b && img) {
                   sp.blob = b;
                   if (window._photoBlobCache) window._photoBlobCache[sp.fileName] = b;
@@ -5202,12 +5336,18 @@ function getFieldSuggestions(fieldId, config, defaultOptions) {
     return f.id === fieldId && (f.isPhoto || f.label === '사진' || /사진/.test(f.label));
   })));
 
+  var isDoubleSidedField = (fieldId === 'doubleSided' || /양면/.test(fieldKey) || (config && config.fields && config.fields.some(function (f) {
+    return f.id === fieldId && (/양면/.test(f.label) || /양면/.test(f.id));
+  })));
+
+  var isExcludedDeleteField = isPhotoField || isDoubleSidedField;
+
   // 1. 기본 옵션 목록(사용자 지정 기본 목록)을 0회 카운트로 사전 등록 (블랙리스트 제외)
   if (defaultOptions && defaultOptions.length > 0) {
     defaultOptions.forEach(function (opt) {
       var val = String(opt).trim();
-      // [사용자 요구사항] 사진 항목에서는 '삭제', '제외' 등 오해를 유발하는 옵션을 원천 제외하여 표시하지 않음
-      if (isPhotoField && (val === '삭제' || val === '제외' || val === '미표기')) {
+      // [사용자 요구사항] 사진 및 양면 항목에서는 '삭제', '제외' 등 불필요/오해 유발 옵션을 원천 제외하여 표시하지 않음
+      if (isExcludedDeleteField && (val === '삭제' || val === '제외' || val === '미표기')) {
         return;
       }
       if (val !== '' && val !== '기타' && val !== '직접입력' && val !== '선택' && val !== '--' && blacklist.indexOf(val) === -1) {
@@ -5218,20 +5358,31 @@ function getFieldSuggestions(fieldId, config, defaultOptions) {
   }
 
   // 2. 현재 도면에서 실제로 입력된 값들을 집계하여 빈도수 가산 (블랙리스트 제외)
+  // [시설물별 엄격 분리] 다른 시설물의 입력값이 섞이지 않도록 해당 시설물 레이어/타이틀과 100% 일치하는 텍스트만 집계
   if (window.texts && window.texts.length > 0 && config && config.layer) {
     var confClean = String(config.layer || '').replace(/_T$/i, '').toLowerCase();
+    var confTitle = String(config.title || '').toLowerCase();
     window.texts.forEach(function (t) {
       var tClean = String(t.layer || '').replace(/_T$/i, '').toLowerCase();
-      if ((tClean === confClean || (config.title && tClean === config.title.toLowerCase())) && t.text) {
-        var parsed = deserializeSpecText(t.text, config);
-        if (parsed && parsed[fieldId] !== undefined) {
-          var val = String(parsed[fieldId]).trim();
-          if (isPhotoField && (val === '삭제' || val === '제외' || val === '미표기')) {
-            return;
+      var isMatching = (tClean === confClean || (confTitle && tClean === confTitle));
+      if (t.facilityType) {
+        isMatching = (String(t.facilityType).toLowerCase() === confTitle);
+      }
+      if (isMatching && t.text) {
+        var val = '';
+        if (t.specValues && t.specValues[fieldId] !== undefined) {
+          val = String(t.specValues[fieldId]).trim();
+        } else {
+          var parsed = deserializeSpecText(t.text, config);
+          if (parsed && parsed[fieldId] !== undefined) {
+            val = String(parsed[fieldId]).trim();
           }
-          if (val !== '' && val !== '기타' && val !== '직접입력' && val !== '선택' && val !== '--' && blacklist.indexOf(val) === -1) {
-            counts[val] = (counts[val] || 0) + 1;
-          }
+        }
+        if (isExcludedDeleteField && (val === '삭제' || val === '제외' || val === '미표기')) {
+          return;
+        }
+        if (val !== '' && val !== '기타' && val !== '직접입력' && val !== '선택' && val !== '--' && blacklist.indexOf(val) === -1) {
+          counts[val] = (counts[val] || 0) + 1;
         }
       }
     });
@@ -5240,7 +5391,7 @@ function getFieldSuggestions(fieldId, config, defaultOptions) {
   // 3. 브라우저 localStorage 사용자 사전에서도 집계 가산 (블랙리스트 제외)
   var customStore = getFieldCustomSuggestions(fieldKey);
   for (var cVal in customStore) {
-    if (isPhotoField && (cVal === '삭제' || cVal === '제외' || cVal === '미표기')) {
+    if (isExcludedDeleteField && (cVal === '삭제' || cVal === '제외' || cVal === '미표기')) {
       continue;
     }
     if (blacklist.indexOf(cVal) === -1) {
@@ -6366,7 +6517,7 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
           updatePreview();
           if (typeof window.updateAllPreviews === 'function') window.updateAllPreviews();
           if (typeof window.updateAllPreviewsPM === 'function') window.updateAllPreviewsPM();
-          if (idx === 0) {
+          if (idx === 0 && /종류|분류|재질|형식|구분/.test(field.label)) {
             triggerSubAttributesReset(container, config, prefixId, this.value.trim());
           }
         });
@@ -6380,7 +6531,7 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
             updatePreview();
             if (typeof window.updateAllPreviews === 'function') window.updateAllPreviews();
             if (typeof window.updateAllPreviewsPM === 'function') window.updateAllPreviewsPM();
-            if (idx === 0) {
+            if (idx === 0 && /종류|분류|재질|형식|구분/.test(field.label)) {
               triggerSubAttributesReset(container, config, prefixId, chosenVal);
             }
           });
@@ -7328,7 +7479,8 @@ function showImageViewerSlide(index) {
     imageViewerObjectUrl = URL.createObjectURL(currentBlob);
     img.src = imageViewerObjectUrl;
   } else if (item.fileName && window.localFs && window.localFs.isSupported() && window.localFs.hasBaseDir()) {
-    window.localFs.getPhotoBlob(dxfFileFullName, item.fileName).then(function (b) {
+    var viewerDrawing = item.drawingFile || dxfFileFullName;
+    window.localFs.getPhotoBlob(viewerDrawing, item.fileName).then(function (b) {
       if (b) {
         item.blob = b;
         if (window._photoBlobCache) window._photoBlobCache[item.fileName] = b;
