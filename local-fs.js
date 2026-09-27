@@ -479,19 +479,168 @@
     }
   }
 
-  // 도면 폴더에서 사진 Blob 가져오기
+  // [0925_01 혁신] 디렉토리 핸들 내에서 타임스탬프 불일치/이전 파일명 패턴 자동 감지 및 스마트 복구 검색
+  async function findMatchingPhotoInFolder(dirHandle, targetFileName) {
+    if (!dirHandle || !targetFileName) return null;
+    var targetLower = targetFileName.toLowerCase();
+
+    var isSub = false;
+    var targetNum = '';
+    var targetSubIdx = null;
+
+    // Subphoto: _photo_[num]_[subIdx]_[timestamp].jpg OR _photo_[num]_[subIdx].jpg
+    var mSub = targetFileName.match(/_photo_([^_]+)_(\d{1,4})_\d{10,14}\.jpg$/i) || targetFileName.match(/_photo_([^_]+)_(\d{1,4})\.jpg$/i);
+    if (mSub) {
+      isSub = true;
+      targetNum = mSub[1];
+      targetSubIdx = mSub[2];
+    } else {
+      // Main photo: _photo_[num]_[timestamp].jpg OR _photo_[num].jpg
+      var mMain = targetFileName.match(/_photo_([^_]+)_\d{10,14}\.jpg$/i) || targetFileName.match(/_photo_([^_]+)\.jpg$/i);
+      if (mMain) {
+        targetNum = mMain[1];
+      } else {
+        var mSimpleSub = targetFileName.match(/^([^_]+)_(\d{1,4})\.jpg$/i);
+        if (mSimpleSub) {
+          isSub = true;
+          targetNum = mSimpleSub[1];
+          targetSubIdx = mSimpleSub[2];
+        } else {
+          var mSimpleNum = targetFileName.match(/^([^_]+)\.jpg$/i);
+          if (mSimpleNum) targetNum = mSimpleNum[1];
+        }
+      }
+    }
+
+    var entries = [];
+    try {
+      if (typeof dirHandle.values === 'function') {
+        var it = dirHandle.values();
+        var next = await it.next();
+        while (!next.done) {
+          if (next.value && next.value.kind === 'file') {
+            entries.push(next.value);
+          }
+          next = await it.next();
+        }
+      }
+    } catch (e) {
+      return null;
+    }
+
+    // 1단계: 대소문자 무시 일치
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].name.toLowerCase() === targetLower) {
+        try {
+          var f = await entries[i].getFile();
+          if (f) {
+            f.actualFileName = entries[i].name;
+            return f;
+          }
+        } catch (e1) {}
+      }
+    }
+
+    if (!targetNum) return null;
+
+    // 2단계: 사진번호 및 서브인덱스 기반 스마트 패턴 매칭
+    for (var j = 0; j < entries.length; j++) {
+      var name = entries[j].name;
+      var nameLower = name.toLowerCase();
+      if (!nameLower.endsWith('.jpg') && !nameLower.endsWith('.jpeg')) continue;
+
+      if (isSub) {
+        var subPattern1 = '_photo_' + targetNum + '_' + targetSubIdx + '_';
+        var subPattern2 = '_' + targetNum + '_' + targetSubIdx + '.';
+        var subPattern3 = targetNum + '_' + targetSubIdx + '.';
+        if (name.indexOf(subPattern1) !== -1 || nameLower.indexOf(subPattern2) !== -1 || nameLower.indexOf(subPattern3) === 0) {
+          try {
+            var sf = await entries[j].getFile();
+            if (sf) {
+              sf.actualFileName = name;
+              return sf;
+            }
+          } catch (e2) {}
+        }
+      } else {
+        var mainRegex = new RegExp('_photo_' + targetNum.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '_(\\d{10,14})\\.jpg$', 'i');
+        var mainSimple = new RegExp('^' + targetNum.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\.jpg$', 'i');
+        if (mainRegex.test(name) || mainSimple.test(name)) {
+          try {
+            var mf = await entries[j].getFile();
+            if (mf) {
+              mf.actualFileName = name;
+              return mf;
+            }
+          } catch (e3) {}
+        } else if (name.indexOf('_photo_' + targetNum + '_') !== -1) {
+          var checkSub = name.match(new RegExp('_photo_' + targetNum.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '_(\\d+)_'));
+          if (!checkSub || checkSub[1].length >= 10) {
+            try {
+              var mf2 = await entries[j].getFile();
+              if (mf2) {
+                mf2.actualFileName = name;
+                return mf2;
+              }
+            } catch (e4) {}
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  // 도면 폴더 내의 사진 파일 이름 변경
+  async function renamePhotoFile(drawingName, oldFileName, newFileName) {
+    if (!drawingName || !oldFileName || !newFileName || oldFileName === newFileName) return true;
+    var folderHandle = await getDrawingFolder(drawingName, true);
+    if (!folderHandle) return false;
+    try {
+      var oldHandle = await folderHandle.getFileHandle(oldFileName, { create: false });
+      if (typeof oldHandle.move === 'function') {
+        await oldHandle.move(newFileName);
+        return true;
+      }
+      var oldFile = await oldHandle.getFile();
+      var newHandle = await folderHandle.getFileHandle(newFileName, { create: true });
+      var writable = await newHandle.createWritable();
+      await writable.write(oldFile);
+      await writable.close();
+      await folderHandle.removeEntry(oldFileName);
+      return true;
+    } catch (e) {
+      console.warn('[localFs] 사진 파일 이름 변경 실패:', oldFileName, '->', newFileName, e);
+      return false;
+    }
+  }
+
+  // 도면 폴더에서 사진 Blob 가져오기 (정확한 파일명 및 타임스탬프 불일치 스마트 자동 복구)
   async function getPhotoBlob(drawingName, fileName) {
     if (!drawingName || !fileName) return null;
 
-    // 1. 도면 서브폴더(예: 01)에서 검색 (읽기 전용: create: false, 비동기 팝업 권한 요청 배제)
+    // 1. 도면 서브폴더(예: 01)에서 검색
     var folderHandle = await getDrawingFolder(drawingName, false);
     if (folderHandle) {
+      // 1-1. 정확한 파일명 매칭 우선 시도
       try {
         var fileHandle = await folderHandle.getFileHandle(fileName, { create: false });
         var file = await fileHandle.getFile();
-        if (file) return file;
-      } catch (err) {
-        // 도면 서브폴더에 없는 경우 루트 폴더 검색으로 폴백 진행
+        if (file) {
+          file.actualFileName = fileName;
+          return file;
+        }
+      } catch (err) {}
+
+      // 1-2. 타임스탬프 불일치/이전 파일명 스마트 자동 복구 검색
+      try {
+        var foundFile = await findMatchingPhotoInFolder(folderHandle, fileName);
+        if (foundFile) {
+          console.log('[localFs] 서브폴더에서 대체 사진 파일 자동 매칭 성공:', fileName, '->', foundFile.actualFileName);
+          return foundFile;
+        }
+      } catch (scanErr) {
+        console.warn('[localFs] 서브폴더 스마트 검색 예외:', scanErr);
       }
     }
 
@@ -503,10 +652,19 @@
       try {
         var rootFileHandle = await _baseDirHandle.getFileHandle(fileName, { create: false });
         var rootFile = await rootFileHandle.getFile();
-        if (rootFile) return rootFile;
-      } catch (e) {
-        // 루트 폴더에도 없음
-      }
+        if (rootFile) {
+          rootFile.actualFileName = fileName;
+          return rootFile;
+        }
+      } catch (e) {}
+
+      try {
+        var rootFound = await findMatchingPhotoInFolder(_baseDirHandle, fileName);
+        if (rootFound) {
+          console.log('[localFs] 루트폴더에서 대체 사진 파일 자동 매칭 성공:', fileName, '->', rootFound.actualFileName);
+          return rootFound;
+        }
+      } catch (scanErr2) {}
     }
 
     console.warn('[localFs] 사진 파일 읽기 실패:', fileName);
@@ -922,6 +1080,7 @@
     loadMetadataFile: loadMetadataFile,
     getPhotoBlob: getPhotoBlob,
     deletePhotoFile: deletePhotoFile,
+    renamePhotoFile: renamePhotoFile,
     deleteDrawingFiles: deleteDrawingFiles,
     getBaseDirName: getBaseDirName,
     getBaseDirectory: getBaseDirectory,
