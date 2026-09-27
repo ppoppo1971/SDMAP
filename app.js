@@ -1111,6 +1111,16 @@ function handleStorageFolderSetting() {
 
   if (typeof window.localFs.checkFolderStatus === 'function' && dxfFileFullName) {
     window.localFs.checkFolderStatus(dxfFileFullName).then(function (status) {
+      if (status === 'sub_not_created') {
+        window.localFs.getDrawingFolder(dxfFileFullName, true).then(function (folder) {
+          updateFileNameDisplay();
+          if (folder) {
+            showToast('📁 [' + drawingNameClean + '] 도면 폴더가 생성/연결되었습니다.');
+          }
+        });
+        return;
+      }
+
       if (status !== 'granted') {
         // 권한이 만료되었거나 폴더가 없는 경우 즉시 원터치 권한 승인/설정 모달 호출
         window.localFs.ensureStorageReady(dxfFileFullName).then(function (ready) {
@@ -1123,10 +1133,11 @@ function handleStorageFolderSetting() {
         // 이미 정상인 경우: 현재 저장 위치 안내 및 변경 여부 확인
         var rootDir = window.localFs.getBaseDirName();
         var msg = '📁 현재 작업 저장 폴더 안내\n\n' +
-          '• 기준 폴더: ' + (rootDir || '설정됨') + '\n' +
+          '• 상위 기준 폴더: ' + (rootDir || '설정됨') + '\n' +
           '• 현재 도면 폴더: [' + drawingNameClean + ']\n\n' +
-          '사진과 데이터는 [' + drawingNameClean + '] 폴더 안에 안전하게 자동 저장됩니다.\n\n' +
-          '다른 기준 폴더로 변경하시겠습니까?';
+          '사진과 데이터는 [' + drawingNameClean + '] 전용 폴더 안에 안전하게 자동 저장됩니다.\n\n' +
+          '다른 상위 작업 폴더로 변경하시겠습니까?\n' +
+          '(⚠️ 다운로드 폴더 제외, 문서 또는 내장메모리 권장)';
         if (confirm(msg)) {
           window.localFs.pickBaseDirectory().then(function (handle) {
             if (handle) {
@@ -1551,8 +1562,10 @@ function checkPromptStorageFolder() {
   // 2. 기준 폴더가 아직 설정되지 않은 경우 (최초 1회 설정 안내)
   if (!window.localFs.hasBaseDir()) {
     setTimeout(function () {
-      var msg = '📁 사진과 데이터를 저장할 기준 작업 폴더를 선택해주세요.\n\n' +
-        '선택한 기준 폴더 바로 아래에 [' + drawingNameClean + '] 도면 전용 폴더가 100% 자동 생성되어 저장됩니다.';
+      var msg = '📁 사진과 데이터를 저장할 상위 작업 폴더(예: 평택)를 선택해 주세요.\n\n' +
+        '선택한 작업 폴더 바로 아래에 [' + drawingNameClean + '] 도면 전용 폴더가 100% 자동 생성되어 저장됩니다.\n\n' +
+        '⚠️ 중요: 안드로이드 보안 정책상 [다운로드(Download)] 폴더는 시스템에서 접근이 차단됩니다.\n' +
+        '반드시 [문서(Documents)] 폴더 안이나 [내장 메모리] 아래의 폴더를 선택해 주세요.';
       if (confirm(msg)) {
         window.localFs.pickBaseDirectory().then(function (handle) {
           if (handle) {
@@ -2321,27 +2334,30 @@ function updateFileNameDisplay() {
     return;
   }
 
-  var folderName = drawingNameClean;
+  var baseName = window.localFs.getBaseDirName() || '작업폴더';
 
   if (typeof window.localFs.checkFolderStatus === 'function' && dxfFileFullName) {
     window.localFs.checkFolderStatus(dxfFileFullName).then(function (status) {
       if (status === 'granted') {
         el.innerHTML = lineMainHtml +
-          '<div class="fn-line-folder" style="background:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7;">🟢 📁 ' + escapeHtml(folderName) + ' (정상)</div>';
+          '<div class="fn-line-folder" style="background:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7;">🟢 📁 ' + escapeHtml(baseName) + ' &gt; ' + escapeHtml(drawingNameClean) + ' (정상)</div>';
+      } else if (status === 'sub_not_created') {
+        el.innerHTML = lineMainHtml +
+          '<div class="fn-line-folder" style="background:#e3f2fd; color:#0d47a1; border:1px solid #90caf9; cursor:pointer;" title="터치 시 도면 폴더 즉시 생성">🟡 📁 ' + escapeHtml(baseName) + ' &gt; ' + escapeHtml(drawingNameClean) + ' (폴더 자동생성 대기)</div>';
       } else if (status === 'prompt') {
         el.innerHTML = lineMainHtml +
-          '<div class="fn-line-folder" style="background:#fff3e0; color:#e65100; border:1px solid #ffcc80; cursor:pointer;">🟠 📁 ' + escapeHtml(folderName) + ' (권한필요 - 터치)</div>';
+          '<div class="fn-line-folder" style="background:#fff3e0; color:#e65100; border:1px solid #ffcc80; cursor:pointer;" title="터치하여 쓰기 권한 허용">🟠 📁 ' + escapeHtml(baseName) + ' (권한 필요 - 터치)</div>';
       } else {
         el.innerHTML = lineMainHtml +
-          '<div class="fn-line-folder" style="background:#ffebee; color:#c62828; border:1px solid #ef9a9a; cursor:pointer;">🔴 📁 ' + escapeHtml(folderName) + ' (연결끊김 - 터치)</div>';
+          '<div class="fn-line-folder" style="background:#ffebee; color:#c62828; border:1px solid #ef9a9a; cursor:pointer;" title="터치하여 저장 폴더 재연결">🔴 📁 폴더 미연결/삭제됨 (터치하여 설정)</div>';
       }
     }).catch(function () {
       el.innerHTML = lineMainHtml +
-        '<div class="fn-line-folder" style="background:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7;">🟢 📁 ' + escapeHtml(folderName) + ' (정상)</div>';
+        '<div class="fn-line-folder" style="background:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7;">🟢 📁 ' + escapeHtml(baseName) + ' &gt; ' + escapeHtml(drawingNameClean) + '</div>';
     });
   } else {
     el.innerHTML = lineMainHtml +
-      '<div class="fn-line-folder" style="background:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7;">🟢 📁 ' + escapeHtml(folderName) + '</div>';
+      '<div class="fn-line-folder" style="background:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7;">🟢 📁 ' + escapeHtml(baseName) + ' &gt; ' + escapeHtml(drawingNameClean) + '</div>';
   }
 
   updateStorageFolderMenuLabel();
@@ -2536,9 +2552,29 @@ function loadMetadataAndDisplay(dxfFile) {
   return Promise.all([
     window.localStore.loadProject(dxfFile),
     window.localStore.loadPhotos(dxfFile)
-  ]).then(function (res) {
+  ]).then(async function (res) {
     var project = res[0] || {};
     var loadedPhotos = res[1] || [];
+
+    // 만약 IndexedDB에 사진이 없고 로컬 파일시스템에 저장된 메타데이터가 있다면 자동 복원 및 동기화
+    if ((!loadedPhotos || loadedPhotos.length === 0) && window.localFs && window.localFs.isSupported() && window.localFs.hasBaseDir()) {
+      try {
+        var fsMeta = await window.localFs.loadMetadataFile(dxfFile);
+        if (fsMeta && fsMeta.photos && fsMeta.photos.length > 0) {
+          loadedPhotos = fsMeta.photos;
+          if (fsMeta.texts && fsMeta.texts.length > 0) {
+            project.texts = fsMeta.texts;
+          }
+          window.localStore.saveProject(dxfFile, { texts: project.texts, lastModified: fsMeta.lastModified || new Date().toISOString() });
+          for (var i = 0; i < loadedPhotos.length; i++) {
+            window.localStore.savePhoto(dxfFile, loadedPhotos[i]);
+          }
+        }
+      } catch (fe) {
+        console.warn('[loadMetadataAndDisplay] 파일시스템 메타데이터 로드 예외:', fe);
+      }
+    }
+
     texts = project.texts || [];
     loadedPhotos.forEach(function (p) {
       photos.push({

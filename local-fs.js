@@ -133,13 +133,25 @@
       });
       if (handle) {
         await saveBaseDirHandle(handle);
-        alert('저장 폴더가 설정되었습니다:\n📁 ' + handle.name + '\n\n도면별로 [도면명] 폴더가 자동 생성되어 사진과 메타데이터가 저장됩니다.');
+        alert(
+          '저장 폴더가 성공적으로 설정되었습니다:\n📁 ' + handle.name + '\n\n' +
+          '이제 도면을 열 때마다 [' + handle.name + '] 폴더 안에 [도면명] 전용 폴더가 100% 자동 생성되어 사진과 제원 데이터가 안전하게 저장됩니다.'
+        );
         return handle;
       }
     } catch (err) {
       if (err.name !== 'AbortError') {
         console.error('[localFs] 폴더 선택 실패:', err);
-        alert('폴더를 선택하지 못했습니다: ' + (err.message || err));
+        var msg = (err.message || '').toLowerCase();
+        if (err.name === 'SecurityError' || err.name === 'NotAllowedError' || msg.indexOf('not allowed') !== -1 || msg.indexOf('security') !== -1) {
+          alert(
+            '⚠️ 선택하신 폴더는 안드로이드 보안 정책에 의해 접근이 차단되었습니다.\n\n' +
+            '• [다운로드(Download)] 폴더는 시스템 보안상 브라우저 접근이 금지되어 있습니다.\n' +
+            '• 반드시 스마트폰의 [문서(Documents)] 폴더 안이나 [내장 메모리] 아래에 작업 폴더(예: 평택)를 생성하여 선택해 주세요.'
+          );
+        } else {
+          alert('폴더를 선택하지 못했습니다:\n' + (err.message || err));
+        }
       }
     }
     return null;
@@ -209,7 +221,7 @@
     });
   }
 
-  // 도면별 서브폴더 핸들 가져오기 (없으면 생성 및 IndexedDB 영구 보존)
+  // 도면별 서브폴더 핸들 가져오기 (없으면 부모 폴더에서 자동 생성/연결)
   async function getDrawingFolder(drawingName, autoCreate) {
     if (autoCreate === undefined) autoCreate = true;
     if (!drawingName) return null;
@@ -217,60 +229,41 @@
     var cleanName = sanitizeDrawingName(drawingName);
     var isWrite = !!autoCreate;
 
-    // 1. 메모리 캐시에 이미 유효한 폴더 핸들이 존재하면 즉시 반환 (초고속 폴더 접근)
-    if (_drawingFolderHandles[cleanName]) {
-      return _drawingFolderHandles[cleanName];
-    }
-
-    // 2. 기존에 영구 보존된 도면 전용 폴더 핸들이 있는지 확인
-    var existingFolder = await loadDrawingFolderHandle(drawingName);
-    if (existingFolder) {
-      if (!isWrite) {
-        _drawingFolderHandles[cleanName] = existingFolder;
-        return existingFolder;
-      }
-      var perm = await verifyPermission(existingFolder, isWrite);
-      if (perm) {
-        _drawingFolderHandles[cleanName] = existingFolder;
-        return existingFolder;
+    // 1. 메모리 캐시 확인 및 실제 디스크 존재 검증
+    var cached = _drawingFolderHandles[cleanName];
+    if (cached) {
+      try {
+        var it = cached.values();
+        await it.next();
+        return cached; // 실제 디스크에 정상 존재
+      } catch (e) {
+        delete _drawingFolderHandles[cleanName];
       }
     }
 
-    // 3. 읽기 전용 모드일 때: baseDirHandle이 이미 로드되어 있다면 바로 getDirectoryHandle 시도 (사용자 제스처 없이도 안전)
-    if (!isWrite) {
-      if (!_baseDirHandle) {
-        _baseDirHandle = await loadSavedBaseDirHandle();
-      }
-      if (_baseDirHandle) {
-        try {
-          var readSub = await _baseDirHandle.getDirectoryHandle(cleanName, { create: false });
-          if (readSub) {
-            _drawingFolderHandles[cleanName] = readSub;
-            saveDrawingFolderHandle(drawingName, readSub);
-            return readSub;
-          }
-        } catch (err) {}
-      }
-    }
-
-    // 4. 루트 작업 폴더 아래에서 [도면명] 하위 폴더 생성/가져오기
+    // 2. 루트 작업 폴더(예: 평택) 가져오기
     var baseDir = await getBaseDirectory(isWrite);
     if (!baseDir) return null;
 
+    // 3. 루트 작업 폴더 아래에서 [도면명] 서브폴더 가져오기 / 자동 생성
     try {
       var subFolder = await baseDir.getDirectoryHandle(cleanName, { create: autoCreate });
       if (subFolder) {
         _drawingFolderHandles[cleanName] = subFolder;
-        await saveDrawingFolderHandle(drawingName, subFolder);
+        return subFolder;
       }
-      return subFolder;
     } catch (e) {
-      console.warn('[localFs] 도면 폴더 접근 실패:', e);
+      if (e.name === 'NotFoundError') {
+        delete _drawingFolderHandles[cleanName];
+      } else {
+        console.warn('[localFs] 도면 폴더 접근/생성 실패:', e);
+      }
       return null;
     }
+    return null;
   }
 
-  // [0925_01 핵심] 저장 환경 사전 철저 검사 (촬영/저장 전 실행: 정상 저장이 보장되지 않으면 작업을 원천 차단)
+  // 저장 환경 사전 철저 검사 (촬영/저장 전 실행: 정상 저장이 보장되지 않으면 작업을 원천 차단)
   async function ensureStorageReady(drawingName) {
     if (!isSupported()) {
       return true; // File System Access API 미지원 환경(iOS 등)은 IndexedDB 모드로 작업 허용
@@ -281,13 +274,17 @@
       return false;
     }
 
-    // 1. 루트 작업 폴더가 설정되어 있는지 검사
+    var cleanName = sanitizeDrawingName(drawingName);
+
+    // 1. 루트 작업 폴더(예: 평택)가 설정되어 있는지 및 권한 검사
     var baseDir = await getBaseDirectory(true);
     if (!baseDir) {
       var proceed = confirm(
-        '⚠️ 사진 및 데이터를 저장할 폴더가 설정되지 않았거나 접근 권한이 필요합니다.\n\n' +
-        '도면별로 [도면명] 전용 폴더가 자동 생성되어 사진과 데이터가 안전하게 저장됩니다.\n' +
-        '작업 저장 폴더를 선택(또는 권한 허용)해 주세요.'
+        '⚠️ 사진 및 데이터를 저장할 상위 작업 폴더(예: 평택)가 설정되지 않았거나 접근 권한이 필요합니다.\n\n' +
+        '• 선택한 작업 폴더 바로 아래에 [' + cleanName + '] 전용 폴더가 자동 생성되어 저장됩니다.\n\n' +
+        '⚠️ 중요: 안드로이드 보안 정책상 [다운로드] 폴더는 접근이 차단됩니다.\n' +
+        '반드시 [문서(Documents)] 폴더 안이나 [내장 메모리] 아래의 폴더를 선택해 주세요.\n\n' +
+        '작업 저장 폴더를 선택(또는 권한 허용)하시겠습니까?'
       );
       if (proceed) {
         baseDir = await pickBaseDirectory();
@@ -298,10 +295,10 @@
       }
     }
 
-    // 2. 도면 전용 폴더 및 쓰기(readwrite) 권한 확인/생성
+    // 2. 도면 전용 폴더 자동 생성 및 연결 (create: true)
     var folder = await getDrawingFolder(drawingName, true);
     if (!folder) {
-      alert('⚠️ 도면 저장 폴더에 접근할 수 없습니다. 저장 폴더를 다시 지정해 주세요.');
+      alert('⚠️ 도면 저장 폴더를 생성하거나 접근할 수 없습니다. 저장 폴더를 다시 지정해 주세요.');
       var newBase = await pickBaseDirectory();
       if (newBase) {
         folder = await getDrawingFolder(drawingName, true);
@@ -312,32 +309,57 @@
       }
     }
 
-    // 3. 쓰기 권한 최종 확인 (사용자 클릭 제스처 스택에서 호출되므로 권한 요청 팝업이 확실하게 뜸)
-    var writePerm = await verifyPermission(folder, true);
-    if (!writePerm) {
-      alert('⚠️ 저장 폴더 쓰기 권한이 허용되지 않아 사진 촬영 및 저장을 진행할 수 없습니다.');
-      return false;
-    }
-
     return true;
   }
 
-  // 폴더 권한 및 상태 비동기 쿼리 (팝업 없이 상태만 확인)
+  // 폴더 권한 및 상태 비동기 쿼리 (실제 디스크 존재 여부까지 100% 검증)
   async function checkFolderStatus(drawingName) {
     if (!isSupported()) return 'unsupported';
     if (!drawingName) return 'no_drawing';
     var cleanName = sanitizeDrawingName(drawingName);
+
     if (!_baseDirHandle) {
       _baseDirHandle = await loadSavedBaseDirHandle();
     }
-    var handle = _drawingFolderHandles[cleanName] || await loadDrawingFolderHandle(drawingName) || _baseDirHandle;
-    if (!handle) return 'no_folder';
+    if (!_baseDirHandle) return 'no_folder';
+
+    // 1. 루트 작업 폴더(예: 평택) 권한 확인
+    var perm = 'prompt';
     try {
-      var q = await handle.queryPermission({ mode: 'readwrite' });
-      return q; // 'granted', 'prompt', 'denied'
+      perm = await _baseDirHandle.queryPermission({ mode: 'readwrite' });
     } catch (e) {
-      return 'prompt';
+      perm = 'prompt';
     }
+    if (perm !== 'granted') {
+      return perm; // 'prompt' 또는 'denied'
+    }
+
+    // 2. 루트 폴더가 실제 디스크에 존재하는지 검증 (디스크에서 삭제된 경우 NotFoundError)
+    try {
+      var iter = _baseDirHandle.values();
+      await iter.next();
+    } catch (e) {
+      if (e.name === 'NotFoundError') {
+        _baseDirHandle = null;
+        return 'no_folder';
+      }
+    }
+
+    // 3. 도면 서브폴더(예: 01)가 실제 디스크에 존재하는지 확인
+    try {
+      var sub = await _baseDirHandle.getDirectoryHandle(cleanName, { create: false });
+      if (sub) {
+        _drawingFolderHandles[cleanName] = sub;
+        return 'granted'; // 상위 폴더 및 도면 서브폴더 모두 디스크에 정상 존재!
+      }
+    } catch (e) {
+      if (e.name === 'NotFoundError') {
+        delete _drawingFolderHandles[cleanName];
+        return 'sub_not_created'; // 상위 평택은 정상이지만 01 폴더는 디스크에 없음(생성 대기)
+      }
+    }
+
+    return 'prompt';
   }
 
   // 사진 파일을 도면 폴더에 직접 저장
