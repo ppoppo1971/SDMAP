@@ -437,14 +437,20 @@
       await writable.write(blob);
       await writable.close();
 
-      // AutoCAD 자동 전개용 AutoLISP 스크립트 (SDInsertPhotos.lsp) 함께 생성
+      // AutoCAD 자동 전개용 AutoLISP 스크립트 (SDInsertPhotos.lsp) - 없을 때만 최초 1회 생성 (배터리 및 I/O 절감)
       try {
-        var lspText = getLspScriptContent();
-        var lspBlob = new Blob([lspText], { type: 'text/plain;charset=utf-8' });
-        var lspHandle = await folderHandle.getFileHandle('SDInsertPhotos.lsp', { create: true });
-        var lspWritable = await lspHandle.createWritable();
-        await lspWritable.write(lspBlob);
-        await lspWritable.close();
+        var existingLsp = null;
+        try {
+          existingLsp = await folderHandle.getFileHandle('SDInsertPhotos.lsp', { create: false });
+        } catch (notFound) {}
+        if (!existingLsp) {
+          var lspText = getLspScriptContent();
+          var lspBlob = new Blob([lspText], { type: 'text/plain;charset=utf-8' });
+          var lspHandle = await folderHandle.getFileHandle('SDInsertPhotos.lsp', { create: true });
+          var lspWritable = await lspHandle.createWritable();
+          await lspWritable.write(lspBlob);
+          await lspWritable.close();
+        }
       } catch (lspErr) {
         console.warn('[localFs] SDInsertPhotos.lsp 생성 실패 (무시 가능):', lspErr);
       }
