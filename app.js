@@ -813,10 +813,14 @@ function bindUI() {
     if (contextMenuEl) contextMenuEl.classList.remove('active');
   });
 
-  // 상단 파일명/폴더 표시 클릭 시 저장 폴더 설정 호출
+  // 상단 파일명/폴더 표시 클릭 시: 카메라 모드 배지 터치 시 모드 전환, 그 외 영역 터치 시 저장 폴더 설정 호출
   var fileNameDisplay = document.getElementById('file-name-display');
   if (fileNameDisplay) {
-    fileNameDisplay.addEventListener('click', function () {
+    fileNameDisplay.addEventListener('click', function (e) {
+      if (e.target && e.target.closest('#top-camera-mode-badge')) {
+        toggleCameraMode();
+        return;
+      }
       handleStorageFolderSetting();
     });
   }
@@ -857,18 +861,12 @@ function bindUI() {
   // 초기 로딩 시점에 상태 레이블 반영
   updateToggleStatuses();
 
-  document.getElementById('menu-image-size').addEventListener('click', function () {
-    slideMenu.classList.remove('active');
-    menuOverlay.classList.remove('active');
-    showImageSizeModal();
-  });
-  // [0923_01] 저장 폴더 설정 메뉴 이벤트 핸들러
-  var menuStorageFolder = document.getElementById('menu-storage-folder');
-  if (menuStorageFolder) {
-    menuStorageFolder.addEventListener('click', function () {
+  var menuImageSize = document.getElementById('menu-image-size');
+  if (menuImageSize) {
+    menuImageSize.addEventListener('click', function () {
       slideMenu.classList.remove('active');
       menuOverlay.classList.remove('active');
-      handleStorageFolderSetting();
+      showImageSizeModal();
     });
   }
 
@@ -928,6 +926,8 @@ function bindUI() {
   // [0923_01] 내보내기 모달 이벤트 리스너 제거됨 - 내부저장소 직접 저장 방식으로 전환
   // 저장 폴더 메뉴 초기화 (폴더명 표시)
   updateStorageFolderMenuLabel();
+  updateCameraModeMenuLabel();
+  bindFastCameraEvents();
 
   document.getElementById('zoom-fit').addEventListener('click', fitDxfToView);
   document.getElementById('zoom-in').addEventListener('click', function () {
@@ -1103,32 +1103,36 @@ function showLoading(show) {
 // 저장 폴더 설정 관련 함수
 function handleStorageFolderSetting() {
   if (!window.localFs || !window.localFs.isSupported()) {
-    alert('현재 브라우저에서는 폴더 저장 기능(File System Access API)을 \n지원하지 않습니다.\n안드로이드 Chrome 최신 버전을 권장합니다.');
+    alert('현재 브라우저에서는 실제 폴더 저장 기능(File System Access API)을 지원하지 않습니다.\n안드로이드 Chrome 최신 버전을 권장합니다.');
     return;
   }
+
+  var drawingNameClean = (dxfFileName || '도면').replace(/\.[^/.]+$/, '').trim();
 
   if (typeof window.localFs.checkFolderStatus === 'function' && dxfFileFullName) {
     window.localFs.checkFolderStatus(dxfFileFullName).then(function (status) {
       if (status !== 'granted') {
-        // 권한이 만료되었거나 폴더가 없는 경우 즉시 권한 승인/설정 모달 호출
+        // 권한이 만료되었거나 폴더가 없는 경우 즉시 원터치 권한 승인/설정 모달 호출
         window.localFs.ensureStorageReady(dxfFileFullName).then(function (ready) {
-          updateStorageFolderMenuLabel();
           updateFileNameDisplay();
           if (ready) {
-            showToast('📁 저장 폴더 및 권한이 정상 확보되었습니다.');
+            showToast('📁 [' + drawingNameClean + '] 도면 저장 폴더가 연결되었습니다.');
           }
         });
       } else {
-        // 이미 정상인 경우, 사용자가 폴더 변경을 원하는지 확인
-        var currentFolder = window.localFs.getBaseDirName();
-        var msg = '현재 저장 폴더: 📁 ' + (currentFolder || '설정됨') + ' (정상 연결됨)\n\n저장 폴더를 다른 폴더로 변경하시겠습니까?';
+        // 이미 정상인 경우: 현재 저장 위치 안내 및 변경 여부 확인
+        var rootDir = window.localFs.getBaseDirName();
+        var msg = '📁 현재 작업 저장 폴더 안내\n\n' +
+          '• 기준 폴더: ' + (rootDir || '설정됨') + '\n' +
+          '• 현재 도면 폴더: [' + drawingNameClean + ']\n\n' +
+          '사진과 데이터는 [' + drawingNameClean + '] 폴더 안에 안전하게 자동 저장됩니다.\n\n' +
+          '다른 기준 폴더로 변경하시겠습니까?';
         if (confirm(msg)) {
           window.localFs.pickBaseDirectory().then(function (handle) {
             if (handle) {
               if (dxfFileFullName && typeof window.localFs.getDrawingFolder === 'function') {
                 window.localFs.getDrawingFolder(dxfFileFullName, true).catch(function () {});
               }
-              updateStorageFolderMenuLabel();
               updateFileNameDisplay();
               showToast('📁 저장 폴더가 변경되었습니다: ' + handle.name);
             }
@@ -1139,15 +1143,14 @@ function handleStorageFolderSetting() {
     return;
   }
 
-  var currentFolder = window.localFs.getBaseDirName();
-  var msg = currentFolder
-    ? '현재 저장 폴더: 📁 ' + currentFolder + '\n\n저장 폴더를 변경하시겠습니까?\n(도면별 하위 폴더가 자동 생성됩니다)'
-    : '사진과 메타데이터를 저장할 폴더를 선택해주세요.\n도면별로 하위 폴더가 자동 생성됩니다.';
+  var rootDir = window.localFs.getBaseDirName();
+  var msg = rootDir
+    ? '현재 기준 폴더: 📁 ' + rootDir + '\n\n저장 폴더를 변경하시겠습니까?\n(도면별 [' + drawingNameClean + '] 폴더가 자동 생성됩니다)'
+    : '사진과 데이터를 저장할 폴더를 선택해주세요.\n도면별로 [' + drawingNameClean + '] 전용 폴더가 자동 생성됩니다.';
 
   if (confirm(msg)) {
     window.localFs.pickBaseDirectory().then(function (handle) {
       if (handle) {
-        updateStorageFolderMenuLabel();
         updateFileNameDisplay();
         showToast('📁 저장 폴더가 설정되었습니다: ' + handle.name);
       }
@@ -1533,42 +1536,35 @@ function applyDxfLoadResult(dxfFileNameStr, dxfDataResult, imageRefsWithFile) {
 function checkPromptStorageFolder() {
   if (!window.localFs || !window.localFs.isSupported()) return;
 
-  if (typeof window.localFs.ensureStorageReady === 'function' && dxfFileFullName) {
-    setTimeout(function () {
-      if (typeof window.localFs.checkFolderStatus === 'function') {
-        window.localFs.checkFolderStatus(dxfFileFullName).then(function (status) {
-          if (status !== 'granted') {
-            window.localFs.ensureStorageReady(dxfFileFullName).then(function (ready) {
-              if (ready) {
-                updateStorageFolderMenuLabel();
-                updateFileNameDisplay();
-              }
-            });
-          }
-        });
-      }
-    }, 600);
+  var drawingNameClean = (dxfFileName || '도면').replace(/\.[^/.]+$/, '').trim();
+
+  // 1. 이미 기준 폴더가 설정된 경우: 현재 도면명으로 서브폴더 자동 생성 및 즉각 헤더 갱신
+  if (window.localFs.hasBaseDir() && dxfFileFullName) {
+    window.localFs.getDrawingFolder(dxfFileFullName, true).then(function () {
+      updateFileNameDisplay();
+    }).catch(function () {
+      updateFileNameDisplay();
+    });
     return;
   }
 
+  // 2. 기준 폴더가 아직 설정되지 않은 경우 (최초 1회 설정 안내)
   if (!window.localFs.hasBaseDir()) {
     setTimeout(function () {
-      if (confirm('촬영한 사진과 메타데이터를 저장할 내부 폴더가 설정되지 않았습니다.\n사진/데이터 저장을 위한 폴더를 선택하시겠습니까?')) {
+      var msg = '📁 사진과 데이터를 저장할 기준 작업 폴더를 선택해주세요.\n\n' +
+        '선택한 기준 폴더 바로 아래에 [' + drawingNameClean + '] 도면 전용 폴더가 100% 자동 생성되어 저장됩니다.';
+      if (confirm(msg)) {
         window.localFs.pickBaseDirectory().then(function (handle) {
           if (handle) {
             if (dxfFileFullName && typeof window.localFs.getDrawingFolder === 'function') {
               window.localFs.getDrawingFolder(dxfFileFullName, true).catch(function () {});
             }
-            updateStorageFolderMenuLabel();
             updateFileNameDisplay();
             showToast('📁 저장 폴더가 설정되었습니다: ' + handle.name);
           }
         });
       }
-    }, 500);
-  } else if (dxfFileFullName && typeof window.localFs.getDrawingFolder === 'function') {
-    // 이미 저장 폴더가 설정된 경우 현재 도면명으로 폴더 자동 생성/확보
-    window.localFs.getDrawingFolder(dxfFileFullName, true).catch(function () {});
+    }, 400);
   }
 }
 
@@ -2306,48 +2302,46 @@ function updateFileNameDisplay() {
   var el = document.getElementById('file-name-text');
   if (!el) return;
 
-  var sizeText = imageSizeSetting === 'original' ? '원본' : imageSizeSetting;
+  var isFast = (cameraModeSetting === 'fast');
+  var badgeText = isFast ? ('⚡ ' + (fastCameraSizeSetting || '1MB')) : '📷 원본';
+  var badgeClass = isFast ? 'top-cam-badge fast' : 'top-cam-badge standard';
+  var badgeTitle = isFast ? '현재: ⚡고속 즉시 모드 (터치 시 📷일반 고화질로 전환)' : '현재: 📷일반 고화질 모드 (터치 시 ⚡고속 즉시로 전환)';
   var drawingNameClean = (dxfFileName || '도면').replace(/\.[^/.]+$/, '').trim();
-  var baseLabel = escapeHtml(drawingNameClean) + ' [' + escapeHtml(sizeText) + ']';
+  var lineMainHtml = '<div class="fn-line-main"><span>' + escapeHtml(drawingNameClean) + '</span><span id="top-camera-mode-badge" class="' + badgeClass + '" title="' + escapeHtml(badgeTitle) + '">' + escapeHtml(badgeText) + '</span></div>';
 
   if (!window.localFs || !window.localFs.isSupported()) {
-    el.innerHTML = '<span class="fn-title">' + baseLabel + '</span>' +
-      ' <span class="folder-badge badge-gray" style="display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:10px; font-size:11px; background:#f0f0f0; color:#616161; font-weight:bold; border:1px solid #d0d0d0; margin-left:4px; vertical-align:middle;">📁 내부DB 모드</span>';
-    updateStorageFolderMenuLabel();
+    el.innerHTML = lineMainHtml +
+      '<div class="fn-line-folder" style="background:#f5f5f5; color:#616161; border:1px solid #d0d0d0;">📁 내부DB 모드</div>';
     return;
   }
 
   if (!window.localFs.hasBaseDir()) {
-    el.innerHTML = '<span class="fn-title">' + baseLabel + '</span>' +
-      ' <span class="folder-badge badge-red" style="display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:10px; font-size:11px; background:#ffebee; color:#c62828; font-weight:bold; border:1px solid #ef9a9a; margin-left:4px; vertical-align:middle;">🔴 📁 폴더설정필요</span>';
-    updateStorageFolderMenuLabel();
+    el.innerHTML = lineMainHtml +
+      '<div class="fn-line-folder" style="background:#ffebee; color:#c62828; border:1px solid #ef9a9a; cursor:pointer;">🔴 📁 폴더 미연결 (터치하여 설정)</div>';
     return;
   }
 
-  var folderName = window.localFs.getBaseDirName();
-  if (dxfFileName) {
-    folderName = (dxfFileName || '').replace(/\.[^/.]+$/, '').trim() || folderName;
-  }
+  var folderName = drawingNameClean;
 
   if (typeof window.localFs.checkFolderStatus === 'function' && dxfFileFullName) {
     window.localFs.checkFolderStatus(dxfFileFullName).then(function (status) {
       if (status === 'granted') {
-        el.innerHTML = '<span class="fn-title">' + baseLabel + '</span>' +
-          ' <span class="folder-badge badge-green" style="display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:10px; font-size:11px; background:#e8f5e9; color:#1b5e20; font-weight:bold; border:1px solid #a5d6a7; margin-left:4px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle;">🟢 📁 ' + escapeHtml(folderName) + ' (정상)</span>';
+        el.innerHTML = lineMainHtml +
+          '<div class="fn-line-folder" style="background:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7;">🟢 📁 ' + escapeHtml(folderName) + ' (정상)</div>';
       } else if (status === 'prompt') {
-        el.innerHTML = '<span class="fn-title">' + baseLabel + '</span>' +
-          ' <span class="folder-badge badge-orange" style="display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:10px; font-size:11px; background:#fff3e0; color:#e65100; font-weight:bold; border:1px solid #ffcc80; margin-left:4px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle;">🟠 📁 ' + escapeHtml(folderName) + ' (권한필요)</span>';
+        el.innerHTML = lineMainHtml +
+          '<div class="fn-line-folder" style="background:#fff3e0; color:#e65100; border:1px solid #ffcc80; cursor:pointer;">🟠 📁 ' + escapeHtml(folderName) + ' (권한필요 - 터치)</div>';
       } else {
-        el.innerHTML = '<span class="fn-title">' + baseLabel + '</span>' +
-          ' <span class="folder-badge badge-red" style="display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:10px; font-size:11px; background:#ffebee; color:#c62828; font-weight:bold; border:1px solid #ef9a9a; margin-left:4px; vertical-align:middle;">🔴 📁 ' + escapeHtml(folderName) + ' (접근불가)</span>';
+        el.innerHTML = lineMainHtml +
+          '<div class="fn-line-folder" style="background:#ffebee; color:#c62828; border:1px solid #ef9a9a; cursor:pointer;">🔴 📁 ' + escapeHtml(folderName) + ' (연결끊김 - 터치)</div>';
       }
     }).catch(function () {
-      el.innerHTML = '<span class="fn-title">' + baseLabel + '</span>' +
-        ' <span class="folder-badge badge-green" style="display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:10px; font-size:11px; background:#e8f5e9; color:#1b5e20; font-weight:bold; border:1px solid #a5d6a7; margin-left:4px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle;">🟢 📁 ' + escapeHtml(folderName) + '</span>';
+      el.innerHTML = lineMainHtml +
+        '<div class="fn-line-folder" style="background:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7;">🟢 📁 ' + escapeHtml(folderName) + ' (정상)</div>';
     });
   } else {
-    el.innerHTML = '<span class="fn-title">' + baseLabel + '</span>' +
-      ' <span class="folder-badge badge-green" style="display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:10px; font-size:11px; background:#e8f5e9; color:#1b5e20; font-weight:bold; border:1px solid #a5d6a7; margin-left:4px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle;">🟢 📁 ' + escapeHtml(folderName) + '</span>';
+    el.innerHTML = lineMainHtml +
+      '<div class="fn-line-folder" style="background:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7;">🟢 📁 ' + escapeHtml(folderName) + '</div>';
   }
 
   updateStorageFolderMenuLabel();
@@ -2373,13 +2367,9 @@ function setMapType(type) {
 }
 
 function getImageTargetSize() {
-  switch (imageSizeSetting) {
-    case '500KB': return 500 * 1024;
-    case '1MB': return 1024 * 1024;
-    case '2MB': return 2 * 1024 * 1024;
-    case 'original': return null;
-    default: return 2 * 1024 * 1024;
-  }
+  // [0927] 고속 즉시 모드는 캔버스에서 1MB/500KB로 직접 생성하고,
+  // 일반 고화질 모드는 스마트폰 기본 카메라의 원본 화질(변환/압축 없음)로 저장하므로 사후 압축을 완전히 생략합니다.
+  return null;
 }
 
 /** ADMAP과 동일: DXF 파일 기준명(.dxf 제외) */
@@ -2977,20 +2967,489 @@ function bindMapLongPress() {
   }
 }
 
+// ==========================================
+// [촬영 모드 및 인앱 고속 즉시 촬영 카메라 서브시스템]
+// ==========================================
+var cameraModeSetting = localStorage.getItem('sdmap_camera_mode') || 'fast';
+var fastCameraSizeSetting = localStorage.getItem('sdmap_fast_cam_size') || '1MB';
+var fastCameraStream = null;
+var fastCameraTrack = null;
+var fastCameraCallback = null;
+var fastCameraCurrentZoom = 1.0;
+var fastCameraIsTorchOn = false;
+var fastCameraUltraWideDeviceId = null;
+var fastCameraCurrentDeviceId = null;
+var fastCameraEventsBound = false;
+
+function updateFastCameraSizeUI() {
+  var label = document.getElementById('fc-size-label');
+  if (label) {
+    label.textContent = fastCameraSizeSetting;
+  }
+  updateFileNameDisplay();
+}
+
+function toggleFastCameraSize() {
+  if (fastCameraSizeSetting === '1MB') {
+    fastCameraSizeSetting = '500KB';
+  } else {
+    fastCameraSizeSetting = '1MB';
+  }
+  localStorage.setItem('sdmap_fast_cam_size', fastCameraSizeSetting);
+  updateFastCameraSizeUI();
+  if (fastCameraSizeSetting === '500KB') {
+    showToast('고속 촬영 화질: 500KB 설정됨 (HD 1280×720, 저장속도 극대화)');
+  } else {
+    showToast('고속 촬영 화질: 1MB 설정됨 (FHD 1920×1080, 표준 고화질)');
+  }
+}
+
+function updateCameraModeMenuLabel() {
+  var statusEl = document.getElementById('menu-camera-mode-status');
+  if (!statusEl) return;
+  if (cameraModeSetting === 'fast') {
+    statusEl.textContent = '⚡고속 즉시';
+    statusEl.style.color = '#2563eb';
+    statusEl.style.fontWeight = 'bold';
+  } else {
+    statusEl.textContent = '📷일반 고화질';
+    statusEl.style.color = '#059669';
+    statusEl.style.fontWeight = 'bold';
+  }
+}
+
+function toggleCameraMode() {
+  if (cameraModeSetting === 'fast') {
+    cameraModeSetting = 'standard';
+    localStorage.setItem('sdmap_camera_mode', 'standard');
+    updateCameraModeMenuLabel();
+    updateFileNameDisplay();
+    showToast('📷 일반 고화질 모드 (기본 카메라 앱 실행, 원본화질 무변환 저장)');
+  } else {
+    cameraModeSetting = 'fast';
+    localStorage.setItem('sdmap_camera_mode', 'fast');
+    updateCameraModeMenuLabel();
+    updateFileNameDisplay();
+    showToast('⚡ 고속 즉시 촬영 모드 (셔터 터치 즉시 확인 없이 창 열림)');
+  }
+}
+
+/** 통합 사진 캡처 라우터 (저장소 상태 검증 후 설정된 모드에 따라 카메라 실행) */
+function triggerCameraCapture() {
+  if (window.localFs && typeof window.localFs.ensureStorageReady === 'function') {
+    window.localFs.ensureStorageReady(dxfFileFullName).then(function (ready) {
+      if (!ready) {
+        isAddingSubPhoto = false;
+        return;
+      }
+      launchCameraByMode();
+    });
+    return;
+  }
+  launchCameraByMode();
+}
+
+function launchCameraByMode() {
+  if (cameraModeSetting === 'fast' && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
+    openFastCameraModal(handleCapturedPhoto);
+  } else {
+    var input = getEl('camera-input');
+    if (input) input.click();
+  }
+}
+
+/** 촬영된 사진 File을 상태(일반/객체감지/추가사진)에 맞게 처리 */
+function handleCapturedPhoto(file) {
+  if (!file) return;
+  if (isAddingSubPhoto) {
+    if (editingPhotoId) {
+      // 일반사진 조사 추가사진 촬영
+      addSubPhotoToCurrentPhoto(file);
+    } else if (pendingStreetlightItem) {
+      // 객체감지 조사 추가사진 촬영
+      addSubPhotoToPendingStreetlight(file);
+    }
+  } else if (pendingStreetlightItem) {
+    showStreetlightInputForm(file, pendingStreetlightItem, pendingStreetlightDxfCoords, pendingStreetlightLatLng);
+  } else if (pendingAddPosition) {
+    addPhotoAtPosition(pendingAddPosition, file);
+  }
+  isAddingSubPhoto = false;
+}
+
+/** 인앱 고속 즉시 촬영 모달 열기 */
+function openFastCameraModal(callback) {
+  fastCameraCallback = callback;
+  var modal = document.getElementById('fast-camera-modal');
+  var video = document.getElementById('fast-camera-video');
+  if (!modal || !video) {
+    var input = getEl('camera-input');
+    if (input) input.click();
+    return;
+  }
+
+  updateFastCameraSizeUI();
+  modal.classList.remove('hidden');
+
+  var constraints = {
+    video: {
+      facingMode: { ideal: 'environment' },
+      width: { ideal: 1920, max: 3840 },
+      height: { ideal: 1080, max: 2160 }
+    },
+    audio: false
+  };
+
+  navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
+    fastCameraStream = stream;
+    fastCameraTrack = stream.getVideoTracks()[0];
+    video.srcObject = stream;
+    video.play().catch(function (e) {
+      console.warn('Video play warning:', e);
+    });
+
+    setupFastCameraCapabilities(fastCameraTrack);
+  }).catch(function (err) {
+    console.warn('Fast camera getUserMedia failed, fallback to native camera:', err);
+    closeFastCameraModal(true);
+    showToast('인앱 카메라 실행 실패: 기본 카메라로 전환합니다.');
+    var input = getEl('camera-input');
+    if (input) input.click();
+  });
+}
+
+/** 카메라 제어 기능(줌, 플래시, 렌즈 등) 초기화 */
+function setupFastCameraCapabilities(track) {
+  var torchBtn = document.getElementById('fc-torch-btn');
+  var lensControls = document.getElementById('fc-lens-controls');
+  var btn05 = document.getElementById('fc-lens-05');
+  var btn1 = document.getElementById('fc-lens-1');
+  var btn2 = document.getElementById('fc-lens-2');
+
+  fastCameraIsTorchOn = false;
+  fastCameraCurrentZoom = 1.0;
+
+  if (btn1) {
+    if (btn05) btn05.classList.remove('active');
+    btn1.classList.add('active');
+    if (btn2) btn2.classList.remove('active');
+  }
+
+  if (!track || typeof track.getCapabilities !== 'function') {
+    if (torchBtn) torchBtn.style.display = 'none';
+    if (lensControls) lensControls.style.display = 'none';
+    return;
+  }
+
+  var capabilities = track.getCapabilities();
+
+  // 토치(플래시) 지원 여부
+  if (torchBtn) {
+    if (capabilities.torch) {
+      torchBtn.style.display = 'flex';
+      torchBtn.textContent = '⚡';
+      torchBtn.style.color = '#ffffff';
+    } else {
+      torchBtn.style.display = 'none';
+    }
+  }
+
+  // 줌 지원 여부
+  if (capabilities.zoom) {
+    var minZoom = capabilities.zoom.min || 1;
+    var maxZoom = capabilities.zoom.max || 1;
+    var has05 = minZoom <= 0.6;
+    var has2 = maxZoom >= 1.8;
+
+    if (lensControls) {
+      lensControls.style.display = 'flex';
+    }
+    if (btn05) {
+      btn05.style.display = has05 ? 'inline-block' : 'none';
+    }
+    if (btn2) {
+      btn2.style.display = has2 ? 'inline-block' : 'none';
+    }
+  } else {
+    // 다중 후면 카메라 장치(광각/초광각) 감지 시도
+    if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+      navigator.mediaDevices.enumerateDevices().then(function (devices) {
+        var videoDevices = devices.filter(function (d) { return d.kind === 'videoinput'; });
+        var wideDev = videoDevices.filter(function (d) {
+          var l = (d.label || '').toLowerCase();
+          return l.indexOf('wide') !== -1 || l.indexOf('0.5') !== -1 || l.indexOf('ultra') !== -1;
+        })[0];
+        if (wideDev && wideDev.deviceId) {
+          fastCameraUltraWideDeviceId = wideDev.deviceId;
+          if (lensControls) lensControls.style.display = 'flex';
+          if (btn05) btn05.style.display = 'inline-block';
+        }
+      }).catch(function () {});
+    }
+  }
+}
+
+/** 줌 배율 직접 적용 (하드웨어 제약 내) */
+function applyFastCameraZoomValue(val) {
+  if (!fastCameraTrack || typeof fastCameraTrack.getCapabilities !== 'function') return;
+  var caps = fastCameraTrack.getCapabilities();
+  if (!caps.zoom) return;
+  var minZ = caps.zoom.min || 1;
+  var maxZ = caps.zoom.max || 1;
+  var target = Math.max(minZ, Math.min(maxZ, val));
+  fastCameraCurrentZoom = target;
+  try {
+    fastCameraTrack.applyConstraints({ advanced: [{ zoom: target }] });
+  } catch (e) {
+    console.warn('Apply zoom error:', e);
+  }
+}
+
+/** 렌즈 프리셋 줌 전환 (0.5X, 1X, 2X) */
+function setFastCameraZoom(targetZoom) {
+  fastCameraCurrentZoom = targetZoom;
+
+  var btn05 = document.getElementById('fc-lens-05');
+  var btn1 = document.getElementById('fc-lens-1');
+  var btn2 = document.getElementById('fc-lens-2');
+  if (btn05) btn05.classList.toggle('active', targetZoom === 0.5);
+  if (btn1) btn1.classList.toggle('active', targetZoom === 1);
+  if (btn2) btn2.classList.toggle('active', targetZoom === 2);
+
+  if (fastCameraTrack && typeof fastCameraTrack.getCapabilities === 'function') {
+    var caps = fastCameraTrack.getCapabilities();
+    if (caps.zoom) {
+      var minZ = caps.zoom.min || 1;
+      var maxZ = caps.zoom.max || 1;
+      if (targetZoom >= minZ && targetZoom <= maxZ) {
+        applyFastCameraZoomValue(targetZoom);
+        return;
+      }
+    }
+  }
+
+  // 0.5X 요청 시 하드웨어 초광각 렌즈 디바이스 전환 지원
+  if (targetZoom === 0.5 && fastCameraUltraWideDeviceId) {
+    switchFastCameraDevice(fastCameraUltraWideDeviceId);
+  } else if (targetZoom === 1 && fastCameraCurrentDeviceId) {
+    switchFastCameraDevice(null);
+  }
+}
+
+/** 후면 광각/기본 카메라 디바이스 전환 */
+function switchFastCameraDevice(deviceId) {
+  fastCameraCurrentDeviceId = deviceId;
+  if (fastCameraStream) {
+    try {
+      fastCameraStream.getTracks().forEach(function (t) { t.stop(); });
+    } catch (e) {}
+  }
+  var constraints = {
+    video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: 'environment' } },
+    audio: false
+  };
+  navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
+    fastCameraStream = stream;
+    fastCameraTrack = stream.getVideoTracks()[0];
+    var video = document.getElementById('fast-camera-video');
+    if (video) {
+      video.srcObject = stream;
+      video.play().catch(function () {});
+    }
+    setupFastCameraCapabilities(fastCameraTrack);
+  }).catch(function (e) {
+    console.warn('Switch camera device failed:', e);
+  });
+}
+
+/** 화면 터치 시 초점 링 표시 및 초점 맞추기 */
+function handleFastCameraTouchFocus(e) {
+  var ring = document.getElementById('fc-focus-ring');
+  var video = document.getElementById('fast-camera-video');
+  if (!ring || !video) return;
+
+  var clientX = e.clientX != null ? e.clientX : (e.touches && e.touches[0] && e.touches[0].clientX);
+  var clientY = e.clientY != null ? e.clientY : (e.touches && e.touches[0] && e.touches[0].clientY);
+  if (clientX == null || clientY == null) return;
+
+  ring.style.left = clientX + 'px';
+  ring.style.top = clientY + 'px';
+  ring.classList.add('active');
+  setTimeout(function () {
+    ring.classList.remove('active');
+  }, 800);
+
+  if (fastCameraTrack && typeof fastCameraTrack.getCapabilities === 'function') {
+    var caps = fastCameraTrack.getCapabilities();
+    if (caps.focusMode && caps.focusMode.indexOf('continuous') !== -1) {
+      try {
+        fastCameraTrack.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+      } catch (err) {}
+    }
+  }
+}
+
+/** 플래시(토치) 토글 */
+function toggleFastCameraTorch() {
+  if (!fastCameraTrack || typeof fastCameraTrack.applyConstraints !== 'function') return;
+  fastCameraIsTorchOn = !fastCameraIsTorchOn;
+  try {
+    fastCameraTrack.applyConstraints({ advanced: [{ torch: fastCameraIsTorchOn }] });
+    var torchBtn = document.getElementById('fc-torch-btn');
+    if (torchBtn) {
+      torchBtn.style.color = fastCameraIsTorchOn ? '#f59e0b' : '#ffffff';
+    }
+  } catch (e) {
+    console.warn('Torch constraint error:', e);
+  }
+}
+
+/** 셔터 클릭: 실시간 비디오 프레임 즉시 캡처 및 후속 프로세스 자동 직행 */
+function captureFastCamera() {
+  var video = document.getElementById('fast-camera-video');
+  var flash = document.getElementById('fc-flash-overlay');
+
+  if (!video || !fastCameraStream) return;
+
+  // 플래시 애니메이션
+  if (flash) {
+    flash.classList.add('active');
+    setTimeout(function () { flash.classList.remove('active'); }, 150);
+  }
+
+  // 1MB / 500KB 해상도 및 압축품질 지정
+  var targetSize = fastCameraSizeSetting || '1MB';
+  var maxDim = (targetSize === '500KB') ? 1280 : 1920;
+  var quality = (targetSize === '500KB') ? 0.78 : 0.85;
+
+  var vw = video.videoWidth || 1920;
+  var vh = video.videoHeight || 1080;
+
+  var w = vw;
+  var h = vh;
+  if (w > maxDim || h > maxDim) {
+    if (w >= h) {
+      h = Math.round((h / w) * maxDim);
+      w = maxDim;
+    } else {
+      w = Math.round((w / h) * maxDim);
+      h = maxDim;
+    }
+  }
+
+  var canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  var ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, w, h);
+
+  canvas.toBlob(function (blob) {
+    if (!blob) {
+      showToast('사진 캡처에 실패했습니다.');
+      return;
+    }
+
+    var fileName = 'PHOTO_' + Date.now() + '.jpg';
+    var file = new File([blob], fileName, { type: 'image/jpeg' });
+
+    var cb = fastCameraCallback;
+    fastCameraCallback = null;
+
+    closeFastCameraModal(false);
+
+    if (typeof cb === 'function') {
+      cb(file);
+    }
+  }, 'image/jpeg', quality);
+}
+
+/** 고속 즉시 촬영 모달 닫기 및 리소스 해제 */
+function closeFastCameraModal(isCanceled) {
+  var modal = document.getElementById('fast-camera-modal');
+  if (modal) modal.classList.add('hidden');
+
+  if (fastCameraStream) {
+    try {
+      fastCameraStream.getTracks().forEach(function (track) { track.stop(); });
+    } catch (e) {}
+    fastCameraStream = null;
+    fastCameraTrack = null;
+  }
+  var video = document.getElementById('fast-camera-video');
+  if (video) video.srcObject = null;
+  fastCameraCurrentDeviceId = null;
+  fastCameraIsTorchOn = false;
+  if (isCanceled) {
+    isAddingSubPhoto = false;
+  }
+}
+
+/** 고속 촬영 모달 이벤트 바인딩 */
+function bindFastCameraEvents() {
+  if (fastCameraEventsBound) return;
+  fastCameraEventsBound = true;
+
+  var sizeToggleBtn = document.getElementById('fc-size-toggle-btn');
+  if (sizeToggleBtn) sizeToggleBtn.addEventListener('click', toggleFastCameraSize);
+  updateFastCameraSizeUI();
+
+  var closeBtn = document.getElementById('fc-close-btn');
+  if (closeBtn) closeBtn.addEventListener('click', function () { closeFastCameraModal(true); });
+
+  var shutterBtn = document.getElementById('fc-shutter-btn');
+  if (shutterBtn) shutterBtn.addEventListener('click', captureFastCamera);
+
+  var torchBtn = document.getElementById('fc-torch-btn');
+  if (torchBtn) torchBtn.addEventListener('click', toggleFastCameraTorch);
+
+  var btn05 = document.getElementById('fc-lens-05');
+  if (btn05) btn05.addEventListener('click', function () { setFastCameraZoom(0.5); });
+
+  var btn1 = document.getElementById('fc-lens-1');
+  if (btn1) btn1.addEventListener('click', function () { setFastCameraZoom(1); });
+
+  var btn2 = document.getElementById('fc-lens-2');
+  if (btn2) btn2.addEventListener('click', function () { setFastCameraZoom(2); });
+
+  var video = document.getElementById('fast-camera-video');
+  if (video) {
+    video.addEventListener('click', handleFastCameraTouchFocus);
+
+    // 핀치 투 줌 (터치 두 손가락 확대/축소)
+    var initialPinchDist = 0;
+    var initialPinchZoom = 1.0;
+    video.addEventListener('touchstart', function (e) {
+      if (e.touches && e.touches.length === 2) {
+        var dx = e.touches[0].clientX - e.touches[1].clientX;
+        var dy = e.touches[0].clientY - e.touches[1].clientY;
+        initialPinchDist = Math.hypot(dx, dy);
+        initialPinchZoom = fastCameraCurrentZoom || 1.0;
+      }
+    }, { passive: true });
+
+    video.addEventListener('touchmove', function (e) {
+      if (e.touches && e.touches.length === 2 && initialPinchDist > 0) {
+        var dx = e.touches[0].clientX - e.touches[1].clientX;
+        var dy = e.touches[0].clientY - e.touches[1].clientY;
+        var dist = Math.hypot(dx, dy);
+        var scale = dist / initialPinchDist;
+        applyFastCameraZoomValue(initialPinchZoom * scale);
+      }
+    }, { passive: true });
+
+    video.addEventListener('touchend', function (e) {
+      if (!e.touches || e.touches.length < 2) {
+        initialPinchDist = 0;
+      }
+    }, { passive: true });
+  }
+}
+
 function bindContextMenu() {
   if (!contextMenuEl) return;
   document.getElementById('camera-btn').addEventListener('click', function () {
     contextMenuEl.classList.remove('active');
-    if (window.localFs && typeof window.localFs.ensureStorageReady === 'function') {
-      window.localFs.ensureStorageReady(dxfFileFullName).then(function (ready) {
-        if (!ready) return;
-        var input = getEl('camera-input');
-        if (input) { input.click(); }
-      });
-      return;
-    }
-    var input = getEl('camera-input');
-    if (input) { input.click(); }
+    triggerCameraCapture();
   });
   document.getElementById('text-btn').addEventListener('click', function () {
     contextMenuEl.classList.remove('active');
@@ -2999,22 +3458,9 @@ function bindContextMenu() {
   getEl('camera-input').addEventListener('change', function (e) {
     var file = e.target && e.target.files[0];
     if (file) {
-      if (isAddingSubPhoto) {
-        if (editingPhotoId) {
-          // 일반사진 조사 추가사진 촬영
-          addSubPhotoToCurrentPhoto(file);
-        } else if (pendingStreetlightItem) {
-          // 객체감지 조사 추가사진 촬영
-          addSubPhotoToPendingStreetlight(file);
-        }
-      } else if (pendingStreetlightItem) {
-        showStreetlightInputForm(file, pendingStreetlightItem, pendingStreetlightDxfCoords, pendingStreetlightLatLng);
-      } else if (pendingAddPosition) {
-        addPhotoAtPosition(pendingAddPosition, file);
-      }
+      handleCapturedPhoto(file);
     }
     e.target.value = '';
-    isAddingSubPhoto = false;
   });
 }
 
@@ -3635,6 +4081,7 @@ function showPhotoModal(photoId) {
     if (!record) return;
 
     // subPhotos 배열 보정: 메모리에 남아있는 p.subPhotos가 있거나 단일 사진인 경우 안전하게 구성
+    // subPhotos 배열 보정: 메모리에 남아있는 p.subPhotos가 있거나 단일 사진인 경우 안전하게 구성
     if (!record.subPhotos || record.subPhotos.length === 0) {
       if (p && p.subPhotos && p.subPhotos.length > 0) {
         record.subPhotos = p.subPhotos;
@@ -3643,6 +4090,8 @@ function showPhotoModal(photoId) {
         var baseBlob = record.blob || (p && p.blob) || (baseFile && window._photoBlobCache ? window._photoBlobCache[baseFile] : null);
         record.subPhotos = [{ subIndex: 0, fileName: baseFile, blob: baseBlob }];
       }
+    } else if (p && p.subPhotos && p.subPhotos.length > record.subPhotos.length) {
+      record.subPhotos = p.subPhotos;
     }
 
     // [0925_01 혁신] 병렬 충돌 없는 순차(Sequential) 디스크 읽기로 로컬 폴더에서 모든 서브사진(메인 포함) 100% 안전 로드
@@ -3654,7 +4103,7 @@ function showPhotoModal(photoId) {
           spObj.blob = window._photoBlobCache[spObj.fileName];
           continue;
         }
-        if (spObj.fileName && window.localFs && window.localFs.isSupported() && window.localFs.hasBaseDir()) {
+        if (spObj.fileName && window.localFs && window.localFs.isSupported()) {
           try {
             var b = await window.localFs.getPhotoBlob(dxfFileFullName, spObj.fileName);
             if (b) {
@@ -3717,6 +4166,21 @@ function showPhotoModal(photoId) {
             var objUrl = URL.createObjectURL(targetBlob);
             subPhotoObjectUrls.push(objUrl);
             thumbImg.src = objUrl;
+          } else if (sp.fileName && window.localFs && window.localFs.isSupported()) {
+            thumbImg.alt = '로딩 중...';
+            window.localFs.getPhotoBlob(dxfFileFullName, sp.fileName).then(function (b) {
+              if (b) {
+                sp.blob = b;
+                if (window._photoBlobCache) window._photoBlobCache[sp.fileName] = b;
+                var objUrl = URL.createObjectURL(b);
+                subPhotoObjectUrls.push(objUrl);
+                thumbImg.src = objUrl;
+              } else {
+                thumbImg.alt = '사진 ' + (idx + 1);
+              }
+            }).catch(function () {
+              thumbImg.alt = '사진 ' + (idx + 1);
+            });
           } else {
             thumbImg.alt = '사진 ' + (idx + 1);
           }
@@ -3741,6 +4205,19 @@ function showPhotoModal(photoId) {
               img.onclick = function () {
                 openImageViewer(subs, idx);
               };
+            } else if (sp.fileName && window.localFs && window.localFs.isSupported()) {
+              window.localFs.getPhotoBlob(dxfFileFullName, sp.fileName).then(function (b) {
+                if (b && img) {
+                  sp.blob = b;
+                  if (window._photoBlobCache) window._photoBlobCache[sp.fileName] = b;
+                  if (dxfImageObjectUrl) URL.revokeObjectURL(dxfImageObjectUrl);
+                  dxfImageObjectUrl = URL.createObjectURL(b);
+                  img.src = dxfImageObjectUrl;
+                  img.onclick = function () {
+                    openImageViewer(subs, idx);
+                  };
+                }
+              });
             }
           });
           thumbContainer.appendChild(thumbDiv);
@@ -3894,22 +4371,8 @@ function bindPhotoModal() {
   if (addBtn) {
     addBtn.addEventListener('click', function () {
       if (!editingPhotoId) return;
-      if (window.localFs && typeof window.localFs.ensureStorageReady === 'function') {
-        window.localFs.ensureStorageReady(dxfFileFullName).then(function (ready) {
-          if (!ready) return;
-          isAddingSubPhoto = true;
-          var cameraInput = getEl('camera-input');
-          if (cameraInput) {
-            cameraInput.click();
-          }
-        });
-        return;
-      }
       isAddingSubPhoto = true;
-      var cameraInput = getEl('camera-input');
-      if (cameraInput) {
-        cameraInput.click();
-      }
+      triggerCameraCapture();
     });
   }
 
@@ -4880,6 +5343,8 @@ function triggerSubAttributesReset(container, config, prefixId, selectedSubType)
 // 디스크 DB(IndexedDB) 저장 완료 후 RAM 메모리 과부하 및 앱 재부팅 방지를 위한 메모리 정제
 function cleanPhotoMemory(photo) {
   if (!photo) return;
+  // 현재 모달창에서 편집/조회 중인 사진은 미리보기를 위해 메모리를 즉시 해제하지 않음
+  if (editingPhotoId && String(photo.id) === String(editingPhotoId)) return;
   if (photo.blob) photo.blob = null;
   if (photo.subPhotos && photo.subPhotos.length > 0) {
     photo.subPhotos.forEach(function (sp) {
@@ -5008,18 +5473,8 @@ function showStreetlightInputForm(fileBlob, item, dxfCoords, latLng) {
     addBtn.textContent = '📷 사진추가';
     addBtn.style.alignSelf = 'flex-start';
     addBtn.addEventListener('click', function () {
-      if (window.localFs && typeof window.localFs.ensureStorageReady === 'function') {
-        window.localFs.ensureStorageReady(dxfFileFullName).then(function (ready) {
-          if (!ready) return;
-          isAddingSubPhoto = true;
-          var cameraInput = getEl('camera-input');
-          if (cameraInput) cameraInput.click();
-        });
-        return;
-      }
       isAddingSubPhoto = true;
-      var cameraInput = getEl('camera-input');
-      if (cameraInput) cameraInput.click();
+      triggerCameraCapture();
     });
     photoControlWrap.appendChild(addBtn);
 
@@ -6350,31 +6805,13 @@ function hideStreetlightBottomSheet() {
 }
 
 function triggerStreetlightCamera(item, dxfCoords, latLng) {
-  if (window.localFs && typeof window.localFs.ensureStorageReady === 'function') {
-    window.localFs.ensureStorageReady(dxfFileFullName).then(function (ready) {
-      if (!ready) return;
-      pendingStreetlightItem = item;
-      pendingStreetlightDxfCoords = dxfCoords;
-      pendingStreetlightLatLng = latLng;
-      pendingFacilityType = item.type || detectFacilityType(item.name, item.layer) || item.name;
-
-      var cameraInput = getEl('camera-input');
-      if (cameraInput) {
-        cameraInput.click();
-      }
-    });
-    return;
-  }
-
   pendingStreetlightItem = item;
   pendingStreetlightDxfCoords = dxfCoords;
   pendingStreetlightLatLng = latLng;
   pendingFacilityType = item.type || detectFacilityType(item.name, item.layer) || item.name;
+  isAddingSubPhoto = false;
 
-  var cameraInput = getEl('camera-input');
-  if (cameraInput) {
-    cameraInput.click();
-  }
+  triggerCameraCapture();
 }
 
 function triggerStreetlightTextOnly(item, dxfCoords, latLng) {
@@ -6473,21 +6910,6 @@ function openFacilitySelectModal(dxfCoords, latLng) {
   // 3) 기본 일반사진 촬영
   btnGen.onclick = function () {
     closeModal();
-    if (window.localFs && typeof window.localFs.ensureStorageReady === 'function') {
-      window.localFs.ensureStorageReady(dxfFileFullName).then(function (ready) {
-        if (!ready) return;
-        pendingAddPosition = { x: dxfCoords.x, y: dxfCoords.y };
-        pendingStreetlightItem = null;
-        pendingStreetlightDxfCoords = null;
-        pendingStreetlightLatLng = null;
-        pendingFacilityType = null;
-        isAddingSubPhoto = false;
-
-        var input = getEl('camera-input');
-        if (input) { input.click(); }
-      });
-      return;
-    }
     pendingAddPosition = { x: dxfCoords.x, y: dxfCoords.y };
     pendingStreetlightItem = null;
     pendingStreetlightDxfCoords = null;
@@ -6495,8 +6917,7 @@ function openFacilitySelectModal(dxfCoords, latLng) {
     pendingFacilityType = null;
     isAddingSubPhoto = false;
 
-    var input = getEl('camera-input');
-    if (input) { input.click(); }
+    triggerCameraCapture();
   };
 
   modal.classList.add('active');
@@ -6650,6 +7071,13 @@ function addSubPhotoToCurrentPhoto(file) {
       window.localStore.savePhoto(dxfFileFullName, record).then(function () {
         window._photoBlobCache = window._photoBlobCache || {};
         window._photoBlobCache[newFileName] = blob;
+        if (record.subPhotos) {
+          record.subPhotos.forEach(function (sp) {
+            if (sp.blob && sp.fileName) {
+              window._photoBlobCache[sp.fileName] = sp.blob;
+            }
+          });
+        }
         p.subPhotos = record.subPhotos;
         p.updatedAt = record.updatedAt;
 
@@ -6788,6 +7216,8 @@ function showImageViewerSlide(index) {
 
 // 뷰어 이벤트 리스너 초기화
 document.addEventListener('DOMContentLoaded', function () {
+  updateCameraModeMenuLabel();
+  bindFastCameraEvents();
   var closeBtn = document.getElementById('image-viewer-close');
   if (closeBtn) closeBtn.addEventListener('click', closeImageViewer);
 

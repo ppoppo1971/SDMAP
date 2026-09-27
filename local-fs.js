@@ -225,7 +225,6 @@
     // 2. 기존에 영구 보존된 도면 전용 폴더 핸들이 있는지 확인
     var existingFolder = await loadDrawingFolderHandle(drawingName);
     if (existingFolder) {
-      // 읽기 모드(사진 미리보기 등)일 때는 불필요한 쓰기 권한 재요청 없이 즉시 활용
       if (!isWrite) {
         _drawingFolderHandles[cleanName] = existingFolder;
         return existingFolder;
@@ -237,13 +236,31 @@
       }
     }
 
-    // 3. 루트 작업 폴더 아래에서 [도면명] 하위 폴더 생성/가져오기
+    // 3. 읽기 전용 모드일 때: baseDirHandle이 이미 로드되어 있다면 바로 getDirectoryHandle 시도 (사용자 제스처 없이도 안전)
+    if (!isWrite) {
+      if (!_baseDirHandle) {
+        _baseDirHandle = await loadSavedBaseDirHandle();
+      }
+      if (_baseDirHandle) {
+        try {
+          var readSub = await _baseDirHandle.getDirectoryHandle(cleanName, { create: false });
+          if (readSub) {
+            _drawingFolderHandles[cleanName] = readSub;
+            saveDrawingFolderHandle(drawingName, readSub);
+            return readSub;
+          }
+        } catch (err) {}
+      }
+    }
+
+    // 4. 루트 작업 폴더 아래에서 [도면명] 하위 폴더 생성/가져오기
     var baseDir = await getBaseDirectory(isWrite);
     if (!baseDir) return null;
 
     try {
       var subFolder = await baseDir.getDirectoryHandle(cleanName, { create: autoCreate });
       if (subFolder) {
+        _drawingFolderHandles[cleanName] = subFolder;
         await saveDrawingFolderHandle(drawingName, subFolder);
       }
       return subFolder;
@@ -265,17 +282,18 @@
     }
 
     // 1. 루트 작업 폴더가 설정되어 있는지 검사
-    var baseDir = await getBaseDirectory();
+    var baseDir = await getBaseDirectory(true);
     if (!baseDir) {
       var proceed = confirm(
         '⚠️ 사진 및 데이터를 저장할 폴더가 설정되지 않았거나 접근 권한이 필요합니다.\n\n' +
-        '작업 결과가 안전하게 폴더에 저장되도록 저장 폴더를 선택(또는 권한 허용)해 주세요.'
+        '도면별로 [도면명] 전용 폴더가 자동 생성되어 사진과 데이터가 안전하게 저장됩니다.\n' +
+        '작업 저장 폴더를 선택(또는 권한 허용)해 주세요.'
       );
       if (proceed) {
         baseDir = await pickBaseDirectory();
       }
       if (!baseDir) {
-        alert('저장 폴더가 지정되지 않아 사진 촬영 및 저장을 진행할 수 없습니다.');
+        alert('⚠️ 저장 폴더가 지정되지 않아 사진 촬영 및 저장을 진행할 수 없습니다.');
         return false;
       }
     }
@@ -289,7 +307,7 @@
         folder = await getDrawingFolder(drawingName, true);
       }
       if (!folder) {
-        alert('저장 폴더 환경이 준비되지 않아 작업을 시작할 수 없습니다.');
+        alert('⚠️ 저장 폴더 환경이 준비되지 않아 작업을 진행할 수 없습니다.');
         return false;
       }
     }
@@ -309,6 +327,9 @@
     if (!isSupported()) return 'unsupported';
     if (!drawingName) return 'no_drawing';
     var cleanName = sanitizeDrawingName(drawingName);
+    if (!_baseDirHandle) {
+      _baseDirHandle = await loadSavedBaseDirHandle();
+    }
     var handle = _drawingFolderHandles[cleanName] || await loadDrawingFolderHandle(drawingName) || _baseDirHandle;
     if (!handle) return 'no_folder';
     try {
@@ -397,7 +418,11 @@
 
   // 도면 폴더에서 사진 Blob 가져오기
   async function getPhotoBlob(drawingName, fileName) {
+    if (!drawingName || !fileName) return null;
     var folderHandle = await getDrawingFolder(drawingName, false);
+    if (!folderHandle) {
+      folderHandle = await getDrawingFolder(drawingName, true);
+    }
     if (!folderHandle) return null;
 
     try {
@@ -824,6 +849,8 @@
     getBaseDirectory: getBaseDirectory,
     ensureStorageReady: ensureStorageReady,
     checkFolderStatus: checkFolderStatus,
+    sanitizeDrawingName: sanitizeDrawingName,
+    getDrawingFolderName: sanitizeDrawingName,
     hasBaseDir: function () {
       return !!(_baseDirHandle || localStorage.getItem('sdmap_base_dir_name'));
     }
