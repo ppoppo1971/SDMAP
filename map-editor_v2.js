@@ -1221,9 +1221,10 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
           throw new Error(entry.name + ' 파일의 형식이 올바르지 않습니다.');
         }
 
-        // 관련 DXF 파일 이름 수집
-        if (partData.dxfFile && dxfFileList.indexOf(partData.dxfFile) === -1) {
-          dxfFileList.push(partData.dxfFile);
+        // 관련 DXF 파일 이름 수집 (dxfFile 및 drawingFile 모두 지원)
+        var dxfTarget = partData.dxfFile || partData.drawingFile || '';
+        if (dxfTarget && dxfFileList.indexOf(dxfTarget) === -1) {
+          dxfFileList.push(dxfTarget);
         }
 
         // 2개 이상 파일 로드 시에만 충돌 방지 고유 접미사 부여 (단일 로드 시에는 ID 보존)
@@ -1233,6 +1234,10 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
         if (partData.photos) {
           partData.photos.forEach(function (p) {
             var newPhoto = Object.assign({}, p);
+            // position 객체 누락 시 x, y로부터 자동 생성
+            if (!newPhoto.position && typeof newPhoto.x === 'number' && typeof newPhoto.y === 'number') {
+              newPhoto.position = { x: newPhoto.x, y: newPhoto.y };
+            }
             if (newPhoto.id) newPhoto.id = newPhoto.id + suffix;
             if (newPhoto.numTextId) newPhoto.numTextId = newPhoto.numTextId + suffix;
             if (newPhoto.specTextId) newPhoto.specTextId = newPhoto.specTextId + suffix;
@@ -1257,8 +1262,9 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
         }
       }
 
-      // 수집된 DXF 명칭 기록
+      // 수집된 DXF 명칭 기록 (dxfFile 및 drawingFile 모두 동기화)
       metadata.dxfFile = dxfFileList.join(' & ');
+      metadata.drawingFile = metadata.dxfFile;
 
       // [고도화 추가] 사진 번호에 _가 들어간 참조용 사진(예: 사진 번호가 '10_1')의 속성 및 메모 일괄 자동 정제 (캐드 텍스트 중복 방지)
       if (metadata && metadata.photos) {
@@ -1873,7 +1879,8 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
       if (self.isClusterRepresentation && map && map.getZoom() <= 17) {
         map.setZoom(18);
         if (self.photo.position) {
-          var repLngLat = window.DxfToGeoJSON.dxfToLngLat(self.photo.position.x, -self.photo.position.y);
+          var repY = self.photo.position.y < 0 ? -self.photo.position.y : self.photo.position.y;
+          var repLngLat = window.DxfToGeoJSON.dxfToLngLat(self.photo.position.x, repY);
           if (repLngLat) map.panTo(new google.maps.LatLng(repLngLat[1], repLngLat[0]));
         }
         return;
@@ -1922,7 +1929,8 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
     this.div.style.display = 'block';
     
     var dxfX = this.photo.position.x;
-    var dxfY = -this.photo.position.y; 
+    // 지능형 Y좌표 판별: 음수(과거 브라우저 좌표)일 때만 양수로 반전, 이미 양수(최신 정좌표)면 그대로 유지
+    var dxfY = this.photo.position.y < 0 ? -this.photo.position.y : this.photo.position.y;
     
     var lngLat = window.DxfToGeoJSON.dxfToLngLat(dxfX, dxfY);
     if (!lngLat) return;
@@ -2658,7 +2666,8 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
 
     /* 더블클릭 오동작(더블클릭 전에 지도가 도망치는 버그) 해결을 위해 단일 클릭 시 자동 맵이동 제거
     if (p.position) {
-      var lngLat = window.DxfToGeoJSON.dxfToLngLat(p.position.x, -p.position.y);
+      var posY = p.position.y < 0 ? -p.position.y : p.position.y;
+      var lngLat = window.DxfToGeoJSON.dxfToLngLat(p.position.x, posY);
       if (lngLat && map) {
         map.panTo(new google.maps.LatLng(lngLat[1], lngLat[0]));
         // [고도화 추가] 사진 개별 선택 시 지도를 줌 레벨 22배율로 정밀 확대
@@ -2739,7 +2748,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
 
       var parseResult = deserializeSpecText(textObj.text, textObj.layer);
       if (parseResult) {
-        renderAttributeCard(cardsContainer, parseResult.facilityType, parseResult.values, tId);
+        renderAttributeCard(cardsContainer, parseResult.facilityType, parseResult.values, tId, parseResult.isSub);
       }
     });
 
@@ -2747,6 +2756,13 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
       // 사진 객체 자체에 facilityType이 정의되어 있고 일반사진이 아닌 경우, 최우선적으로 해당 카드 복원!
       if (p.facilityType && p.facilityType !== '일반사진') {
         renderAttributeCard(cardsContainer, p.facilityType, null);
+        if (p.additionalTypes && Array.isArray(p.additionalTypes)) {
+          p.additionalTypes.forEach(function (subType) {
+            if (subType && subType !== '일반사진') {
+              renderAttributeCard(cardsContainer, subType, null, null, true);
+            }
+          });
+        }
       } else if (p.edited !== true) {
         var autoType = detectFacilityType(p.fileName, p.memo);
         if (autoType) {
@@ -2831,44 +2847,86 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
     });
   }
 
-  // 제원 역직렬화
+  // 제원 역직렬화 (부시설물(+) 자동 판별 및 축약어 100% 매핑 보강)
   function deserializeSpecText(text, layerName) {
     if (!text) return null;
     var parts = text.split('/');
-    var fType = parts[0];
+    var rawPrefix = (parts[0] || '').trim();
     
-    // 모바일 기기 및 기존 전개 데이터의 축약형 접두사 보정 매핑
-    if (fType === '차량방호') {
-      fType = '차량방호시설';
-    } else if (fType === '낙석방지') {
-      fType = '낙석방지시설';
-    } else if (fType === '무단횡단방지') {
-      fType = '무단횡단방지시설';
-    } else if (fType === '미끄럼방지') {
-      fType = '미끄럼방지시설';
+    // 1. 부속시설물(+) 여부 판별 및 순수 접두어 분리
+    var isSub = false;
+    var prefix = rawPrefix;
+    if (prefix.startsWith('+')) {
+      isSub = true;
+      prefix = prefix.substring(1).trim();
     }
 
-    // 레이어명을 기반으로 대분류명(fType)을 강제 보정/매칭해 주는 안전 장치
-    if (layerName) {
-      if (layerName === '과속방지턱_T') {
-        fType = '과속방지턱';
-      } else if (layerName === '석축_T') {
-        fType = '석축';
-      } else if (layerName === '차량방호_T') {
-        fType = '차량방호시설';
-      } else if (layerName === '옹벽_T') {
-        fType = '옹벽';
-      } else if (layerName === '배수암거_T') {
-        fType = '배수암거';
-      } else if (layerName === '측구_T') {
-        fType = '측구';
-      } else if (layerName === '가로등_T') {
-        fType = '가로등';
-      } else if (layerName === '주차장_T') {
-        fType = '주차장';
+    var fType = null;
+
+    // 2. 축약어 및 동의어 매핑 사전
+    var aliasMap = {
+      '도경': '도로경계석',
+      '경계석': '도로경계석',
+      '가등': '가로등',
+      '보등': '보안등',
+      '보조': '보조표지',
+      '사설': '사설표지',
+      '지시': '지시표지',
+      '규제': '규제표지',
+      '주의': '주의표지',
+      '기타': '기타표지',
+      '방음': '소음방지책',
+      '중분': '중앙분리대',
+      '볼': '볼라드',
+      '과방': '과속방지턱',
+      '차진': '차량진입',
+      '턱': '턱낮춤',
+      '반사경': '도로반사경',
+      '승강(버스)': '버스정류장',
+      '차량방호': '차량방호시설',
+      '낙석방지': '낙석방지시설',
+      '무단횡단방지': '무단횡단방지시설',
+      '미끄럼방지': '미끄럼방지시설'
+    };
+
+    if (aliasMap[prefix]) {
+      fType = aliasMap[prefix];
+    } else if (FACILITY_CONFIG[prefix]) {
+      fType = prefix;
+    } else {
+      // FACILITY_CONFIG 순회 매칭 (prefix 또는 title 또는 key 일치 확인)
+      for (var key in FACILITY_CONFIG) {
+        var cfg = FACILITY_CONFIG[key];
+        if (cfg) {
+          if (cfg.prefix && cfg.prefix === prefix) {
+            fType = key;
+            break;
+          }
+          if (cfg.title && cfg.title === prefix) {
+            fType = key;
+            break;
+          }
+        }
       }
     }
 
+    // 3. 레이어명 기반 안전 매칭 (레이어명에 기반해 대분류 강제 보정)
+    if (!fType && layerName) {
+      var cleanLayer = layerName.replace(/_T$/i, '').trim();
+      if (FACILITY_CONFIG[cleanLayer]) {
+        fType = cleanLayer;
+      } else {
+        for (var lKey in FACILITY_CONFIG) {
+          var lCfg = FACILITY_CONFIG[lKey];
+          if (lCfg && lCfg.layer === layerName) {
+            fType = lKey;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!fType) return null;
     var config = FACILITY_CONFIG[fType];
     if (!config) return null;
 
@@ -2876,17 +2934,11 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
     var fieldIdx = 1;
     
     if (fType === '신호등') {
-      // parts[1]: 종류 ('차량' or '보행')
-      // parts[2]: 형식*수량 ('횡4*2')
-      // parts[3]: 지주형식 ('측주')
-      // parts[4]: 보행등구분*수량 ('보행등*1' or '보행등무')
       values['type'] = parts[1] || '--';
-      
       var styleAndCount = parts[2] || '';
       var scParts = styleAndCount.split('*');
       values['style'] = scParts[0] || '--';
       values['count'] = scParts[1] || '1';
-      
       values['support'] = parts[3] || '--';
       
       var pedInfo = parts[4] || '';
@@ -2904,8 +2956,6 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
         values['pedestrianCount'] = '';
       }
     } else if (fType === '석축') {
-      // 석축의 모바일 축약 전개 포맷("석축/최대높이/최소높이/폭" -> 4파트) 및 표준 5파트 포맷 통합 지원
-      // parts[0]이 "석축"이 아닌 다른 값(예: 종류 필드 값)이거나 parts.length가 4개일 때
       if (parts[0] !== '석축' || parts.length === 4) {
         values['type'] = parts[0] || '석축';
         values['maxH'] = parts[1] || '';
@@ -2918,8 +2968,6 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
         values['width'] = parts[4] || '';
       }
     } else if (fType === '과속방지턱') {
-      // 과속방지턱의 축약형("형식/재질/높이" -> 3파트) 및 표준 4파트 포맷 지원
-      // parts[0]이 "과속방지턱"이 아니거나(예: '이미지방'), parts.length가 3개일 때
       if (parts[0] !== '과속방지턱' || parts.length === 3) {
         values['style'] = parts[0] || '--';
         values['material'] = parts[1] || '';
@@ -2959,8 +3007,12 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
         values['width'] = dimParts[0] || '';
         values['height'] = dimParts[1] || '';
       }
-    } else {
+    } else if (config.fields) {
       config.fields.forEach(function (f) {
+        // 부속시설물일 경우 지주 및 사진 항목은 건너뜀 (저장 시 생략되었으므로 순서 보정)
+        if (isSub && (f.isSupport || f.isPhoto || /지주|사진/.test(f.label))) {
+          return;
+        }
         if (fieldIdx < parts.length) {
           values[f.id] = parts[fieldIdx];
           fieldIdx++;
@@ -2968,7 +3020,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
       });
     }
 
-    return { facilityType: fType, values: values };
+    return { facilityType: fType, values: values, isSub: isSub };
   }
 
   function detectFacilityType(fileName, memo) {
@@ -3069,7 +3121,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
   }
 
   // 속성 카드 렌더링
-  function renderAttributeCard(container, type, cachedVals, existingTextId) {
+  function renderAttributeCard(container, type, cachedVals, existingTextId, isSubParam) {
     // 전력주와 통신주는 캐드 전개 비대상 시설물이므로 속성 카드 노출을 원천 차단
     if (type === '전력주' || type === '통신주') return;
     
@@ -3105,10 +3157,9 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
     header.appendChild(delBtn);
     card.appendChild(header);
 
-    // 부속시설물 판별 (컨테이너 내에 이미 카드가 1개 이상 존재할 경우)
-    var isSub = false;
-    if (container.children && container.children.length > 0) {
-      isSub = true;
+    // 부속시설물 판별 (파라미터 전달 또는 컨테이너 내에 이미 카드가 1개 이상 존재할 경우)
+    var isSub = isSubParam === true || (container.children && container.children.length > 0);
+    if (isSub) {
       card.setAttribute('data-is-sub', 'true');
     }
 
@@ -3410,6 +3461,7 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
       metadata.texts = [];
     }
 
+    var addTypes = [];
     cards.forEach(function (card, index) {
       var type = card.getAttribute('data-facility-type');
       var config = FACILITY_CONFIG[type];
@@ -3428,22 +3480,27 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
         y: p.position.y,
         text: specStr,
         layer: config.layer || (type + '_T'),
-        color: null
+        color: (config.color !== undefined && config.color !== null) ? Number(config.color) : 7
       };
 
       metadata.texts.push(specTextObj);
       newTextIds.push(textId);
+      if (index > 0) {
+        addTypes.push(type);
+      }
     });
 
     if (newTextIds.length > 0) {
       p.facilityType = cards[0].getAttribute('data-facility-type');
       p.specTextId = newTextIds[0];
       p.specTextIds = newTextIds;
+      p.additionalTypes = addTypes;
     } else {
       // 속성을 다 비우고 저장했을 경우 '일반사진'으로 명시 전환
       p.facilityType = '일반사진';
       p.specTextId = null;
       p.specTextIds = null;
+      p.additionalTypes = [];
     }
 
     // [고도화 추가] 저장 완료 상태 플래그 설정 (마커 색상 파란색 전환용)

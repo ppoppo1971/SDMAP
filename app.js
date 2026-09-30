@@ -4928,6 +4928,7 @@ function bindPhotoModal() {
         attributeDataList.push({
           type: type,
           layer: result.layer,
+          color: (config.color !== undefined && config.color !== null) ? Number(config.color) : 7,
           specText: result.specText,
           values: result.values
         });
@@ -4982,6 +4983,7 @@ function bindPhotoModal() {
             text: attr.specText,
             fontSize: 12,
             layer: attr.layer || '일반_T',
+            color: attr.color !== undefined ? attr.color : 7,
             specValues: attr.values
           };
           texts.push(specTextObj);
@@ -5011,7 +5013,8 @@ function bindPhotoModal() {
         y: surveyY,
         text: newNum,
         fontSize: 12,
-        layer: '사진번호'
+        layer: '사진번호',
+        color: 7
       };
       texts.push(numTextObj);
 
@@ -5030,6 +5033,7 @@ function bindPhotoModal() {
           text: attr.specText,
           fontSize: 12,
           layer: attr.layer || '일반_T',
+          color: attr.color !== undefined ? attr.color : 7,
           specValues: attr.values
         };
         texts.push(specTextObj);
@@ -5196,6 +5200,7 @@ function bindPhotoModal() {
         text: attr.specText,
         fontSize: 12,
         layer: attr.layer || '일반_T',
+        color: attr.color !== undefined ? attr.color : 7,
         specValues: attr.values
       };
       texts.push(specTextObj);
