@@ -4417,6 +4417,8 @@ function showPhotoModal(photoId) {
   if (actionsEl) actionsEl.style.display = 'flex';
   if (noFileEl) noFileEl.style.display = 'none';
   if (addBtn) addBtn.style.display = (isNewSurvey && !hasSubPhotos) ? 'none' : 'inline-block';
+  var measureBtnEl = document.getElementById('photo-modal-measure-btn');
+  if (measureBtnEl) measureBtnEl.style.display = (isNewSurvey && !hasSubPhotos) ? 'none' : 'inline-flex';
   if (delBtn) delBtn.style.display = isNewSurvey ? 'none' : 'inline-block';
 
   memoInput.style.display = 'block';
@@ -4782,6 +4784,8 @@ function showDxfImageModal(ref) {
   if (actionsEl) actionsEl.style.display = 'none';
   var addBtn = getEl('photo-modal-add-btn');
   if (addBtn) addBtn.style.display = 'none';
+  var measureBtnEl = document.getElementById('photo-modal-measure-btn');
+  if (measureBtnEl) measureBtnEl.style.display = 'none';
   var thumbContainer = getEl('photo-modal-thumbnails');
   if (thumbContainer) thumbContainer.innerHTML = '';
   img.onclick = null;
@@ -4875,6 +4879,38 @@ function bindPhotoModal() {
       if (!editingPhotoId && !isNewSurvey) return;
       isAddingSubPhoto = true;
       triggerCameraCapture();
+    });
+  }
+
+  var measureBtn = document.getElementById('photo-modal-measure-btn');
+  if (measureBtn) {
+    measureBtn.addEventListener('click', function () {
+      if (editingDxfImageRef) {
+        showToast('참조 도면 이미지는 실측 대상이 아닙니다.');
+        return;
+      }
+      var imgEl = getEl('photo-modal-img');
+      if (!imgEl || !imgEl.src || imgEl.style.display === 'none') {
+        showToast('측정할 사진이 없습니다.');
+        return;
+      }
+      if (imgEl.alt === '로딩 중...') {
+        showToast('사진을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.');
+        return;
+      }
+      if (window.PhotoMeasure) {
+        window.PhotoMeasure.open(imgEl.src, function (annotatedBlob) {
+          var file = new File([annotatedBlob], '치수실측_' + Date.now() + '.jpg', { type: 'image/jpeg' });
+          if (pendingFacilitySurvey && pendingFacilitySurvey.isNew) {
+            addSubPhotoToPendingNewSurvey(file);
+          } else if (editingPhotoId) {
+            addSubPhotoToCurrentPhoto(file);
+          }
+          if (typeof renderPhotoModalThumbnails === 'function') {
+            renderPhotoModalThumbnails();
+          }
+        });
+      }
     });
   }
 

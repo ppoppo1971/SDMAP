@@ -1,0 +1,351 @@
+/* photo-measure.css - 모바일 현장용 사진 정밀 실측 모달 스타일 (v2) */
+
+#phm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  background-color: #0b0d11;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  overflow: hidden;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* 상단 네비게이션 헤더 */
+.phm-header {
+  height: 52px;
+  background: rgba(18, 22, 30, 0.96);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  color: #fff;
+  z-index: 20;
+}
+
+.phm-title-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.phm-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.phm-step-badge {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+}
+
+.phm-header-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.phm-btn {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  padding: 6px 11px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.phm-btn:active {
+  transform: scale(0.95);
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.phm-btn-primary {
+  background: #2563eb;
+  border-color: #3b82f6;
+}
+
+.phm-btn-close {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  border-radius: 8px;
+}
+
+/* 중앙 메인 캔버스 뷰포트 */
+.phm-canvas-viewport {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: #06070a;
+  cursor: crosshair;
+}
+
+#phm-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* 가이드 알림 배너 (상단 오버레이) */
+.phm-guide-banner {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(59, 130, 246, 0.7);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  padding: 7px 14px;
+  border-radius: 20px;
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 600;
+  z-index: 10;
+  pointer-events: none;
+  white-space: nowrap;
+  max-width: 92vw;
+  text-align: center;
+}
+
+/* 우측 상단 미니 툴바 (되돌리기, 재보정, 화면맞춤) */
+.phm-canvas-toolbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 10;
+}
+
+.phm-tool-btn {
+  background: rgba(30, 41, 59, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #e2e8f0;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.phm-tool-btn:active {
+  background: #334155;
+  transform: scale(0.93);
+}
+
+/* 하단 측정 결과 바 및 컨트롤 패널 */
+.phm-bottom-panel {
+  background: rgba(18, 22, 30, 0.97);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  z-index: 20;
+}
+
+/* 실시간 측정 결과 카드 */
+.phm-result-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.phm-result-card {
+  flex: 1;
+  background: rgba(30, 41, 59, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.phm-result-label {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.phm-result-val {
+  font-size: 17px;
+  font-weight: 800;
+  font-family: monospace;
+}
+
+.phm-result-val.v-val {
+  color: #4ade80; /* 높이 = 녹색 */
+}
+
+.phm-result-val.h-val {
+  color: #38bdf8; /* 가로 = 하늘색 */
+}
+
+.phm-copy-btn {
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  padding: 4px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-left: 6px;
+}
+
+.phm-copy-btn:active {
+  background: #10b981;
+}
+
+/* 스타프 눈금 자유 지정 3칸 바 (방안 B) */
+.phm-staff-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.phm-staff-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.phm-staff-inputs {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.phm-staff-inputs input {
+  width: 44px;
+  background: #0f172a;
+  border: 1px solid #475569;
+  color: #38bdf8;
+  border-radius: 6px;
+  padding: 3px 4px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 12px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.phm-staff-inputs input:focus {
+  border-color: #38bdf8;
+  outline: none;
+  background: #1e293b;
+}
+
+.phm-staff-inputs span {
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* 측정 히스토리 칩스 */
+.phm-history-box {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding: 2px 0;
+  scrollbar-width: none;
+}
+
+.phm-history-box::-webkit-scrollbar {
+  display: none;
+}
+
+.phm-chip {
+  background: rgba(51, 65, 85, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #f1f5f9;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.phm-chip:active {
+  background: #2563eb;
+}
+
+/* 복사 완료 토스트 */
+.phm-toast {
+  position: absolute;
+  top: 65px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #10b981;
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  z-index: 30;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.phm-toast.show {
+  opacity: 1;
+}

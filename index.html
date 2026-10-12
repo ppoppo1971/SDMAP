@@ -18,6 +18,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
   <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="stylesheet" href="photo-measure.css">
   <title>도로조사 - 도로대장 현장조사</title>
   <style>
     /* 구글 지도 하단 UI (단축키, 로고, 저작권, 약관 등) 강제 숨김 */
@@ -888,7 +889,8 @@
     <div class="modal-content">
       <div class="modal-header">
         <h3 id="photo-modal-title">사진</h3>
-        <div style="display:flex; align-items:center; gap:10px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button type="button" class="btn-measure-photo" id="photo-modal-measure-btn" style="background:#2563eb; color:#fff; border:none; padding:6px 12px; border-radius:6px; font-weight:600; font-size:12px; cursor:pointer; display:inline-flex; align-items:center; gap:4px;">📏 사진 실측</button>
           <button type="button" class="btn-add-photo" id="photo-modal-add-btn" style="display:none;">📷 사진추가</button>
           <span class="close-btn" id="photo-modal-close">&times;</span>
         </div>
@@ -1093,6 +1095,8 @@
   <script src="dxf-to-geojson.js"></script>
   <!-- 사진 마커 클러스터링 (200~300장 대응) -->
   <script src="https://unpkg.com/@googlemaps/markerclusterer@2.5.3/dist/index.min.js"></script>
+  <!-- 사진 정밀 실측 모듈 -->
+  <script src="photo-measure.js"></script>
   <script src="app.js?v=4.1"></script>
   <script>
     (function() {
