@@ -2484,9 +2484,10 @@ function setMapType(type) {
 }
 
 function getImageTargetSize() {
-  // [0927] 고속 즉시 모드는 캔버스에서 1MB/500KB로 직접 생성하고,
-  // 일반 고화질 모드는 스마트폰 기본 카메라의 원본 화질(변환/압축 없음)로 저장하므로 사후 압축을 완전히 생략합니다.
-  return null;
+  if (imageSizeSetting === '500KB') return 500 * 1024;
+  if (imageSizeSetting === '1MB') return 1024 * 1024;
+  if (imageSizeSetting === '2MB') return 2 * 1024 * 1024;
+  return null; // 'original' 또는 미지정 시 원본 유지
 }
 
 /** ADMAP과 동일: DXF 파일 기준명(.dxf 제외) */
@@ -3287,6 +3288,40 @@ var fastCameraUltraWideDeviceId = null;
 var fastCameraMainDeviceId = null;
 var fastCameraCurrentDeviceId = null;
 var fastCameraEventsBound = false;
+var fastCameraDeviceAngle = 0; // 0 (세로 정상), 90 (가로 우측), 180 (세로 역방향), 270 (가로 좌측)
+var fastCameraOrientationHandler = null;
+
+function updateFastCameraOrientationFromSensor(e) {
+  var guide = document.getElementById('fc-viewfinder-guide');
+  // 1) screen.orientation 또는 window.orientation 확인
+  var screenAngle = (window.screen && window.screen.orientation && window.screen.orientation.angle !== undefined)
+    ? window.screen.orientation.angle
+    : (window.orientation !== undefined ? window.orientation : null);
+
+  var detectedAngle = 0;
+  if (screenAngle !== null && screenAngle !== 0) {
+    detectedAngle = (screenAngle + 360) % 360;
+  } else if (e && e.gamma !== null && e.beta !== null) {
+    // 2) 화면 회전 잠금 상태에서 기기 기울기 감지
+    var g = e.gamma;
+    var b = e.beta;
+    if (Math.abs(g) > 35 && Math.abs(b) < 65) {
+      detectedAngle = (g < 0) ? 90 : 270;
+    } else if (Math.abs(g) < 25) {
+      detectedAngle = (b < -30) ? 180 : 0;
+    }
+  }
+
+  fastCameraDeviceAngle = detectedAngle;
+  if (guide) {
+    var isLand = (detectedAngle === 90 || detectedAngle === 270);
+    if (isLand) {
+      guide.classList.add('landscape');
+    } else {
+      guide.classList.remove('landscape');
+    }
+  }
+}
 
 function updateFastCameraSizeUI() {
   var label = document.getElementById('fc-size-label');
@@ -3305,9 +3340,9 @@ function toggleFastCameraSize() {
   localStorage.setItem('sdmap_fast_cam_size', fastCameraSizeSetting);
   updateFastCameraSizeUI();
   if (fastCameraSizeSetting === '500KB') {
-    showToast('고속 촬영 화질: 500KB 설정됨 (HD 1280×720, 저장속도 극대화)');
+    showToast('고속 촬영 화질: 500KB (3:4/4:3 표준, 약 150~300KB)');
   } else {
-    showToast('고속 촬영 화질: 1MB 설정됨 (FHD 1920×1080, 표준 고화질)');
+    showToast('고속 촬영 화질: 1MB (3:4/4:3 고화질, 약 300~500KB)');
   }
 }
 
@@ -3401,11 +3436,22 @@ function openFastCameraModal(callback) {
   updateFastCameraSizeUI();
   modal.classList.remove('hidden');
 
+  // 센서 이벤트 등록
+  updateFastCameraOrientationFromSensor(null);
+  if (!fastCameraOrientationHandler) {
+    fastCameraOrientationHandler = function (e) {
+      updateFastCameraOrientationFromSensor(e);
+    };
+    window.addEventListener('deviceorientation', fastCameraOrientationHandler, true);
+    window.addEventListener('orientationchange', fastCameraOrientationHandler, true);
+  }
+
   var constraints = {
     video: {
       facingMode: { ideal: 'environment' },
-      width: { ideal: 1920, max: 1920 },
-      height: { ideal: 1080, max: 1080 }
+      width: { ideal: 1920, max: 2560 },
+      height: { ideal: 1440, max: 1920 },
+      aspectRatio: { ideal: 4 / 3 }
     },
     audio: false
   };
@@ -3625,8 +3671,8 @@ function switchFastCameraDevice(deviceId, targetZoom) {
   }
   var constraints = {
     video: deviceId
-      ? { deviceId: { exact: deviceId }, width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 } }
-      : { facingMode: { ideal: 'environment' }, width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 } },
+      ? { deviceId: { exact: deviceId }, width: { ideal: 1920, max: 2560 }, height: { ideal: 1440, max: 1920 }, aspectRatio: { ideal: 4 / 3 } }
+      : { facingMode: { ideal: 'environment' }, width: { ideal: 1920, max: 2560 }, height: { ideal: 1440, max: 1920 }, aspectRatio: { ideal: 4 / 3 } },
     audio: false
   };
   navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
@@ -3691,7 +3737,7 @@ function toggleFastCameraTorch() {
   }
 }
 
-/** 셔터 클릭: 실시간 비디오 프레임 즉시 캡처 및 후속 프로세스 자동 직행 */
+/** 셔터 클릭: 실시간 비디오 프레임 즉시 캡처 및 3:4(세로) / 4:3(가로) 자동 최적화 직행 */
 function captureFastCamera() {
   var video = document.getElementById('fast-camera-video');
   var flash = document.getElementById('fc-flash-overlay');
@@ -3712,26 +3758,85 @@ function captureFastCamera() {
   var vw = video.videoWidth || 1920;
   var vh = video.videoHeight || 1080;
 
-  var w = vw;
-  var h = vh;
-  if (w > maxDim || h > maxDim) {
-    if (w >= h) {
-      h = Math.round((h / w) * maxDim);
-      w = maxDim;
-    } else {
-      w = Math.round((w / h) * maxDim);
-      h = maxDim;
+  // 기기 방향 판별 (0, 90, 180, 270)
+  var angle = fastCameraDeviceAngle || 0;
+  if (window.screen && window.screen.orientation && window.screen.orientation.angle !== undefined) {
+    if (window.screen.orientation.angle !== 0) {
+      angle = (window.screen.orientation.angle + 360) % 360;
     }
+  } else if (window.orientation !== undefined && window.orientation !== 0) {
+    angle = (window.orientation + 360) % 360;
+  }
+
+  // 가로 모드 (90도 또는 270도) vs 세로 모드 (0도 또는 180도)
+  var isLandscape = (angle === 90 || angle === 270);
+
+  // 목표 캔버스 크기 결정 (세로는 3:4, 가로는 4:3)
+  var targetW, targetH;
+  if (isLandscape) {
+    targetW = maxDim;
+    targetH = Math.round(maxDim * (3 / 4)); // 예: 1920×1440 또는 1280×960
+  } else {
+    targetH = maxDim;
+    targetW = Math.round(maxDim * (3 / 4)); // 예: 1440×1920 또는 960×1280
   }
 
   var canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
+  canvas.width = targetW;
+  canvas.height = targetH;
   var ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, w, h);
+
+  var streamIsLandscape = (vw >= vh);
+
+  // 스트림 방향과 기기 회전 방향 일치 여부에 따른 크롭 및 회전 처리
+  if ((!isLandscape && !streamIsLandscape) || (isLandscape && streamIsLandscape)) {
+    // 1) 기기 방향과 비디오 스트림 방향이 일치할 때 (회전 불필요, 3:4/4:3 중앙 크롭)
+    var targetRatio = targetW / targetH;
+    var streamRatio = vw / vh;
+    var sx, sy, sw, sh;
+    if (streamRatio > targetRatio) {
+      sw = Math.round(vh * targetRatio);
+      sh = vh;
+      sx = Math.round((vw - sw) / 2);
+      sy = 0;
+    } else {
+      sw = vw;
+      sh = Math.round(vw / targetRatio);
+      sx = 0;
+      sy = Math.round((vh - sh) / 2);
+    }
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, targetW, targetH);
+  } else {
+    // 2) 회전 잠금 등으로 기기만 돌려 가로 촬영 시 (90도/270도 자동 회전 보정)
+    ctx.save();
+    ctx.translate(targetW / 2, targetH / 2);
+
+    var rotDeg = (angle === 270) ? -90 : 90;
+    ctx.rotate((rotDeg * Math.PI) / 180);
+
+    var rotatedTargetW = (Math.abs(rotDeg) === 90 || Math.abs(rotDeg) === 270) ? targetH : targetW;
+    var rotatedTargetH = (Math.abs(rotDeg) === 90 || Math.abs(rotDeg) === 270) ? targetW : targetH;
+    var targetRatio = rotatedTargetW / rotatedTargetH;
+    var streamRatio = vw / vh;
+    var sx, sy, sw, sh;
+    if (streamRatio > targetRatio) {
+      sw = Math.round(vh * targetRatio);
+      sh = vh;
+      sx = Math.round((vw - sw) / 2);
+      sy = 0;
+    } else {
+      sw = vw;
+      sh = Math.round(vw / targetRatio);
+      sx = 0;
+      sy = Math.round((vh - sh) / 2);
+    }
+
+    ctx.drawImage(video, sx, sy, sw, sh, -rotatedTargetW / 2, -rotatedTargetH / 2, rotatedTargetW, rotatedTargetH);
+    ctx.restore();
+  }
 
   canvas.toBlob(function (blob) {
-    // 캔버스 GPU 메모리 즉시 반환 (8.3MB 누수 차단)
+    // 캔버스 GPU 메모리 즉시 반환 (누수 차단)
     canvas.width = 0;
     canvas.height = 0;
     ctx = null;
@@ -3761,6 +3866,12 @@ function captureFastCamera() {
 function closeFastCameraModal(isCanceled) {
   var modal = document.getElementById('fast-camera-modal');
   if (modal) modal.classList.add('hidden');
+
+  if (fastCameraOrientationHandler) {
+    window.removeEventListener('deviceorientation', fastCameraOrientationHandler, true);
+    window.removeEventListener('orientationchange', fastCameraOrientationHandler, true);
+    fastCameraOrientationHandler = null;
+  }
 
   if (fastCameraStream) {
     try {

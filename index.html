@@ -671,6 +671,27 @@
       width: 100%; height: 100%; object-fit: cover;
       position: absolute; top: 0; left: 0; z-index: 1;
     }
+    .fc-viewfinder-guide {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 100vw;
+      height: calc(100vw * 4 / 3);
+      max-height: 100vh;
+      max-width: calc(100vh * 3 / 4);
+      border: 1.5px dashed rgba(255, 255, 255, 0.45);
+      border-radius: 8px;
+      pointer-events: none;
+      z-index: 2;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.22);
+      transition: all 0.25s ease-out;
+    }
+    .fc-viewfinder-guide.landscape {
+      width: calc(100vh * 4 / 3);
+      height: 100vh;
+      max-width: 100vw;
+      max-height: calc(100vw * 3 / 4);
+    }
     .fast-camera-top-bar {
       position: relative; z-index: 10;
       display: flex; justify-content: space-between; align-items: center;
@@ -1058,6 +1079,7 @@
   <!-- 인앱 고속 즉시 촬영 카메라 모달 -->
   <div id="fast-camera-modal" class="fast-camera-modal hidden">
     <video id="fast-camera-video" playsinline autoplay muted></video>
+    <div id="fc-viewfinder-guide" class="fc-viewfinder-guide"></div>
     <div class="fast-camera-top-bar">
       <button type="button" class="fc-btn" id="fc-close-btn" title="닫기">✕</button>
       <div class="fc-top-center">
