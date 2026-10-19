@@ -29,6 +29,16 @@
     proj4Defined = true;
   }
 
+  /** 변환 결과 위경도가 유한한 숫자인지(NaN/Infinity 아님) 검증하는 헬퍼 */
+  function isValidLngLat(coord) {
+    if (!coord || coord.length < 2) return false;
+    var lng = coord[0];
+    var lat = coord[1];
+    if (typeof lng !== 'number' || typeof lat !== 'number') return false;
+    if (!isFinite(lng) || !isFinite(lat)) return false;
+    return true;
+  }
+
   /**
    * DXF 좌표 (x, y) → WGS84 [longitude, latitude]
    * DXF_CRS가 설정되면 (x,y)를 해당 평면직각좌표로 보고 proj4로 WGS84 변환. (y 음수 가능)
@@ -41,7 +51,8 @@
       try {
         if (!proj4Defined) ensureProj4Defs();
         var out = proj4(dxfCrs, 'EPSG:4326', [x, y]);
-        return out && out.length >= 2 ? [out[0], out[1]] : null;
+        if (out && out.length >= 2 && isValidLngLat(out)) return [out[0], out[1]];
+        return null;
       } catch (err) {
         if (typeof console !== 'undefined' && console.warn) {
           console.warn('dxfToLngLat proj4 실패, 원점 모드 사용:', err.message);
@@ -52,7 +63,8 @@
     var metersY = y / unitsPerMeter;
     var lng = lng0 + metersX / metersPerDegLng();
     var lat = lat0 + metersY / METERS_PER_DEG_LAT;
-    return [lng, lat];
+    var res = [lng, lat];
+    return isValidLngLat(res) ? res : null;
   }
 
   /**
@@ -197,17 +209,25 @@
 
     for (var i = 0; i < entities.length; i++) {
       var entity = entities[i];
-      if (String(entity.type || '').toUpperCase() === 'INSERT') {
-        var expanded = insertToFeatures(entity, dxfData);
-        for (var j = 0; j < expanded.length; j++) {
-          expanded[j].id = 'insert_' + i + '_' + j;
-          features.push(expanded[j]);
+      try {
+        if (String(entity.type || '').toUpperCase() === 'INSERT') {
+          var expanded = insertToFeatures(entity, dxfData);
+          for (var j = 0; j < expanded.length; j++) {
+            if (expanded[j] && expanded[j].geometry && expanded[j].geometry.coordinates) {
+              expanded[j].id = 'insert_' + i + '_' + j;
+              features.push(expanded[j]);
+            }
+          }
+        } else {
+          var feature = entityToFeature(entity, dxfData);
+          if (feature && feature.geometry && feature.geometry.coordinates) {
+            feature.id = i;
+            features.push(feature);
+          }
         }
-      } else {
-        var feature = entityToFeature(entity, dxfData);
-        if (feature) {
-          feature.id = i;
-          features.push(feature);
+      } catch (entErr) {
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn('엔티티 변환 건너뜀 (인덱스 ' + i + '):', entErr);
         }
       }
     }
@@ -221,6 +241,60 @@
   function pt(x, y) {
     var ll = dxfToLngLat(x, y);
     return ll ? ll : null;
+  }
+
+  /** 객체의 Extrusion(3D 압출/기울기) 벡터 추출 헬퍼 */
+  function getEntityExtrusion(entity) {
+    if (!entity) return null;
+    if (entity.extrusionDirection && typeof entity.extrusionDirection.x === 'number') {
+      return entity.extrusionDirection;
+    }
+    if (typeof entity.extrusionDirectionX === 'number' || typeof entity.extrusionDirectionY === 'number' || typeof entity.extrusionDirectionZ === 'number') {
+      return {
+        x: entity.extrusionDirectionX || 0,
+        y: entity.extrusionDirectionY || 0,
+        z: entity.extrusionDirectionZ != null ? entity.extrusionDirectionZ : 1
+      };
+    }
+    return null;
+  }
+
+  /**
+   * 오토캐드 공식 Arbitrary Axis Algorithm (임의 축 알고리즘)
+   * 3D 기울기(OCS)가 포함된 선/호/원의 좌표를 2D WCS(세계 좌표계) 실제 위치로 100% 정밀 복원
+   */
+  function ocsToWcs(xOcs, yOcs, elevation, ext) {
+    if (!ext) return { x: xOcs, y: yOcs };
+    var nx = ext.x != null ? ext.x : 0;
+    var ny = ext.y != null ? ext.y : 0;
+    var nz = ext.z != null ? ext.z : 1;
+    // 99.9%의 일반 2D 객체(nx=0, ny=0, nz=1)는 10만분의 1초 만에 즉시 통과
+    if (Math.abs(nx) < 1e-6 && Math.abs(ny) < 1e-6) {
+      return { x: xOcs, y: yOcs };
+    }
+
+    var elev = elevation || 0;
+    var ax, ay, az;
+    if (Math.abs(nx) < 1.0 / 64.0 && Math.abs(ny) < 1.0 / 64.0) {
+      ax = nz; ay = 0.0; az = -nx;
+    } else {
+      ax = -ny; ay = nx; az = 0.0;
+    }
+    var lenA = Math.sqrt(ax * ax + ay * ay + az * az);
+    if (lenA === 0) return { x: xOcs, y: yOcs };
+    var xx = ax / lenA, xy = ay / lenA, xz = az / lenA;
+
+    var yx = ny * xz - nz * xy;
+    var yy = nz * xx - nx * xz;
+    var yz = nx * xy - ny * xx;
+
+    var lenN = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (lenN === 0) lenN = 1;
+    var zx = nx / lenN, zy = ny / lenN, zz = nz / lenN;
+
+    var wx = xOcs * xx + yOcs * yx + elev * zx;
+    var wy = xOcs * xy + yOcs * yy + elev * zy;
+    return { x: wx, y: wy };
   }
 
   /** 두께가 0 초과인지 (constantWidth 또는 lineweight). 점선/구별 표시용 */
@@ -265,6 +339,7 @@
     var sp = entity.startPoint || (entity.vertices && entity.vertices[0]);
     var ep = entity.endPoint || (entity.vertices && entity.vertices[1]);
     if (!sp || !ep || typeof sp.x !== 'number' || typeof ep.x !== 'number') return null;
+    // 주의: DXF 규격상 LINE의 좌표는 이미 세계좌표(WCS)이므로 OCS 보정을 하지 않는다.
     var c1 = pt(sp.x, sp.y);
     var c2 = pt(ep.x, ep.y);
     if (!c1 || !c2) return null;
@@ -278,10 +353,19 @@
   function polylineToFeature(entity, strokeColor, thick) {
     var verts = entity.vertices;
     if (!verts || verts.length < 2) return null;
+    // LWPOLYLINE은 꼭짓점이 OCS(객체 좌표계)로 저장되므로, 기울기(extrusion)가 있으면 세계좌표로 복원
+    var isLw = String(entity.type || '').toUpperCase() === 'LWPOLYLINE';
+    var ext = isLw ? getEntityExtrusion(entity) : null;
+    var elev = isLw ? (entity.elevation || 0) : 0;
     var coords = [];
     for (var v = 0; v < verts.length; v++) {
       var vx = verts[v].x;
       var vy = verts[v].y;
+      if (ext) {
+        var w = ocsToWcs(vx, vy, elev, ext);
+        vx = w.x;
+        vy = w.y;
+      }
       var ll = pt(vx, vy);
       if (ll) coords.push(ll);
     }
@@ -309,11 +393,19 @@
     var cy = entity.center && entity.center.y;
     var r = entity.radius;
     if (typeof cx !== 'number' || typeof cy !== 'number' || typeof r !== 'number' || r <= 0) return null;
+    var ext = getEntityExtrusion(entity);
+    var cz = (entity.center && typeof entity.center.z === 'number') ? entity.center.z : 0;
     var segments = 32;
     var coords = [];
     for (var i = 0; i <= segments; i++) {
       var angle = (i / segments) * 2 * Math.PI;
-      var ll = pt(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
+      var px = cx + r * Math.cos(angle);
+      var py = cy + r * Math.sin(angle);
+      if (ext) {
+        var w = ocsToWcs(px, py, cz, ext);
+        px = w.x; py = w.y;
+      }
+      var ll = pt(px, py);
       if (ll) coords.push(ll);
     }
     if (coords.length < 4) return null;
@@ -332,6 +424,8 @@
     var startAngle = entity.startAngle != null ? entity.startAngle : 0;
     var endAngle = entity.endAngle != null ? entity.endAngle : 2 * Math.PI;
     if (typeof cx !== 'number' || typeof cy !== 'number' || typeof r !== 'number' || r <= 0) return null;
+    var ext = getEntityExtrusion(entity);
+    var cz = (entity.center && typeof entity.center.z === 'number') ? entity.center.z : 0;
     
     var da = endAngle - startAngle;
     while (da < 0) da += 2 * Math.PI;
@@ -341,7 +435,13 @@
     for (var i = 0; i <= segments; i++) {
       var t = i / segments;
       var angle = startAngle + t * da;
-      var ll = pt(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
+      var px = cx + r * Math.cos(angle);
+      var py = cy + r * Math.sin(angle);
+      if (ext) {
+        var w = ocsToWcs(px, py, cz, ext);
+        px = w.x; py = w.y;
+      }
+      var ll = pt(px, py);
       if (ll) coords.push(ll);
     }
     if (coords.length < 2) return null;

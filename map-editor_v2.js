@@ -1596,12 +1596,23 @@ console.log("NDMAP MAP-EDITOR V2 LOADED - PATCH V3.2");
 
   function applyDxfToMap() {
     if (!map || !dxfData || !window.DxfToGeoJSON) return;
-    map.data.forEach(function (feature) { map.data.remove(feature); });
-    
-    var geoJson = window.DxfToGeoJSON.dxfToGeoJSON(dxfData);
-    if (geoJson.features && geoJson.features.length > 0) {
-      map.data.addGeoJson(geoJson);
-      dxfBoundsLatLng = boundsFromGeoJSON(geoJson);
+    try {
+      map.data.forEach(function (feature) { map.data.remove(feature); });
+      
+      var geoJson = window.DxfToGeoJSON.dxfToGeoJSON(dxfData);
+      if (geoJson.features && geoJson.features.length > 0) {
+        try {
+          map.data.addGeoJson(geoJson);
+        } catch (geoErr) {
+          console.warn('map-editor GeoJSON 일괄 주입 오류, 개별 주입:', geoErr);
+          (geoJson.features || []).forEach(function (f) {
+            try { map.data.addGeoJson({ type: 'FeatureCollection', features: [f] }); } catch (ign) {}
+          });
+        }
+        dxfBoundsLatLng = boundsFromGeoJSON(geoJson);
+      }
+    } catch (err) {
+      console.error('map-editor applyDxfToMap 오류:', err);
     }
   }
 

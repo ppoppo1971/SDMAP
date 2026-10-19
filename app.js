@@ -1535,34 +1535,41 @@ function parseDxfTextAndBuildRefs(text) {
  * 파싱 결과를 전역에 반영하고 뷰어·지도·마커를 갱신. (로드 플로우 공통)
  */
 function applyDxfLoadResult(dxfFileNameStr, dxfDataResult, imageRefsWithFile) {
-  dxfData = dxfDataResult;
-  dxfImageRefs = imageRefsWithFile;
-  dxfFileName = dxfFileFullName = dxfFileNameStr;
-  
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem('dmap:lastDxfFile', dxfFileNameStr);
-  }
+  try {
+    dxfData = dxfDataResult;
+    dxfImageRefs = imageRefsWithFile;
+    dxfFileName = dxfFileFullName = dxfFileNameStr;
+    
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('dmap:lastDxfFile', dxfFileNameStr);
+    }
 
-  if (window.localStore && window.localStore.saveDxfCache) {
-    window.localStore.saveDxfCache(dxfFileNameStr, dxfDataResult, imageRefsWithFile.map(function (r) {
-      return { id: r.id, x: r.x, y: r.y, fileName: r.fileName };
-    })).catch(function (err) {
-      console.warn('도면 캐시 저장 실패:', err);
+    if (window.localStore && window.localStore.saveDxfCache) {
+      window.localStore.saveDxfCache(dxfFileNameStr, dxfDataResult, imageRefsWithFile.map(function (r) {
+        return { id: r.id, x: r.x, y: r.y, fileName: r.fileName };
+      })).catch(function (err) {
+        console.warn('도면 캐시 저장 실패:', err);
+      });
+    }
+
+    showViewer();
+    applyDxfToMap();
+    updateFileNameDisplay();
+    drawDxfImageMarkers();
+    loadMetadataAndDisplay(dxfFileFullName).then(function () {
+      fitDxfToView();
+    }).catch(function (metaErr) {
+      console.warn('메타데이터 로드 예외:', metaErr);
+    }).finally(function () {
+      setTimeout(function () { 
+        showLoading(false); 
+        checkPromptStorageFolder();
+      }, 100);
     });
+  } catch (err) {
+    console.error('applyDxfLoadResult 오류:', err);
+    showLoading(false);
   }
-
-  showViewer();
-  applyDxfToMap();
-  updateFileNameDisplay();
-  drawDxfImageMarkers();
-  loadMetadataAndDisplay(dxfFileFullName).then(function () {
-    fitDxfToView();
-  }).finally(function () {
-    setTimeout(function () { 
-      showLoading(false); 
-      checkPromptStorageFolder();
-    }, 100);
-  });
 }
 
 // 도면 로드 후 저장 폴더 미설정 시 자동 설정 유도 안내창 및 도면 폴더 자동 생성
@@ -1773,9 +1780,13 @@ function getDxfTextGrayCircleIcon() {
 
 var spatialIndex = null;
 var spatialIndexCellSize = 0.0005; // ~50m 격자 크기
+// [안전장치] 격자 반복 횟수 상한. 이보다 크면 존재하는 셀만 순회/별도 목록으로 처리하여 브라우저 멈춤 방지
+var SPATIAL_MAX_CELL_LOOP = 200000;
+var spatialIndexOversize = []; // 비정상적으로 큰 단일 피처(격자에 넣으면 멈출 수 있는 것)
 
 function buildSpatialIndex() {
   spatialIndex = {};
+  spatialIndexOversize = [];
   if (!dxfGoogleFeaturesSource || dxfGoogleFeaturesSource.length === 0) return;
   
   dxfGoogleFeaturesSource.forEach(function (feature) {
@@ -1790,6 +1801,12 @@ function buildSpatialIndex() {
     var endLatCell = Math.floor(bounds.maxLat / spatialIndexCellSize);
     var startLngCell = Math.floor(bounds.minLng / spatialIndexCellSize);
     var endLngCell = Math.floor(bounds.maxLng / spatialIndexCellSize);
+    
+    // 단일 피처가 비정상적으로 넓은 범위라면 격자에 넣지 않고 별도 목록으로 관리
+    if ((endLatCell - startLatCell + 1) * (endLngCell - startLngCell + 1) > SPATIAL_MAX_CELL_LOOP) {
+      spatialIndexOversize.push(feature);
+      return;
+    }
     
     for (var latCell = startLatCell; latCell <= endLatCell; latCell++) {
       for (var lngCell = startLngCell; lngCell <= endLngCell; lngCell++) {
@@ -1844,24 +1861,44 @@ function updateDynamicMapData() {
   var visibleFeaturesMap = {};
   var isLowZoom = (zoom < 14);
 
-  for (var latCell = startLatCell; latCell <= endLatCell; latCell++) {
-    for (var lngCell = startLngCell; lngCell <= endLngCell; lngCell++) {
-      var key = latCell + ',' + lngCell;
-      var cellFeatures = spatialIndex[key];
-      if (cellFeatures) {
-        cellFeatures.forEach(function (feature) {
-          // LOD: 축소 상태(zoom < 14)에서는 텍스트 포인트 등 미세 피처 제외하고 주요 선형만 표시
-          if (isLowZoom) {
-            var geom = feature.getGeometry && feature.getGeometry();
-            if (geom && geom.getType && geom.getType() === 'Point') return;
-          }
-          var fid = getFid(feature);
-          if (fid != null) {
-            visibleFeaturesMap[fid] = feature;
-          }
-        });
+  function collectCellFeatures(cellFeatures) {
+    cellFeatures.forEach(function (feature) {
+      // LOD: 축소 상태(zoom < 14)에서는 텍스트 포인트 등 미세 피처 제외하고 주요 선형만 표시
+      if (isLowZoom) {
+        var geom = feature.getGeometry && feature.getGeometry();
+        if (geom && geom.getType && geom.getType() === 'Point') return;
+      }
+      var fid = getFid(feature);
+      if (fid != null) {
+        visibleFeaturesMap[fid] = feature;
+      }
+    });
+  }
+
+  var cellLoopCount = (endLatCell - startLatCell + 1) * (endLngCell - startLngCell + 1);
+  if (cellLoopCount <= SPATIAL_MAX_CELL_LOOP) {
+    // 일반적인 경우: 화면 범위의 모든 셀을 직접 조회 (기존 동작 그대로)
+    for (var latCell = startLatCell; latCell <= endLatCell; latCell++) {
+      for (var lngCell = startLngCell; lngCell <= endLngCell; lngCell++) {
+        var key = latCell + ',' + lngCell;
+        var cellFeatures = spatialIndex[key];
+        if (cellFeatures) collectCellFeatures(cellFeatures);
       }
     }
+  } else {
+    // [안전장치] 화면 범위가 매우 넓은 경우(전국 단위 축소 등): 실제로 존재하는 셀만 순회 (결과는 동일)
+    Object.keys(spatialIndex).forEach(function (k) {
+      var comma = k.indexOf(',');
+      var la = parseInt(k.substring(0, comma), 10);
+      var ln = parseInt(k.substring(comma + 1), 10);
+      if (la >= startLatCell && la <= endLatCell && ln >= startLngCell && ln <= endLngCell) {
+        collectCellFeatures(spatialIndex[k]);
+      }
+    });
+  }
+  // 비정상적으로 큰 단일 피처는 항상 표시 대상에 포함
+  if (spatialIndexOversize && spatialIndexOversize.length > 0) {
+    collectCellFeatures(spatialIndexOversize);
   }
 
   // 2. 현재 지도 위에 있는 피처 스캔 — 화면(+버퍼) 밖 피처는 제거 대상으로 수집
@@ -1944,76 +1981,106 @@ function applyDxfToMap() {
   spatialIndex = null; // 공간 인덱스 리셋
   dxfGoogleFeaturesSource = []; // 피처 캐시 초기화
   
-  // 1) DXF → GeoJSON 변환
-  var geoJson = window.DxfToGeoJSON.dxfToGeoJSON(dxfData);
-  
-  // 2) 기존 맵 데이터 초기 청소
-  map.data.forEach(function (feature) { map.data.remove(feature); });
-  
-  if (geoJson.features && geoJson.features.length > 0) {
-    // 3) 구글 Maps API가 정상적으로 생산한 피처 인스턴스를 획득
-    //    addGeoJson은 구글이 내부적으로 GeoJSON을 해석하여 온전한 피처 객체 배열을 반환
-    var importedFeatures = map.data.addGeoJson(geoJson);
+  try {
+    // 1) DXF → GeoJSON 변환
+    var geoJson = window.DxfToGeoJSON.dxfToGeoJSON(dxfData);
     
-    // 4) 생산된 온전한 피처 인스턴스들을 전역 캐시에 보관 (인덱싱 및 culling용)
-    dxfGoogleFeaturesSource = importedFeatures || [];
+    // 2) 기존 맵 데이터 초기 청소
+    map.data.forEach(function (feature) { map.data.remove(feature); });
     
-    // 5) 피처에 고유 ID가 없는 경우 순번 ID를 강제 부여 (culling 동기화 핵심)
-    dxfGoogleFeaturesSource.forEach(function (feature, idx) {
-      if (feature.getId() == null) {
-        feature.setProperty('_dxfFeatIdx', idx);
+    if (geoJson.features && geoJson.features.length > 0) {
+      // 3) 구글 Maps API 피처 인스턴스 획득 (에러 발생 시 개별 필터링 폴백)
+      var importedFeatures = [];
+      try {
+        importedFeatures = map.data.addGeoJson(geoJson) || [];
+      } catch (geoErr) {
+        console.warn('일괄 GeoJSON 주입 오류 발생, 안전 개별 주입 진행:', geoErr);
+        importedFeatures = [];
+        (geoJson.features || []).forEach(function (f) {
+          try {
+            var single = map.data.addGeoJson({ type: 'FeatureCollection', features: [f] });
+            if (single && single.length > 0) {
+              importedFeatures.push(single[0]);
+            }
+          } catch (ign) {}
+        });
       }
-    });
-    
-    // 6) 공간 인덱스 구축
-    buildSpatialIndex();
-    
-    // 7) 지도 데이터 스타일 지정
-    map.data.setStyle(function (feature) {
-      var geom = feature.getGeometry && feature.getGeometry();
-      var geomType = geom && geom.getType ? geom.getType() : '';
-      if (geomType === 'Point') {
-        if (!dxfTextVisible) {
-          return { visible: false, clickable: false };
+      
+      // 4) 생산된 온전한 피처 인스턴스들을 전역 캐시에 보관 (인덱싱 및 culling용)
+      dxfGoogleFeaturesSource = importedFeatures || [];
+      
+      // 5) 피처에 고유 ID가 없는 경우 순번 ID를 강제 부여 (culling 동기화 핵심)
+      dxfGoogleFeaturesSource.forEach(function (feature, idx) {
+        if (feature.getId() == null) {
+          feature.setProperty('_dxfFeatIdx', idx);
         }
-        var text = feature.getProperty('text');
-        if (text != null && String(text).trim() !== '') {
+      });
+      
+      // 6) 공간 인덱스 구축
+      try {
+        buildSpatialIndex();
+      } catch (idxErr) {
+        console.warn('공간 인덱스 구축 오류:', idxErr);
+      }
+      
+      // 7) 지도 데이터 스타일 지정
+      map.data.setStyle(function (feature) {
+        var geom = feature.getGeometry && feature.getGeometry();
+        var geomType = geom && geom.getType ? geom.getType() : '';
+        if (geomType === 'Point') {
+          if (!dxfTextVisible) {
+            return { visible: false, clickable: false };
+          }
+          var text = feature.getProperty('text');
+          if (text != null && String(text).trim() !== '') {
+            return {
+              icon: getDxfTextGreenCircleIcon(),
+              clickable: true
+            };
+          }
           return {
-            icon: getDxfTextGreenCircleIcon(),
-            clickable: true
+            icon: getDxfTextGrayCircleIcon(),
+            clickable: false
           };
         }
+        var strokeColor = feature.getProperty('strokeColor') || '#333';
+        var fillColor = feature.getProperty('fillColor') || strokeColor;
+        var thick = feature.getProperty('thick');
+        var strokeWeight = thick ? 3 : 1;
         return {
-          icon: getDxfTextGrayCircleIcon(),
+          strokeColor: strokeColor,
+          strokeWeight: strokeWeight,
+          strokeOpacity: 0.9,
+          fillColor: fillColor,
+          fillOpacity: 0.06,
           clickable: false
         };
+      });
+      
+      // 8) 도면 외곽 바운더리 매핑
+      try {
+        dxfBoundsLatLng = boundsFromGeoJSON(geoJson);
+      } catch (bErr) {
+        dxfBoundsLatLng = null;
       }
-      var strokeColor = feature.getProperty('strokeColor') || '#333';
-      var fillColor = feature.getProperty('fillColor') || strokeColor;
-      var thick = feature.getProperty('thick');
-      var strokeWeight = thick ? 3 : 1;
-      return {
-        strokeColor: strokeColor,
-        strokeWeight: strokeWeight,
-        strokeOpacity: 0.9,
-        fillColor: fillColor,
-        fillOpacity: 0.06,
-        clickable: false
-      };
-    });
-    
-    // 8) 도면 외곽 바운더리 매핑
-    dxfBoundsLatLng = boundsFromGeoJSON(geoJson);
-    
-    // 9) 지도에 방금 올린 피처를 일단 전부 제거 (culling이 화면 영역에 맞게 다시 주입)
-    dxfGoogleFeaturesSource.forEach(function (feature) {
-      map.data.remove(feature);
-    });
-    
-    // 10) 최초 1회 화면 영역 culling 렌더링 호출
-    updateDynamicMapData();
-  } else {
-    dxfBoundsLatLng = null;
+      
+      // 9) 지도에 방금 올린 피처를 일단 전부 제거 (culling이 화면 영역에 맞게 다시 주입)
+      dxfGoogleFeaturesSource.forEach(function (feature) {
+        try { map.data.remove(feature); } catch (e) {}
+      });
+      
+      // 10) 최초 1회 화면 영역 culling 렌더링 호출
+      try {
+        updateDynamicMapData();
+      } catch (dynErr) {
+        console.warn('동적 지도 데이터 갱신 오류:', dynErr);
+      }
+    } else {
+      dxfBoundsLatLng = null;
+    }
+  } catch (err) {
+    console.error('applyDxfToMap 치명적 오류:', err);
+    if (typeof showToast === 'function') showToast('⚠️ 도면 일부를 지도에 표시하지 못했습니다.');
   }
 }
 
