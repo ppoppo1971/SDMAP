@@ -1308,6 +1308,7 @@ function saveMetadataToLocalFs() {
             numTextId: isPrimary ? (p.numTextId || null) : null,
             specTextId: isPrimary ? (p.specTextId || null) : null,
             specTextIds: isPrimary ? (p.specTextIds || null) : null,
+            isTextOnly: isPrimary ? (p.isTextOnly === true) : false,
             createdAt: p.createdAt || '',
             subPhotos: isPrimary ? sList : null,
             subPhotoFiles: isPrimary ? sFiles : null
@@ -1332,6 +1333,7 @@ function saveMetadataToLocalFs() {
           numTextId: p.numTextId || null,
           specTextId: p.specTextId || null,
           specTextIds: p.specTextIds || null,
+          isTextOnly: p.isTextOnly === true,
           createdAt: p.createdAt || '',
           subPhotos: singleList,
           subPhotoFiles: singleFiles
@@ -2935,7 +2937,8 @@ function loadMetadataAndDisplay(dxfFile) {
         facilityType: p.facilityType,
         additionalTypes: p.additionalTypes || null,
         subPhotos: sList || null,
-        subPhotoFiles: p.subPhotoFiles || (sList ? sList.map(function (s) { return s.fileName; }) : null)
+        subPhotoFiles: p.subPhotoFiles || (sList ? sList.map(function (s) { return s.fileName; }) : null),
+        isTextOnly: p.isTextOnly === true
       });
     });
     drawPhotoMarkers();
@@ -2992,12 +2995,12 @@ function showPhotoSelectBottomSheet(list) {
   list.forEach(function (photoItem) {
     // 사진번호 구하기
     var numTextObj = photoItem.numTextId ? texts.filter(function (t) { return t.id === photoItem.numTextId; })[0] : null;
-    var numTextVal = numTextObj ? numTextObj.text : '번호없음';
-    var typeText = photoItem.facilityType || '일반사진';
+    var numTextVal = numTextObj ? numTextObj.text : (photoItem.isTextOnly ? '글자등록' : '번호없음');
+    var typeText = photoItem.facilityType || (photoItem.isTextOnly ? '글자등록 시설물' : '일반사진');
 
     var div = document.createElement('div');
     div.className = 'facility-list-item';
-    div.textContent = '사진 ' + numTextVal + '번 (' + typeText + ')';
+    div.textContent = photoItem.isTextOnly ? ('📝 ' + typeText + ' (제원입력)') : ('사진 ' + numTextVal + '번 (' + typeText + ')');
     div.addEventListener('click', function () {
       hideStreetlightBottomSheet();
       showPhotoModal(photoItem.id);
@@ -3020,7 +3023,11 @@ function createPhotoMarker(p) {
   var hasMemo = p.memo && String(p.memo).trim();
   var markerColor;
   var sizePx;
-  if (p.isTextOnly || p.facilityType === '측구' || p.facilityType === '도로') {
+  if (p.isTextOnly) {
+    // [방안 2] 글자만 등록 시설물: 눈에 잘 띄는 주황색 원형 마커 (지름 22px)
+    markerColor = '#FF9500';
+    sizePx = 22;
+  } else if (p.facilityType === '측구' || p.facilityType === '도로') {
     markerColor = '#FF0000';
     sizePx = 14;
   } else if (isUploaded) {
@@ -3034,7 +3041,7 @@ function createPhotoMarker(p) {
   var m = new google.maps.Marker({
     position: pos,
     icon: icon,
-    title: p.memo || p.fileName || '사진'
+    title: p.memo || (p.isTextOnly ? (p.facilityType + ' (글자등록 제원)') : (p.fileName || '사진'))
   });
   m.photoId = p.id;
   m.addListener('click', function () {
@@ -3091,12 +3098,14 @@ function syncPhotoMarker(p) {
   if (existingMarker) {
     var isUploaded = p.uploaded !== false;
     var hasMemo = p.memo && String(p.memo).trim();
-    var markerColor = (p.isTextOnly || p.facilityType === '측구' || p.facilityType === '도로') ? '#FF0000'
+    var markerColor = p.isTextOnly ? '#FF9500'
+      : (p.facilityType === '측구' || p.facilityType === '도로') ? '#FF0000'
       : isUploaded ? (hasMemo ? '#9B51E0' : '#008000') : '#00C853';
-    var sizePx = (p.isTextOnly || p.facilityType === '측구' || p.facilityType === '도로') ? 14
+    var sizePx = p.isTextOnly ? 22
+      : (p.facilityType === '측구' || p.facilityType === '도로') ? 14
       : isUploaded ? 12 : 38;
     existingMarker.setIcon(getPhotoIcon(markerColor, sizePx));
-    existingMarker.setTitle(p.memo || p.fileName || '사진');
+    existingMarker.setTitle(p.memo || (p.isTextOnly ? (p.facilityType + ' (글자등록 제원)') : (p.fileName || '사진')));
     if (newPos) existingMarker.setPosition(newPos);
   } else {
     var newM = createPhotoMarker(p);
@@ -5301,7 +5310,7 @@ function bindPhotoModal() {
           isNewPhotoPending = false;
           pendingFacilitySurvey = null;
           hidePhotoModal();
-          showToast('도면 텍스트 및 빨간색 마커 등록이 완료되었습니다.');
+          showToast('도면 제원 등록 및 주황색 마커 생성이 완료되었습니다.');
         }).catch(function (err) {
           console.error('도면 텍스트 저장 실패:', err);
           showToast('저장 실패: ' + err.message);
@@ -5577,9 +5586,11 @@ function bindPhotoModal() {
       }
     }).then(function () {
       // [0923_01] 내부저장소에서도 사진 파일 삭제 및 메타데이터 갱신
-      if (p && p.fileName && window.localFs && window.localFs.isSupported() && window.localFs.hasBaseDir()) {
-        window.localFs.deletePhotoFile(dxfFileFullName, p.fileName).catch(function(){});
-        if (p.subPhotos) {
+      if (window.localFs && window.localFs.isSupported() && window.localFs.hasBaseDir()) {
+        if (p && p.fileName) {
+          window.localFs.deletePhotoFile(dxfFileFullName, p.fileName).catch(function(){});
+        }
+        if (p && p.subPhotos) {
           p.subPhotos.forEach(function(sp) {
             if (sp.fileName) window.localFs.deletePhotoFile(dxfFileFullName, sp.fileName).catch(function(){});
           });
@@ -5589,7 +5600,7 @@ function bindPhotoModal() {
       removePhotoMarker(editingPhotoId);
       drawTextMarkers();
       hidePhotoModal();
-      showToast('사진과 제원 데이터를 삭제했습니다.');
+      showToast(p && p.isTextOnly ? '시설물 제원 데이터를 삭제했습니다.' : '사진과 제원 데이터를 삭제했습니다.');
     }).catch(function (err) {
       console.error('삭제 실패:', err);
       alert('데이터 삭제에 실패했습니다. (저장소 오류)');
