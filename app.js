@@ -23,7 +23,7 @@ var pendingAddPosition = null; // { x, y } DXF 좌표 (롱프레스 시)
 var lastLongPressEndTime = 0;
 var contextMenuEl = null;
 var showPhotoNumberToggle = typeof localStorage !== 'undefined' ? (localStorage.getItem('dmap:showPhotoNumber') !== 'false') : true; // 기본값 참(보이기)
-var showSpecTextToggle = typeof localStorage !== 'undefined' ? (localStorage.getItem('dmap:showSpecText') === 'true') : false; // 기본값 거짓(숨기기)
+var showSpecTextToggle = typeof localStorage !== 'undefined' ? (localStorage.getItem('dmap:showSpecText') !== 'false') : true; // 기본값 참(표시)
 window.isPMode = false; // P 모드 토글 변수 (true 시 레이어 감지 무시)
 var currentCrs = typeof localStorage !== 'undefined' ? (localStorage.getItem('dmap:crs') || 'EPSG:5186') : 'EPSG:5186';
 var longPressTimer = null;
@@ -42,6 +42,72 @@ var streetlightPreviewObjectUrl = null; // 이미지 프리뷰용 Object URL 캐
 
 // 모든 시설물 통합 캐시 스펙 저장 객체
 var lastSpecs = {};
+
+// [방안 2-A] 안드로이드 기본 뒤로가기 튕김 방지 전담 핸들러 상태
+var isBackHistoryPushed = false;
+function pushModalHistoryState() {
+  try {
+    if (!isBackHistoryPushed) {
+      history.pushState({ modalOpen: true, timestamp: Date.now() }, '');
+      isBackHistoryPushed = true;
+    }
+  } catch (e) {}
+}
+function clearModalHistoryState() {
+  try {
+    if (isBackHistoryPushed) {
+      isBackHistoryPushed = false;
+      if (history.state && history.state.modalOpen) {
+        history.back();
+      }
+    }
+  } catch (e) {}
+}
+
+// [방안 4] 현재 도면 데이터(texts)에서 동일 시설물의 가장 최근 입력 제원 객체를 역순 검색하는 함수
+function getLastSavedSpecForFacility(facilityType) {
+  if (!facilityType) return null;
+  // 1. 메모리 세션 캐시 확인
+  if (lastSpecs && lastSpecs[facilityType] && Object.keys(lastSpecs[facilityType]).length > 0) {
+    return lastSpecs[facilityType];
+  }
+  
+  // 2. 도면 전체 texts 역순 탐색 (새로고침 후에도 직전 동일 시설물 데이터 100% 자동 채움)
+  if (!window.texts || window.texts.length === 0) return null;
+  var config = (typeof FACILITY_CONFIG !== 'undefined' ? FACILITY_CONFIG[facilityType] : null);
+  if (!config) return null;
+  var confLayer = String(config.layer || '').replace(/_T$/i, '').toLowerCase();
+  var confPrefix = String(config.prefix || config.title || '').toLowerCase();
+
+  for (var i = window.texts.length - 1; i >= 0; i--) {
+    var t = window.texts[i];
+    if (!t || !t.text) continue;
+
+    // A. specValues 속성이 존재하는 경우
+    if (t.specValues && t.layer) {
+      var tLayer = String(t.layer).replace(/_T$/i, '').toLowerCase();
+      if (tLayer === confLayer || tLayer === facilityType.toLowerCase()) {
+        return t.specValues;
+      }
+    }
+
+    // B. text 문자열로부터 역직렬화
+    var tLayerStr = String(t.layer || '').replace(/_T$/i, '').toLowerCase();
+    var firstWord = String(t.text.split('/')[0] || '').replace(/^\+/, '').toLowerCase();
+    if (tLayerStr === confLayer || tLayerStr === facilityType.toLowerCase() || firstWord === confPrefix || firstWord === facilityType.toLowerCase()) {
+      var parsed = deserializeSpecText(t.text, config);
+      if (parsed && Object.keys(parsed).length > 0) {
+        return parsed;
+      }
+    }
+  }
+  return null;
+}
+
+// [방안 5-A] 마커 위치 재지정 상태 관리
+var isRelocatingMode = false;
+var relocatingTarget = null; // { photoId, numTextId, specTextIds }
+var relocatingMapClickListener = null;
 
 // DOM 요소 지연 캐싱 (Lazy DOM Cache) - 불필요한 반복 DOM 탐색을 방지하여 저사양 기기 성능 개선
 var _domCache = {};
@@ -2954,9 +3020,9 @@ function createPhotoMarker(p) {
   var hasMemo = p.memo && String(p.memo).trim();
   var markerColor;
   var sizePx;
-  if (p.facilityType === '측구' || p.facilityType === '도로') {
+  if (p.isTextOnly || p.facilityType === '측구' || p.facilityType === '도로') {
     markerColor = '#FF0000';
-    sizePx = 12;
+    sizePx = 14;
   } else if (isUploaded) {
     markerColor = hasMemo ? '#9B51E0' : '#008000';
     sizePx = 12;
@@ -3009,7 +3075,7 @@ function drawPhotoMarkers() {
   }
 }
 
-/** 사진 마커 증분 동기화: 전체 클러스터러 재구축 없이 신규 마커 1개 추가 또는 기존 마커 색상 즉시 갱신 (0ms 무지연) */
+/** 사진 마커 증분 동기화: 전체 클러스터러 재구축 없이 신규 마커 1개 추가 또는 기존 마커 위치/색상 즉시 갱신 (0ms 무지연) */
 function syncPhotoMarker(p) {
   if (!p || !map) return;
   var existingMarker = null;
@@ -3020,15 +3086,18 @@ function syncPhotoMarker(p) {
     }
   }
 
+  var newPos = dxfToLatLng(p.x, p.y);
+
   if (existingMarker) {
     var isUploaded = p.uploaded !== false;
     var hasMemo = p.memo && String(p.memo).trim();
-    var markerColor = (p.facilityType === '측구' || p.facilityType === '도로') ? '#FF0000'
+    var markerColor = (p.isTextOnly || p.facilityType === '측구' || p.facilityType === '도로') ? '#FF0000'
       : isUploaded ? (hasMemo ? '#9B51E0' : '#008000') : '#00C853';
-    var sizePx = (p.facilityType === '측구' || p.facilityType === '도로') ? 12
+    var sizePx = (p.isTextOnly || p.facilityType === '측구' || p.facilityType === '도로') ? 14
       : isUploaded ? 12 : 38;
     existingMarker.setIcon(getPhotoIcon(markerColor, sizePx));
     existingMarker.setTitle(p.memo || p.fileName || '사진');
+    if (newPos) existingMarker.setPosition(newPos);
   } else {
     var newM = createPhotoMarker(p);
     if (!newM) return;
@@ -3365,23 +3434,27 @@ function updateFastCameraOrientationFromSensor(e) {
     ? window.screen.orientation.angle
     : (window.orientation !== undefined ? window.orientation : null);
 
+  var isScreenWide = (window.innerWidth > window.innerHeight);
   var detectedAngle = 0;
+
   if (screenAngle !== null && screenAngle !== 0) {
     detectedAngle = (screenAngle + 360) % 360;
+  } else if (isScreenWide) {
+    detectedAngle = 90; // 기기 회전 또는 가로 화면 시 90도 우선
   } else if (e && e.gamma !== null && e.beta !== null) {
-    // 2) 화면 회전 잠금 상태에서 기기 기울기 감지
+    // 2) 화면 회전 잠금 상태에서 기기 기울기 감지 (바닥/시설물 내려다봄 시 beta 제한 완화)
     var g = e.gamma;
     var b = e.beta;
-    if (Math.abs(g) > 35 && Math.abs(b) < 65) {
+    if (Math.abs(g) > 20) {
       detectedAngle = (g < 0) ? 90 : 270;
-    } else if (Math.abs(g) < 25) {
+    } else if (Math.abs(g) < 20) {
       detectedAngle = (b < -30) ? 180 : 0;
     }
   }
 
   fastCameraDeviceAngle = detectedAngle;
   if (guide) {
-    var isLand = (detectedAngle === 90 || detectedAngle === 270);
+    var isLand = (detectedAngle === 90 || detectedAngle === 270 || isScreenWide);
     if (isLand) {
       guide.classList.add('landscape');
     } else {
@@ -3502,6 +3575,7 @@ function openFastCameraModal(callback) {
 
   updateFastCameraSizeUI();
   modal.classList.remove('hidden');
+  pushModalHistoryState();
 
   // 센서 이벤트 등록
   updateFastCameraOrientationFromSensor(null);
@@ -3826,6 +3900,7 @@ function captureFastCamera() {
   var vh = video.videoHeight || 1080;
 
   // 기기 방향 판별 (0, 90, 180, 270)
+  var isScreenWide = (window.innerWidth > window.innerHeight);
   var angle = fastCameraDeviceAngle || 0;
   if (window.screen && window.screen.orientation && window.screen.orientation.angle !== undefined) {
     if (window.screen.orientation.angle !== 0) {
@@ -3835,17 +3910,17 @@ function captureFastCamera() {
     angle = (window.orientation + 360) % 360;
   }
 
-  // 가로 모드 (90도 또는 270도) vs 세로 모드 (0도 또는 180도)
-  var isLandscape = (angle === 90 || angle === 270);
+  // 가로 모드 판정: 센서 각도 90/270도 이거나 화면 자체가 가로일 때
+  var isLandscape = (angle === 90 || angle === 270 || isScreenWide);
 
   // 목표 캔버스 크기 결정 (세로는 3:4, 가로는 4:3)
   var targetW, targetH;
   if (isLandscape) {
     targetW = maxDim;
-    targetH = Math.round(maxDim * (3 / 4)); // 예: 1920×1440 또는 1280×960
+    targetH = Math.round(maxDim * (3 / 4)); // 예: 1920×1440 또는 1280×960 (완벽한 가로 4:3)
   } else {
     targetH = maxDim;
-    targetW = Math.round(maxDim * (3 / 4)); // 예: 1440×1920 또는 960×1280
+    targetW = Math.round(maxDim * (3 / 4)); // 예: 1440×1920 또는 960×1280 (표준 세로 3:4)
   }
 
   var canvas = document.createElement('canvas');
@@ -4205,6 +4280,7 @@ function addPhotoAtPosition(xy, file) {
       isNew: true,
       x: xy.x,
       y: xy.y,
+      facilityType: pendingFacilityType || '일반시설물',
       suggestedNum: nextPhotoNum,
       subPhotos: [
         { subIndex: 0, blob: blob, file: file }
@@ -4251,35 +4327,7 @@ function deserializeSpecText(specText, config) {
     parts.shift(); // 접두어 제거
   }
 
-  if (config.title === '신호등') {
-    // parts[0]: 종류 (차량, 보행)
-    // parts[1]: 형식*수량 (횡4*2)
-    // parts[2]: 지주형식 (측주, 단주 등)
-    // parts[3]: 보행등구분*수량 (보행등*1) - 종류가 보행일 때만 존재 가능
-    values['type'] = parts[0] || '차량';
-    
-    var styleAndCount = parts[1] || '';
-    var scParts = styleAndCount.split('*');
-    values['style'] = scParts[0] || '횡4';
-    values['count'] = scParts[1] || '1';
-    
-    values['support'] = parts[2] || '측주';
-    
-    var pedInfo = parts[3] || '';
-    if (pedInfo) {
-      if (pedInfo === '보행등무') {
-        values['pedestrianType'] = '보행등무';
-        values['pedestrianCount'] = '';
-      } else {
-        var pedParts = pedInfo.split('*');
-        values['pedestrianType'] = pedParts[0] || '보행등무';
-        values['pedestrianCount'] = pedParts[1] || '0';
-      }
-    } else {
-      values['pedestrianType'] = '보행등무';
-      values['pedestrianCount'] = '';
-    }
-  } else if (config.joinFormat === 'dimension/type/wing/sump') {
+  if (config.joinFormat === 'dimension/type/wing/sump') {
     var dim = parts[0] || '';
     var dimParts = dim.split('*');
     values['width'] = dimParts[0] || '';
@@ -4356,7 +4404,12 @@ function deserializeSpecText(specText, config) {
 
       var matchesField = false;
       if (field.options && field.options.length > 0) {
-        matchesField = (field.options.indexOf(curPart) !== -1);
+        if ((field.isPhoto || field.label === '사진') && curPart === '사진') {
+          matchesField = true;
+          curPart = '입력';
+        } else {
+          matchesField = (field.options.indexOf(curPart) !== -1);
+        }
       } else {
         matchesField = true;
       }
@@ -4592,12 +4645,24 @@ function showPhotoModal(photoId) {
     }
   }
 
+  pushModalHistoryState();
+
   if (actionsEl) actionsEl.style.display = 'flex';
   if (noFileEl) noFileEl.style.display = 'none';
   if (addBtn) addBtn.style.display = (isNewSurvey && !hasSubPhotos) ? 'none' : 'inline-block';
   var measureBtnEl = document.getElementById('photo-modal-measure-btn');
   if (measureBtnEl) measureBtnEl.style.display = (isNewSurvey && !hasSubPhotos) ? 'none' : 'inline-flex';
   if (delBtn) delBtn.style.display = isNewSurvey ? 'none' : 'inline-block';
+
+  var relocateBtn = document.getElementById('photo-modal-relocate');
+  if (relocateBtn) {
+    relocateBtn.style.display = isNewSurvey ? 'none' : 'inline-block';
+    relocateBtn.onclick = function () {
+      if (editingPhotoId) {
+        startRelocatingPhotoMarker(editingPhotoId);
+      }
+    };
+  }
 
   memoInput.style.display = 'block';
   memoInput.value = (p && p.memo && !isAutoGeneratedMemo(p.memo)) ? p.memo : '';
@@ -4714,7 +4779,7 @@ function showPhotoModal(photoId) {
     if (isNewSurvey) {
       var primType = (pendingFacilitySurvey && pendingFacilitySurvey.facilityType) || pendingFacilityType || '일반시설물';
       if (primType && primType !== '전력주' && primType !== '통신주') {
-        var cardCached = lastSpecs[primType] || {};
+        var cardCached = getLastSavedSpecForFacility(primType) || lastSpecs[primType] || {};
         var uniquePrefix = 'pm-primary-' + Date.now();
         renderMultiAttributeCard(pmFormListContainer, primType, cardCached, uniquePrefix);
       }
@@ -4791,7 +4856,7 @@ function showPhotoModal(photoId) {
       }
 
       var uniquePrefix = 'pm-new-' + Date.now();
-      var cardCached = lastSpecs[selectedType] || {};
+      var cardCached = getLastSavedSpecForFacility(selectedType) || lastSpecs[selectedType] || {};
       renderMultiAttributeCard(pmFormListContainer, selectedType, cardCached, uniquePrefix);
 
       var inputsAndSelects = pmFormListContainer.querySelectorAll('input, select');
@@ -5184,12 +5249,14 @@ function bindPhotoModal() {
 
       var isTextOnlyMode = (subPhotoObjects.length === 0);
 
-      // 1) 글자만 등록 모드인 경우: 사진 생성 없이 도면 제원 텍스트만 기록
+      // 1) 글자만 등록 모드인 경우: 사진 파일 없이 제원 텍스트와 빨간색 마커 생성
       if (isTextOnlyMode) {
         var specTextIdsOnly = [];
+        var primarySpecTextIdOnly = null;
         attributeDataList.forEach(function (attr, index) {
           var specTextId = 'text-spec-' + index + '-' + Date.now();
           specTextIdsOnly.push(specTextId);
+          if (index === 0) primarySpecTextIdOnly = specTextId;
           var specTextObj = {
             id: specTextId,
             x: surveyX,
@@ -5204,13 +5271,37 @@ function bindPhotoModal() {
           lastSpecs[attr.type] = attr.values;
         });
 
+        var primType = (attributeDataList[0] && attributeDataList[0].type) || pendingFacilityType || '일반시설물';
+
+        // ★ 빨간색 시설물 마커 생성을 위한 포토 객체 생성 (지도에 빨간 점 마커 표시 및 터치 시 수정/이동 지원)
+        var newTextFacility = {
+          id: facilityId,
+          x: surveyX,
+          y: surveyY,
+          width: 1,
+          height: 1,
+          blob: null,
+          memo: cleanMemo || (primType + ' (글자등록)'),
+          fileName: '',
+          subPhotos: [],
+          numTextId: null,
+          specTextId: primarySpecTextIdOnly,
+          specTextIds: specTextIdsOnly,
+          facilityType: primType,
+          isTextOnly: true,
+          uploaded: true
+        };
+        photos.push(newTextFacility);
+
+        window.localStore.savePhoto(dxfFileFullName, newTextFacility).catch(function () {});
         window.localStore.saveProject(dxfFileFullName, { texts: texts, lastModified: new Date().toISOString() }).then(function () {
           saveMetadataToLocalFs();
+          syncPhotoMarker(newTextFacility);
           drawTextMarkers();
           isNewPhotoPending = false;
           pendingFacilitySurvey = null;
           hidePhotoModal();
-          showToast('도면 텍스트 등록이 완료되었습니다.');
+          showToast('도면 텍스트 및 빨간색 마커 등록이 완료되었습니다.');
         }).catch(function (err) {
           console.error('도면 텍스트 저장 실패:', err);
           showToast('저장 실패: ' + err.message);
@@ -6694,7 +6785,7 @@ function serializeFacilityForm(container, config, prefixId) {
     }
 
     // [0925_01 버그수정] 사용자가 '--'를 선택했거나 빈칸으로 비운 경우, 기본값으로 강제 치환하지 않고 '--' (생략)으로 확실하게 보존!
-    if (val === '' || val === '--' || val === '직접입력' || val === '삭제' || val === '제외' || val === '미표기' || val === '없음') {
+    if (val === '' || val === '--' || val === '직접입력' || val === '입력생략' || val === '삭제' || val === '제외' || val === '미표기' || val === '없음') {
       val = '--';
     }
     vals[field.id] = val;
@@ -6741,9 +6832,14 @@ function serializeFacilityForm(container, config, prefixId) {
       if (fieldVal === undefined || fieldVal === null) return;
       fieldVal = String(fieldVal).trim();
 
-      // [사용자 요구사항] '삭제', '제외', '미표기', '없음'을 선택했거나 공란/빈칸/-- 인 경우 해당 항목은 슬래시 조립에서 완전히 생략(skip)
-      if (fieldVal === '삭제' || fieldVal === '제외' || fieldVal === '미표기' || fieldVal === '없음' || fieldVal === '--' || fieldVal === '') {
+      // [사용자 요구사항] '입력생략', '삭제', '제외', '미표기', '없음'을 선택했거나 공란/빈칸/-- 인 경우 해당 항목은 슬래시 조립에서 완전히 생략(skip)
+      if (fieldVal === '입력생략' || fieldVal === '삭제' || fieldVal === '제외' || fieldVal === '미표기' || fieldVal === '없음' || fieldVal === '--' || fieldVal === '') {
         return;
+      }
+
+      // 사진 필드일 경우 '입력'을 캐드 표준 형식인 '사진'으로 전개
+      if ((field.isPhoto || field.label === '사진') && fieldVal === '입력') {
+        fieldVal = '사진';
       }
 
       parts.push(fieldVal);
@@ -7138,6 +7234,7 @@ function showStreetlightBottomSheet(list, dxfCoords, latLng) {
   }
 
   sheet.classList.add('active');
+  pushModalHistoryState();
 }
 
 function hideStreetlightBottomSheet() {
@@ -7532,6 +7629,218 @@ document.addEventListener('DOMContentLoaded', function () {
         }
       }
     }, { passive: true });
+  }
+});
+
+// ==========================================
+// [마커 위치 재지정 및 스마트 자석 스냅(Snap) 시스템]
+// ==========================================
+function startRelocatingPhotoMarker(photoId) {
+  if (!photoId) return;
+  var p = photos.filter(function (x) { return String(x.id) === String(photoId); })[0];
+  if (!p) return;
+
+  // 1. 현재 모달창 닫기 (메모리 보존)
+  var modal = getEl('photo-modal');
+  if (modal) modal.classList.remove('active');
+
+  isRelocatingMode = true;
+  relocatingTarget = {
+    photoId: photoId,
+    photo: p,
+    numTextId: p.numTextId,
+    specTextIds: (p.specTextIds && p.specTextIds.length > 0) ? p.specTextIds : (p.specTextId ? [p.specTextId] : [])
+  };
+
+  // 2. 상단 안내 배너 노출
+  var banner = document.getElementById('relocation-banner');
+  if (banner) {
+    banner.style.display = 'flex';
+  }
+
+  // 3. 지도 1회성 탭 이벤트 등록 (배터리/메모리 절약을 위해 필요할 때만 1회성 리스너 바인딩)
+  if (relocatingMapClickListener) {
+    google.maps.event.removeListener(relocatingMapClickListener);
+    relocatingMapClickListener = null;
+  }
+
+  if (map) {
+    relocatingMapClickListener = map.addListener('click', function (e) {
+      if (!isRelocatingMode || !relocatingTarget || !e.latLng) return;
+      executeRelocationAtLatLng(e.latLng);
+    });
+  }
+
+  pushModalHistoryState();
+  showToast('지도에서 이동할 새 위치를 터치하세요.');
+}
+
+function cancelRelocatingMode() {
+  isRelocatingMode = false;
+  if (relocatingMapClickListener) {
+    google.maps.event.removeListener(relocatingMapClickListener);
+    relocatingMapClickListener = null;
+  }
+  var banner = document.getElementById('relocation-banner');
+  if (banner) banner.style.display = 'none';
+  relocatingTarget = null;
+  showToast('위치 변경이 취소되었습니다.');
+}
+
+function executeRelocationAtLatLng(latLng) {
+  if (!relocatingTarget || !relocatingTarget.photo) {
+    cancelRelocatingMode();
+    return;
+  }
+
+  var rawDxf = latLngToDxf(latLng);
+  if (!rawDxf) {
+    cancelRelocatingMode();
+    return;
+  }
+
+  // 1. 주변 2m 이내 도면 객체(블록 / 폴리선) 탐색
+  var nearby = findNearbyFacilities(latLng, 2.0);
+  var finalX = rawDxf.x;
+  var finalY = rawDxf.y;
+  var snapLabel = '터치 위치';
+
+  if (nearby && nearby.length > 0) {
+    // A. 블록 삽입점 우선 검사 (blockInsertX, Y)
+    var blockItem = null;
+    for (var i = 0; i < nearby.length; i++) {
+      var item = nearby[i];
+      var feat = item.feature;
+      if (feat) {
+        var bx = feat.getProperty('blockInsertX');
+        var by = feat.getProperty('blockInsertY');
+        if (bx != null && by != null) {
+          blockItem = { x: parseFloat(bx), y: parseFloat(by), name: item.blockName || item.name || '심볼' };
+          break;
+        }
+      }
+    }
+
+    if (blockItem) {
+      finalX = blockItem.x;
+      finalY = blockItem.y;
+      snapLabel = '블록 삽입점 [' + blockItem.name + ']';
+    } else {
+      // B. 가장 가까운 폴리선상 수직점 스냅
+      var polyItem = nearby[0];
+      if (polyItem && polyItem.coord) {
+        var backDxf = latLngToDxf(polyItem.coord);
+        if (backDxf) {
+          finalX = backDxf.x;
+          finalY = backDxf.y;
+          snapLabel = '폴리선 [' + (polyItem.layer || polyItem.name) + ']';
+        }
+      }
+    }
+  }
+
+  // 2. 사진 객체 좌표 갱신
+  var p = relocatingTarget.photo;
+  p.x = finalX;
+  p.y = finalY;
+
+  // 3. 사진에 묶여 있는 사진번호 텍스트 및 제원 텍스트 마커 좌표 일괄 동기화
+  if (relocatingTarget.numTextId) {
+    var numT = texts.filter(function (t) { return t.id === relocatingTarget.numTextId; })[0];
+    if (numT) { numT.x = finalX; numT.y = finalY; }
+  }
+  if (relocatingTarget.specTextIds && relocatingTarget.specTextIds.length > 0) {
+    relocatingTarget.specTextIds.forEach(function (sId) {
+      var sT = texts.filter(function (t) { return t.id === sId; })[0];
+      if (sT) { sT.x = finalX; sT.y = finalY; }
+    });
+  }
+
+  // 4. 저장소 및 파일시스템 메타데이터 즉시 영구 저장
+  if (window.localStore && dxfFileFullName) {
+    window.localStore.savePhoto(dxfFileFullName, p).catch(function () {});
+    window.localStore.saveProject(dxfFileFullName, { texts: texts, lastModified: new Date().toISOString() }).then(function () {
+      saveMetadataToLocalFs();
+      syncPhotoMarker(p);
+      drawTextMarkers();
+    }).catch(function () {});
+  } else {
+    syncPhotoMarker(p);
+    drawTextMarkers();
+  }
+
+  // 5. 모드 정리 및 안내
+  cancelRelocatingMode();
+  showToast('📍 마커 및 제원 위치가 ' + snapLabel + '으로 이동되었습니다.');
+}
+
+// ==========================================
+// [안드로이드 하드웨어 뒤로가기 가로채기 리스너]
+// ==========================================
+window.addEventListener('popstate', function (e) {
+  isBackHistoryPushed = false;
+
+  // 1. 위치 변경 모드 중이면 취소
+  if (isRelocatingMode) {
+    cancelRelocatingMode();
+    return;
+  }
+
+  // 2. 인앱 고속 즉시 촬영 모달이 열려 있으면 닫기
+  var fastCamModal = document.getElementById('fast-camera-modal');
+  if (fastCamModal && !fastCamModal.classList.contains('hidden')) {
+    closeFastCameraModal(true);
+    return;
+  }
+
+  // 3. 풀스크린 이미지 슬라이드 뷰어가 열려 있으면 닫기
+  var imgViewer = document.getElementById('image-viewer-modal');
+  if (imgViewer && imgViewer.classList.contains('active')) {
+    imgViewer.classList.remove('active');
+    return;
+  }
+
+  // 4. 제원 입력/조회 모달창이 열려 있으면 닫기
+  var photoModal = document.getElementById('photo-modal');
+  if (photoModal && photoModal.classList.contains('active')) {
+    hidePhotoModal();
+    return;
+  }
+
+  // 5. 미감지 시설물 선택 모달이 열려 있으면 닫기
+  var facSelectModal = document.getElementById('facility-select-modal');
+  if (facSelectModal && facSelectModal.classList.contains('active')) {
+    facSelectModal.classList.remove('active');
+    return;
+  }
+
+  // 6. 바텀시트가 열려 있으면 닫기
+  var bottomSheet = document.getElementById('bottom-sheet-flow');
+  if (bottomSheet && bottomSheet.classList.contains('active')) {
+    hideStreetlightBottomSheet();
+    return;
+  }
+
+  // 7. 일반 텍스트 모달이 열려 있으면 닫기
+  var textModal = document.getElementById('text-modal');
+  if (textModal && textModal.classList.contains('active')) {
+    textModal.classList.remove('active');
+    return;
+  }
+
+  // 8. 기타 일반 모달들 닫기
+  var otherModals = document.querySelectorAll('.modal.active');
+  if (otherModals.length > 0) {
+    otherModals.forEach(function (m) { m.classList.remove('active'); });
+    return;
+  }
+});
+
+// 위치 재지정 배너 취소 버튼 이벤트 등록
+document.addEventListener('DOMContentLoaded', function () {
+  var cancelBtn = document.getElementById('relocation-cancel-btn');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', cancelRelocatingMode);
   }
 });
 

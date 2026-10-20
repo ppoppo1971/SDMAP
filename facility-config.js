@@ -241,7 +241,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -300,7 +300,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -359,7 +359,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -462,7 +462,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -602,7 +602,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -726,7 +726,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -990,7 +990,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -1064,7 +1064,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -1126,7 +1126,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -1175,7 +1175,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -1224,7 +1224,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -1288,7 +1288,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -1396,7 +1396,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -1433,7 +1433,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -1532,7 +1532,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -1581,7 +1581,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -1646,7 +1646,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -1722,7 +1722,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -1788,7 +1788,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -1883,7 +1883,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -1968,6 +1968,7 @@
         "options": [
           "횡보등1",
           "횡보등2",
+          "입력생략",
           "기타"
         ],
         "default": "횡보등1",
@@ -1980,7 +1981,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -2030,7 +2031,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -2092,6 +2093,7 @@
         "options": [
           "횡보등1",
           "횡보등2",
+          "입력생략",
           "기타"
         ],
         "default": "횡보등1",
@@ -2104,7 +2106,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -2199,6 +2201,7 @@
         "type": "select",
         "options": [
           "양면",
+          "삭제",
           "기타"
         ],
         "default": "양면",
@@ -2211,7 +2214,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -2304,6 +2307,7 @@
         "type": "select",
         "options": [
           "양면",
+          "삭제",
           "기타"
         ],
         "default": "양면",
@@ -2316,7 +2320,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -2408,6 +2412,7 @@
         "type": "select",
         "options": [
           "양면",
+          "삭제",
           "기타"
         ],
         "default": "양면",
@@ -2420,7 +2425,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -2509,6 +2514,7 @@
         "type": "select",
         "options": [
           "양면",
+          "삭제",
           "기타"
         ],
         "default": "양면",
@@ -2521,7 +2527,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -2571,7 +2577,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -2647,6 +2653,7 @@
         "type": "select",
         "options": [
           "양면",
+          "삭제",
           "기타"
         ],
         "default": "양면",
@@ -2659,7 +2666,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -2683,7 +2690,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -2721,7 +2728,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -2759,7 +2766,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -2783,7 +2790,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -2807,7 +2814,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -2868,7 +2875,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -2892,7 +2899,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -2916,7 +2923,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -2940,7 +2947,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -2964,7 +2971,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -3002,7 +3009,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,
@@ -3066,7 +3073,7 @@
         "type": "select",
         "options": [
           "사진",
-          "삭제"
+          "입력생략"
         ],
         "default": "사진",
         "isSupport": false,

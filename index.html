@@ -803,6 +803,12 @@
     </div>
   </div>
 
+  <!-- 마커 위치 재지정 안내 배너 -->
+  <div id="relocation-banner" style="display:none; position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:9000; background:linear-gradient(135deg, #1e1b4b, #312e81); color:#fff; padding:10px 18px; border-radius:30px; box-shadow:0 6px 20px rgba(0,0,0,0.35); font-size:13px; font-weight:bold; align-items:center; gap:12px; border:1px solid #818cf8;">
+    <span id="relocation-banner-text">📍 새 위치를 지도에서 터치하세요 (블록/폴리선 스냅)</span>
+    <button type="button" id="relocation-cancel-btn" style="background:rgba(255,255,255,0.2); border:none; color:#fff; padding:3px 10px; border-radius:12px; font-size:12px; cursor:pointer;">✕ 취소</button>
+  </div>
+
   <!-- 뷰어 UI -->
   <div id="viewer-ui" class="hidden">
     <div class="file-name-display" id="file-name-display"><span id="file-name-text">도면 로딩 중...</span></div>
@@ -927,7 +933,8 @@
       <!-- 동적으로 자바스크립트 설정 테이블에 의해 렌더링될 입력 양식 컨테이너 -->
       <div id="photo-modal-dynamic-fields" style="border-top: 1px dashed #ccc; padding-top: 10px; margin-top: 10px; display: none; flex-direction: column; gap: 8px;"></div>
       <div id="photo-modal-actions" style="display:flex; gap:10px; width:100%; margin-top: 15px;">
-        <button type="button" class="btn" id="photo-modal-save" style="flex: 1;">저장</button>
+        <button type="button" class="btn" id="photo-modal-save" style="flex: 1.2;">저장</button>
+        <button type="button" class="btn" id="photo-modal-relocate" style="flex: 1; background:#6366f1; color:#fff;">📍 위치변경</button>
         <button type="button" class="btn btn-delete" id="photo-modal-delete" style="flex: 1;">삭제</button>
       </div>
     </div>
@@ -1107,7 +1114,7 @@
   </div>
 
   <script src="config.js"></script>
-  <script src="facility-config.js?v=4.0"></script>
+  <script src="facility-config.js?v=4.4"></script>
   <!-- 좌표계 변환: DXF 평면직각좌표(EPSG) → WGS84 (config.DXF_CRS 사용 시) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
   <script src="local-storage.js?v=4.0"></script>
@@ -1119,7 +1126,7 @@
   <script src="https://unpkg.com/@googlemaps/markerclusterer@2.5.3/dist/index.min.js"></script>
   <!-- 사진 정밀 실측 모듈 -->
   <script src="photo-measure.js"></script>
-  <script src="app.js?v=4.1"></script>
+  <script src="app.js?v=4.4"></script>
   <script>
     (function() {
       var key = window.DMAP_CONFIG && window.DMAP_CONFIG.GMAPS_API_KEY;

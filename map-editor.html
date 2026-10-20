@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NDMAP 도로대장 웹 편집기 (PC)</title>
+  <title>NDMAP 도로대장 웹 편집기 (PC - 20261020 평택시 고도화)</title>
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <!-- 구글 폰트 Inter 로드 -->
@@ -1041,25 +1041,50 @@
       z-index: 10;
     }
     
-    /* [방안 3 추가] 호버 시 쫘르륵 노출될 하위 서브 패널 */
+    /* [완전 개선] 호버 시 쫘르륵 노출될 하위 서브 패널 (클릭 & 단독 분리 이동 지원) */
     .photo-overlay-sub-panel {
       position: absolute;
-      top: 102%;
+      top: 100%;
       left: 50%;
       transform: translateX(-50%);
-      width: 170px;
-      max-height: 240px;
+      width: 190px;
+      max-height: 260px;
       overflow-y: auto;
-      background: rgba(30, 41, 59, 0.95); /* 어두운 슬레이트 반투명 */
-      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(15, 23, 42, 0.96);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1.5px solid rgba(99, 102, 241, 0.5);
       border-radius: 8px;
       padding: 6px;
-      box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
       display: flex;
       flex-direction: column;
       gap: 5px;
       z-index: 99999;
-      pointer-events: none; /* 오버레이 카드의 호버를 끊지 않도록 방어 */
+      pointer-events: auto !important; /* 마우스 클릭 및 드래그 허용 */
+      margin-top: 4px;
+    }
+    .sub-label-card {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 5px;
+      padding: 6px 8px;
+      text-align: left;
+      font-size: 11px;
+      color: #e2e8f0;
+      line-height: 1.35;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.12s ease;
+    }
+    .sub-label-card:hover {
+      background: rgba(99, 102, 241, 0.35);
+      border-color: #818cf8;
+      transform: translateY(-1px);
+    }
+    .sub-label-card.active {
+      background: rgba(16, 185, 129, 0.25);
+      border-color: #34d399;
     }
     
     /* 각 서브 카드 스타일 */
@@ -1464,7 +1489,266 @@
       font-family: monospace;
       pointer-events: none;
     }
+  
+    /* 스냅 가이드 애니메이션 및 새 마커 추가 활성 스타일 */
+    @keyframes snapPulse {
+      from { transform: scale(0.9); opacity: 0.8; }
+      to { transform: scale(1.15); opacity: 1; }
+    }
+    .map-ctrl-btn.active-add-marker {
+      background: rgba(16, 185, 129, 0.25) !important;
+      border-color: #10b981 !important;
+      color: #10b981 !important;
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.4) !important;
+    }
+    .photo-overlay-card.is-dragging {
+      opacity: 0.8 !important;
+      box-shadow: 0 0 20px rgba(99, 102, 241, 0.8) !important;
+      cursor: grabbing !important;
+      z-index: 999999 !important;
+    }
+  
+    /* 스파이더파이(부채꼴 펼침) 스타일 */
+    .photo-overlay-card.spiderfied {
+      z-index: 99999 !important;
+      box-shadow: 0 6px 22px rgba(0, 0, 0, 0.7), 0 0 12px rgba(99, 102, 241, 0.9) !important;
+      border-color: #818cf8 !important;
+      transition: left 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), top 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+    }
+    .spider-hub-dot {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #818cf8;
+      border-radius: 50%;
+      background: rgba(99, 102, 241, 0.4);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 99980;
+      box-shadow: 0 0 10px #6366f1;
+      animation: snapPulse 1s infinite alternate;
+    }
+    .spider-hub-leg {
+      position: absolute;
+      height: 2px;
+      background: rgba(99, 102, 241, 0.7);
+      transform-origin: 0 50%;
+      pointer-events: none;
+      z-index: 99979;
+    }
+  
+    /* [방안 1] ＋ 뱃지 완전 제거 (깔끔한 일반 마커 형태 복원) */
+    .photo-overlay-card.multiple::before,
+    .photo-overlay-card.marker-dot-mode.multiple::before,
+    .photo-overlay-card.marker-dot-mode:hover.multiple::before,
+    .label-photo-plus-badge {
+      display: none !important;
+    }
+
+    /* 초경량 미니 겹침 말풍선 팝업 */
+    .mini-overlap-popover {
+      position: fixed;
+      z-index: 999999;
+      background: rgba(23, 23, 33, 0.95);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 1px rgba(255, 255, 255, 0.2);
+      padding: 8px;
+      min-width: 230px;
+      max-width: 320px;
+      max-height: 320px;
+      overflow-y: auto;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #f1f5f9;
+      animation: popoverFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+      transform-origin: top left;
+    }
+
+    @keyframes popoverFadeIn {
+      from { opacity: 0; transform: scale(0.92) translateY(-4px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .mini-overlap-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 6px 6px 6px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      margin-bottom: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #94a3b8;
+      letter-spacing: 0.5px;
+    }
+
+    .mini-overlap-header .count-badge {
+      background: rgba(99, 102, 241, 0.35);
+      color: #a5b4fc;
+      padding: 1px 6px;
+      border-radius: 10px;
+      font-size: 10px;
+      border: 1px solid rgba(129, 140, 248, 0.4);
+    }
+
+    .mini-overlap-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .mini-overlap-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid transparent;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.12s ease;
+      text-align: left;
+      user-select: none;
+    }
+
+    .mini-overlap-item:hover {
+      background: rgba(99, 102, 241, 0.25);
+      border-color: rgba(129, 140, 248, 0.5);
+      transform: translateX(2px);
+    }
+
+    .mini-overlap-item.active {
+      background: rgba(16, 185, 129, 0.25);
+      border-color: rgba(52, 211, 153, 0.7);
+    }
+
+    .mini-overlap-thumb {
+      width: 30px;
+      height: 30px;
+      border-radius: 4px;
+      object-fit: cover;
+      background: #0f172a;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      flex-shrink: 0;
+    }
+
+    .mini-overlap-info {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .mini-overlap-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #f8fafc;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .mini-overlap-sub {
+      font-size: 10px;
+      color: #94a3b8;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  
+    /* 시설물 카드 상하 순서 이동 컨트롤 */
+    .attribute-card-order-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .attribute-card-move-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #cbd5e1;
+      border-radius: 4px;
+      width: 22px;
+      height: 22px;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      line-height: 1;
+      padding: 0;
+    }
+    .attribute-card-move-btn:hover {
+      background: rgba(99, 102, 241, 0.4);
+      border-color: #818cf8;
+      color: #ffffff;
+    }
+  
+    /* [방안 2: 스파이더파이 마커 부채꼴 펼침 스타일] */
+    .spiderfy-leaf-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: #FFFFFF;
+      border-radius: 8px;
+      padding: 4px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+      cursor: pointer;
+      transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      border: 2px solid #007AFF;
+      user-select: none;
+      min-width: 52px;
+    }
+    .spiderfy-leaf-card:hover {
+      transform: translate(-50%, -50%) scale(1.18) !important;
+      z-index: 1000000;
+      box-shadow: 0 6px 22px rgba(0,122,255,0.6);
+      border-color: #FF9500;
+    }
+    .spiderfy-leaf-card.active {
+      border-color: #34C759;
+      box-shadow: 0 0 12px rgba(52,199,89,0.8);
+    }
+    .spider-leaf-thumb {
+      position: relative;
+      width: 48px;
+      height: 48px;
+      border-radius: 4px;
+      overflow: hidden;
+      background: #1C1C1E;
+    }
+    .spider-leaf-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .spider-leaf-num {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      background: rgba(0,0,0,0.75);
+      color: #FFCC00;
+      font-size: 10px;
+      font-weight: bold;
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+    .spider-leaf-title {
+      font-size: 11px;
+      font-weight: bold;
+      color: #1C1C1E;
+      margin-top: 3px;
+      max-width: 65px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-align: center;
+    }
+
   </style>
+  <link rel="stylesheet" href="photo-measure.css">
 </head>
 <body>
 
@@ -1479,6 +1763,7 @@
     <div class="header-actions">
       <!-- 1단계: 작업 폴더 열기 (ShowDirectoryPicker API 사용) -->
       <button class="btn" id="open-folder-btn">작업 폴더 열기</button>
+      <input type="file" id="folder-fallback-input" webkitdirectory directory multiple style="display:none">
 
       <!-- 참조 파일 열기 (자동완성 단어 누적용) -->
       <div class="file-input-wrapper">
@@ -1504,9 +1789,19 @@
       <!-- 맵 컨트롤러 (텍스트 위주 리퀴드 스타일) -->
       <div class="map-controls">
         <button class="map-ctrl-btn" id="map-theme-toggle" title="배경 테마 전환 (라이트 ↔ 다크 ↔ 그레이)">테마: 라이트</button>
-        <button class="map-ctrl-btn" id="map-label-toggle" title="사진 정보 텍스트 상시 표시 토글">텍스트: 끔</button>
+        <button class="map-ctrl-btn active" id="map-label-toggle" title="사진 정보 텍스트 상시 표시 토글">텍스트: 켬</button>
         <button class="map-ctrl-btn" id="map-marker-toggle" title="마커 모드 전환 (보라색 원 ↔ 큰 사진)">마커: 끔</button>
+        <button class="map-ctrl-btn active" id="map-snap-toggle" title="자석 스냅 켬/끔 (Shift 키 누르고 이동 시 일시 해제)">스냅: 켬</button>
+        <button class="map-ctrl-btn" id="map-add-marker-btn" title="도면의 블록 삽입점 또는 폴리선을 클릭하여 새 마커 추가" style="color: #10b981; border-color: rgba(16, 185, 129, 0.4); font-weight: 600;">＋ 새 마커</button>
         <div class="map-ctrl-btn" id="map-zoom-level" style="cursor: default; pointer-events: none; font-weight: 600;">Zoom: 16</div>
+      </div>
+
+      <!-- [신규] 블록/폴리선 스냅 시각 가이드 및 툴팁 -->
+      <div id="snap-indicator" style="display: none; position: absolute; pointer-events: none; z-index: 9999; transform: translate(-50%, -50%);">
+        <div style="width: 24px; height: 24px; border: 2px solid #10b981; border-radius: 50%; background: rgba(16, 185, 129, 0.25); box-shadow: 0 0 10px #10b981; animation: snapPulse 0.8s infinite alternate;"></div>
+        <div style="position: absolute; width: 32px; height: 2px; background: #10b981; top: 11px; left: -4px;"></div>
+        <div style="position: absolute; height: 32px; width: 2px; background: #10b981; left: 11px; top: -4px;"></div>
+        <div id="snap-tooltip" style="position: absolute; left: 28px; top: -4px; background: rgba(18, 18, 22, 0.92); color: #10b981; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 4px; border: 1px solid #10b981; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">스냅됨</div>
       </div>
     </div>
 
@@ -1564,6 +1859,10 @@
             <div class="photo-thumbnail-list" id="sidebar-thumbnails" style="display: none;"></div>
 
             <!-- 기본 정보 영역 -->
+                        <!-- [치수 실측 기능] index.html 과 동일한 사진 치수 실측 단추 -->
+            <button type="button" class="btn" id="panel-photo-measure-btn" style="width: 100%; margin-bottom: 14px; background: linear-gradient(135deg, #4f46e5, #6366f1); color: #ffffff; font-weight: 600; font-size: 13px; padding: 10px 14px; border-radius: 8px; border: none; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; box-shadow: 0 2px 8px rgba(79, 70, 229, 0.35); transition: all 0.15s ease;">
+              <span>📐 사진 치수 실측 (스타프 보정)</span>
+            </button>
             <div class="form-group">
               <label for="photo-memo">메모</label>
               <input type="text" id="photo-memo" class="form-control" placeholder="현장 메모 입력" autocomplete="off">
@@ -1580,8 +1879,11 @@
         </div>
 
         <!-- 하단 액션 버튼들 -->
-        <div class="sidebar-actions" id="sidebar-actions" style="display: none;">
-          <button class="btn" id="photo-save-btn" style="flex: 1;">수정사항 저장</button>
+        <div class="sidebar-actions" id="sidebar-actions" style="display: none; gap: 8px;">
+          <button type="button" class="btn" id="photo-delete-btn" title="이 마커 및 관련 도면 문자 영구 삭제" style="padding: 10px 12px; font-size: 13px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; white-space: nowrap;">🗑️ 마커 삭제</button>
+          <button type="button" class="btn" id="photo-copy-btn" title="이 마커의 사진 복사" style="padding: 10px 12px; font-size: 13px; background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); color: #a5b4fc; white-space: nowrap;">📋 사진 복사</button>
+          <button type="button" class="btn" id="photo-paste-btn" title="복사한 사진을 이 마커에 삽입" style="padding: 10px 12px; font-size: 13px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #6ee7b7; white-space: nowrap; display: none;">📥 사진 붙여넣기</button>
+          <button type="button" class="btn" id="photo-save-btn" style="flex: 1;">수정사항 저장</button>
         </div>
       </div>
 
@@ -1648,6 +1950,7 @@
     <div class="window-header" id="window-drag-handle">
       <span class="window-title" id="floating-window-title">사진 원본 보기</span>
       <div class="window-controls">
+        <button class="window-btn" id="window-measure-btn" title="사진 치수 실측 (스타프 보정)" style="font-size: 11px; font-weight: bold; padding: 2px 8px; width: auto; color: #a5b4fc; background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(129, 140, 248, 0.4); border-radius: 4px; margin-right: 4px;">📐 실측</button>
         <button class="window-btn" id="window-reset-zoom" title="배율 초기화">⛶</button>
         <button class="window-btn" id="window-maximize-btn" title="도면 영역 크기로 최대화">🗖</button>
         <button class="window-btn" id="window-close-btn" title="창 닫기">&times;</button>
@@ -1686,7 +1989,7 @@
 
   <!-- 설정 및 데이터 변환 스크립트 로드 -->
   <script src="config.js"></script>
-  <script src="facility-config.js"></script>
+  <script src="facility-config.js?v=4.5"></script>
   <!-- 좌표계 변환 라이브러리 (Proj4js) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
   <!-- DXF 파서 및 GeoJSON 변환 엔진 -->
@@ -1695,7 +1998,8 @@
   <!-- JSZip 라이브러리 (ZIP 파일 해제 및 생성용) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <!-- 메인 웹 편집기 비즈니스 로직 -->
-  <script src="map-editor_v2.js?v=1790754800"></script>
+  <script src="photo-measure.js"></script>
+  <script src="map-editor_v2.js?v=4.5"></script>
   
   <!-- 구글 맵 동적 로딩 -->
   <script>
