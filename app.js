@@ -4416,8 +4416,10 @@ function deserializeSpecText(specText, config) {
 
   var parts = specText.split('/');
   var prefix = (config.prefix !== undefined) ? config.prefix : config.title;
-  if (prefix && parts[0] === prefix) {
-    parts.shift(); // 접두어 제거
+  var rawPrefix = (parts[0] || '').trim();
+  var cleanPrefix = rawPrefix.startsWith('+') ? rawPrefix.substring(1).trim() : rawPrefix;
+  if (prefix && (rawPrefix === prefix || cleanPrefix === prefix || rawPrefix === ('+' + prefix))) {
+    parts.shift(); // 접두어(+가등, 가등 등) 제거
   }
 
   if (config.joinFormat === 'dimension/type/wing/sump') {
@@ -4885,14 +4887,69 @@ function showPhotoModal(photoId) {
       textIds.forEach(function (tId, idx) {
         var specTextObj = texts.filter(function (t) { return t.id === tId; })[0];
         if (specTextObj) {
-          var fType = detectFacilityType('', specTextObj.layer);
-          if (!fType) {
-            var parts = (specTextObj.text || '').split('/');
-            if (parts.length > 0 && FACILITY_CONFIG[parts[0]]) {
-              fType = parts[0];
+          var fType = null;
+
+          // 1순위: 사진 객체에 기록된 정확한 시설물 타입 우선 복원
+          if (idx === 0 && p.facilityType && p.facilityType !== '일반사진' && p.facilityType !== '일반시설물') {
+            fType = p.facilityType;
+          } else if (idx > 0 && p.additionalTypes && p.additionalTypes[idx - 1]) {
+            fType = p.additionalTypes[idx - 1];
+          }
+
+          // 2순위: 도면 텍스트 객체 자체에 저장된 facilityType 복원
+          if (!fType && specTextObj.facilityType) {
+            fType = specTextObj.facilityType;
+          }
+
+          // 3순위: 도면 텍스트의 '+' 부속시설물 기호 및 접두어 지능형 분기 (map-editor와 100% 동일)
+          if (!fType && specTextObj.text) {
+            var rawText = String(specTextObj.text).trim();
+            var parts = rawText.split('/');
+            var rawPrefix = (parts[0] || '').trim();
+            var isSubText = rawPrefix.startsWith('+');
+            var cleanPrefix = isSubText ? rawPrefix.substring(1).trim() : rawPrefix;
+
+            if (cleanPrefix === '가등') {
+              fType = isSubText ? '가로등(부착)' : '가로등';
+            } else if (cleanPrefix === '보등') {
+              fType = isSubText ? '보안등(부착)' : '보안등';
+            } else if (cleanPrefix === '차신') {
+              fType = (rawText.indexOf('보신') !== -1 || parts.length >= 5) ? '신호등' : '신호등(차신)';
+            } else if (cleanPrefix === '보신') {
+              fType = '신호등(보신)';
             } else {
-              fType = p.facilityType || '일반시설물';
+              var aliasMap = {
+                '도경': '도로경계석', '경계석': '도로경계석', '보조': '보조표지',
+                '사설': '사설표지', '지시': '지시표지', '규제': '규제표지',
+                '주의': '주의표지', '기타': '기타표지', '방음': '소음방지책',
+                '중분': '중앙분리대', '볼': '볼라드', '과방': '과속방지턱',
+                '차진': '차량진입', '턱': '턱낮춤', '반사경': '도로반사경',
+                '승강(버스)': '버스정류장', '차량방호': '차량방호시설',
+                '낙석방지': '낙석방지시설', '무단횡단방지': '무단횡단방지시설',
+                '미끄럼방지': '미끄럼방지시설'
+              };
+              if (aliasMap[cleanPrefix]) {
+                fType = aliasMap[cleanPrefix];
+              } else if (FACILITY_CONFIG[cleanPrefix]) {
+                fType = cleanPrefix;
+              } else {
+                for (var key in FACILITY_CONFIG) {
+                  var cfg = FACILITY_CONFIG[key];
+                  if (cfg && cfg.prefix && cfg.prefix === cleanPrefix) {
+                    fType = key;
+                    break;
+                  }
+                }
+              }
             }
+          }
+
+          // 4순위: 레이어명 기반 안전 매칭 (fallback)
+          if (!fType) {
+            fType = detectFacilityType('', specTextObj.layer);
+          }
+          if (!fType) {
+            fType = (idx === 0) ? (p.facilityType || '일반시설물') : '일반시설물';
           }
 
           var config = FACILITY_CONFIG[fType] || { title: fType, fields: [] };
@@ -5358,7 +5415,8 @@ function bindPhotoModal() {
             fontSize: 12,
             layer: attr.layer || '일반_T',
             color: attr.color !== undefined ? attr.color : 7,
-            specValues: attr.values
+            specValues: attr.values,
+            facilityType: attr.type
           };
           texts.push(specTextObj);
           lastSpecs[attr.type] = attr.values;
@@ -5432,7 +5490,8 @@ function bindPhotoModal() {
           fontSize: 12,
           layer: attr.layer || '일반_T',
           color: attr.color !== undefined ? attr.color : 7,
-          specValues: attr.values
+          specValues: attr.values,
+          facilityType: attr.type
         };
         texts.push(specTextObj);
         lastSpecs[attr.type] = attr.values;
@@ -5599,7 +5658,8 @@ function bindPhotoModal() {
         fontSize: 12,
         layer: attr.layer || '일반_T',
         color: attr.color !== undefined ? attr.color : 7,
-        specValues: attr.values
+        specValues: attr.values,
+        facilityType: attr.type
       };
       texts.push(specTextObj);
       lastSpecs[attr.type] = attr.values;
