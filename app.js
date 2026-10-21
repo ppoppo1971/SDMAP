@@ -3433,43 +3433,118 @@ var fastCameraUltraWideDeviceId = null;
 var fastCameraMainDeviceId = null;
 var fastCameraCurrentDeviceId = null;
 var fastCameraEventsBound = false;
+var fastCameraOrientMode = 'auto'; // 'auto' (자동 감지), 'portrait' (세로 3:4 고정), 'landscape' (가로 4:3 고정)
 var fastCameraDeviceAngle = 0; // 0 (세로 정상), 90 (가로 우측), 180 (세로 역방향), 270 (가로 좌측)
+var fastCameraIsLandscape = false;
 var fastCameraOrientationHandler = null;
 
-function updateFastCameraOrientationFromSensor(e) {
+function updateFastCameraOrientationUI() {
+  var box = document.getElementById('fc-viewfinder-box');
   var guide = document.getElementById('fc-viewfinder-guide');
-  // 1) screen.orientation 또는 window.orientation 확인
+  var orientLabel = document.getElementById('fc-orient-label');
+  var orientIcon = document.getElementById('fc-orient-icon');
+
+  var isLand = false;
+  if (fastCameraOrientMode === 'portrait') {
+    isLand = false;
+    if (orientLabel) orientLabel.textContent = '세로 3:4';
+    if (orientIcon) orientIcon.textContent = '📱';
+  } else if (fastCameraOrientMode === 'landscape') {
+    isLand = true;
+    if (orientLabel) orientLabel.textContent = '가로 4:3';
+    if (orientIcon) orientIcon.textContent = '🖥️';
+  } else {
+    // auto
+    isLand = fastCameraIsLandscape;
+    if (orientLabel) orientLabel.textContent = isLand ? '자동(가로)' : '자동(세로)';
+    if (orientIcon) orientIcon.textContent = '🔄';
+  }
+
+  if (box) {
+    if (isLand) box.classList.add('landscape');
+    else box.classList.remove('landscape');
+  }
+  if (guide) {
+    if (isLand) guide.classList.add('landscape');
+    else guide.classList.remove('landscape');
+  }
+}
+
+function toggleFastCameraOrientation() {
+  if (fastCameraOrientMode === 'auto') {
+    fastCameraOrientMode = 'portrait';
+    showToast('촬영 방향: 📱 세로 3:4 고정');
+  } else if (fastCameraOrientMode === 'portrait') {
+    fastCameraOrientMode = 'landscape';
+    if (fastCameraDeviceAngle === 0) fastCameraDeviceAngle = 90;
+    showToast('촬영 방향: 🖥️ 가로 4:3 고정');
+  } else {
+    fastCameraOrientMode = 'auto';
+    showToast('촬영 방향: 🔄 자동 감지');
+  }
+  updateFastCameraOrientationUI();
+}
+
+function updateFastCameraOrientationFromSensor(e) {
+  var isScreenWide = (window.innerWidth > window.innerHeight);
+
+  // 1) OS 차원의 screen.orientation 확인
   var screenAngle = (window.screen && window.screen.orientation && window.screen.orientation.angle !== undefined)
     ? window.screen.orientation.angle
     : (window.orientation !== undefined ? window.orientation : null);
 
-  var isScreenWide = (window.innerWidth > window.innerHeight);
-  var detectedAngle = 0;
-
   if (screenAngle !== null && screenAngle !== 0) {
-    detectedAngle = (screenAngle + 360) % 360;
-  } else if (isScreenWide) {
-    detectedAngle = 90; // 기기 회전 또는 가로 화면 시 90도 우선
-  } else if (e && e.gamma !== null && e.beta !== null) {
-    // 2) 화면 회전 잠금 상태에서 기기 기울기 감지 (바닥/시설물 내려다봄 시 beta 제한 완화)
+    var sa = (screenAngle + 360) % 360;
+    fastCameraDeviceAngle = sa;
+    fastCameraIsLandscape = (sa === 90 || sa === 270 || isScreenWide);
+    updateFastCameraOrientationUI();
+    return;
+  }
+
+  if (isScreenWide) {
+    fastCameraDeviceAngle = 90;
+    fastCameraIsLandscape = true;
+    updateFastCameraOrientationUI();
+    return;
+  }
+
+  if (fastCameraOrientMode !== 'auto') {
+    if (e && e.gamma != null) {
+      if (e.gamma < -20) fastCameraDeviceAngle = 270;
+      else if (e.gamma > 20) fastCameraDeviceAngle = 90;
+    }
+    updateFastCameraOrientationUI();
+    return;
+  }
+
+  // 2) 자동 모드: 센서 기울기(gamma, beta) 정밀 분석
+  if (e && e.gamma !== null && e.beta !== null) {
     var g = e.gamma;
     var b = e.beta;
-    if (Math.abs(g) > 20) {
-      detectedAngle = (g < 0) ? 90 : 270;
-    } else if (Math.abs(g) < 20) {
-      detectedAngle = (b < -30) ? 180 : 0;
+
+    // 바닥이나 하늘을 비출 때 (Gimbal lock 구간) 각도 요동 방지 (기존 상태 유지)
+    if (Math.abs(b) > 65) {
+      updateFastCameraOrientationUI();
+      return;
+    }
+
+    // 히스테리시스 완충 (진입 35도, 복귀 20도)
+    if (!fastCameraIsLandscape) {
+      if (Math.abs(g) > 35) {
+        fastCameraIsLandscape = true;
+        fastCameraDeviceAngle = (g > 0) ? 90 : 270;
+      }
+    } else {
+      if (Math.abs(g) < 20) {
+        fastCameraIsLandscape = false;
+        fastCameraDeviceAngle = 0;
+      } else {
+        fastCameraDeviceAngle = (g > 0) ? 90 : 270;
+      }
     }
   }
 
-  fastCameraDeviceAngle = detectedAngle;
-  if (guide) {
-    var isLand = (detectedAngle === 90 || detectedAngle === 270 || isScreenWide);
-    if (isLand) {
-      guide.classList.add('landscape');
-    } else {
-      guide.classList.remove('landscape');
-    }
-  }
+  updateFastCameraOrientationUI();
 }
 
 function updateFastCameraSizeUI() {
@@ -3583,6 +3658,7 @@ function openFastCameraModal(callback) {
   }
 
   updateFastCameraSizeUI();
+  updateFastCameraOrientationUI();
   modal.classList.remove('hidden');
   pushModalHistoryState();
 
@@ -3887,7 +3963,7 @@ function toggleFastCameraTorch() {
   }
 }
 
-/** 셔터 클릭: 실시간 비디오 프레임 즉시 캡처 및 3:4(세로) / 4:3(가로) 자동 최적화 직행 */
+/** 셔터 클릭: 레터박스 뷰파인더 화면과 100% 일치하는 3:4(세로) / 4:3(가로) 사진 정밀 캡처 */
 function captureFastCamera() {
   var video = document.getElementById('fast-camera-video');
   var flash = document.getElementById('fc-flash-overlay');
@@ -3906,30 +3982,27 @@ function captureFastCamera() {
   var quality = (targetSize === '500KB') ? 0.78 : 0.85;
 
   var vw = video.videoWidth || 1920;
-  var vh = video.videoHeight || 1080;
+  var vh = video.videoHeight || 1440;
 
-  // 기기 방향 판별 (0, 90, 180, 270)
+  // 가로 모드 판정 (수동 모드 또는 센서/화면 모드)
   var isScreenWide = (window.innerWidth > window.innerHeight);
-  var angle = fastCameraDeviceAngle || 0;
-  if (window.screen && window.screen.orientation && window.screen.orientation.angle !== undefined) {
-    if (window.screen.orientation.angle !== 0) {
-      angle = (window.screen.orientation.angle + 360) % 360;
-    }
-  } else if (window.orientation !== undefined && window.orientation !== 0) {
-    angle = (window.orientation + 360) % 360;
+  var isLandscape = false;
+  if (fastCameraOrientMode === 'portrait') {
+    isLandscape = false;
+  } else if (fastCameraOrientMode === 'landscape') {
+    isLandscape = true;
+  } else {
+    isLandscape = (fastCameraIsLandscape || isScreenWide);
   }
-
-  // 가로 모드 판정: 센서 각도 90/270도 이거나 화면 자체가 가로일 때
-  var isLandscape = (angle === 90 || angle === 270 || isScreenWide);
 
   // 목표 캔버스 크기 결정 (세로는 3:4, 가로는 4:3)
   var targetW, targetH;
   if (isLandscape) {
     targetW = maxDim;
-    targetH = Math.round(maxDim * (3 / 4)); // 예: 1920×1440 또는 1280×960 (완벽한 가로 4:3)
+    targetH = Math.round(maxDim * (3 / 4)); // 1920×1440 또는 1280×960 (가로 4:3)
   } else {
     targetH = maxDim;
-    targetW = Math.round(maxDim * (3 / 4)); // 예: 1440×1920 또는 960×1280 (표준 세로 3:4)
+    targetW = Math.round(maxDim * (3 / 4)); // 1440×1920 또는 960×1280 (세로 3:4)
   }
 
   var canvas = document.createElement('canvas');
@@ -3937,53 +4010,58 @@ function captureFastCamera() {
   canvas.height = targetH;
   var ctx = canvas.getContext('2d');
 
-  var streamIsLandscape = (vw >= vh);
+  // 화면 회전 잠금(세로 고정) 상태에서 기기를 가로로 눕혀 찍었을 때 회전 보정
+  var needRotation = (isLandscape && !isScreenWide);
 
-  // 스트림 방향과 기기 회전 방향 일치 여부에 따른 크롭 및 회전 처리
-  if ((!isLandscape && !streamIsLandscape) || (isLandscape && streamIsLandscape)) {
-    // 1) 기기 방향과 비디오 스트림 방향이 일치할 때 (회전 불필요, 3:4/4:3 중앙 크롭)
-    var targetRatio = targetW / targetH;
-    var streamRatio = vw / vh;
-    var sx, sy, sw, sh;
-    if (streamRatio > targetRatio) {
-      sw = Math.round(vh * targetRatio);
-      sh = vh;
-      sx = Math.round((vw - sw) / 2);
-      sy = 0;
-    } else {
-      sw = vw;
-      sh = Math.round(vw / targetRatio);
-      sx = 0;
-      sy = Math.round((vh - sh) / 2);
-    }
-    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, targetW, targetH);
-  } else {
-    // 2) 회전 잠금 등으로 기기만 돌려 가로 촬영 시 (90도/270도 자동 회전 보정)
+  if (needRotation) {
+    // 세로 화면에서 기기만 가로로 눕힌 경우: 90도 회전 보정하여 똑바로 선 가로 4:3 사진 생성
     ctx.save();
     ctx.translate(targetW / 2, targetH / 2);
 
-    var rotDeg = (angle === 270) ? -90 : 90;
+    // 각도 매핑: 270도(좌측 눕힘)이면 -90도, 그 외(우측 눕힘/기본 가로)는 90도
+    var rotDeg = (fastCameraDeviceAngle === 270) ? -90 : 90;
     ctx.rotate((rotDeg * Math.PI) / 180);
 
-    var rotatedTargetW = (Math.abs(rotDeg) === 90 || Math.abs(rotDeg) === 270) ? targetH : targetW;
-    var rotatedTargetH = (Math.abs(rotDeg) === 90 || Math.abs(rotDeg) === 270) ? targetW : targetH;
-    var targetRatio = rotatedTargetW / rotatedTargetH;
+    // 회전된 좌표계에서의 캔버스 크기는 세로 3:4 (가로 targetH, 세로 targetW)
+    var rotW = targetH;
+    var rotH = targetW;
+    var cropRatio = rotW / rotH; // 3/4
     var streamRatio = vw / vh;
     var sx, sy, sw, sh;
-    if (streamRatio > targetRatio) {
-      sw = Math.round(vh * targetRatio);
+
+    if (streamRatio > cropRatio) {
+      sw = Math.round(vh * cropRatio);
       sh = vh;
       sx = Math.round((vw - sw) / 2);
       sy = 0;
     } else {
       sw = vw;
-      sh = Math.round(vw / targetRatio);
+      sh = Math.round(vw / cropRatio);
       sx = 0;
       sy = Math.round((vh - sh) / 2);
     }
 
-    ctx.drawImage(video, sx, sy, sw, sh, -rotatedTargetW / 2, -rotatedTargetH / 2, rotatedTargetW, rotatedTargetH);
+    ctx.drawImage(video, sx, sy, sw, sh, -rotW / 2, -rotH / 2, rotW, rotH);
     ctx.restore();
+  } else {
+    // 세로 촬영 또는 OS 화면 자체가 가로 모드일 때 (회전 없이 1:1 크롭)
+    var cropRatio = targetW / targetH; // 세로는 3/4, 가로는 4/3
+    var streamRatio = vw / vh;
+    var sx, sy, sw, sh;
+
+    if (streamRatio > cropRatio) {
+      sw = Math.round(vh * cropRatio);
+      sh = vh;
+      sx = Math.round((vw - sw) / 2);
+      sy = 0;
+    } else {
+      sw = vw;
+      sh = Math.round(vw / cropRatio);
+      sx = 0;
+      sy = Math.round((vh - sh) / 2);
+    }
+
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, targetW, targetH);
   }
 
   canvas.toBlob(function (blob) {
@@ -4036,6 +4114,8 @@ function closeFastCameraModal(isCanceled) {
   fastCameraCurrentDeviceId = null;
   fastCameraIsTorchOn = false;
   fastCameraCurrentZoom = 1.0;
+  fastCameraOrientMode = 'auto';
+  updateFastCameraOrientationUI();
   if (isCanceled) {
     isCameraCapturing = false;
     if (isAddingSubPhoto) {
@@ -4054,6 +4134,10 @@ function closeFastCameraModal(isCanceled) {
 function bindFastCameraEvents() {
   if (fastCameraEventsBound) return;
   fastCameraEventsBound = true;
+
+  var orientToggleBtn = document.getElementById('fc-orient-toggle-btn');
+  if (orientToggleBtn) orientToggleBtn.addEventListener('click', toggleFastCameraOrientation);
+  updateFastCameraOrientationUI();
 
   var sizeToggleBtn = document.getElementById('fc-size-toggle-btn');
   if (sizeToggleBtn) sizeToggleBtn.addEventListener('click', toggleFastCameraSize);

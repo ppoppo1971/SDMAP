@@ -667,11 +667,8 @@
       overflow: hidden; user-select: none;
     }
     .fast-camera-modal.hidden { display: none !important; }
-    #fast-camera-video {
-      width: 100%; height: 100%; object-fit: cover;
-      position: absolute; top: 0; left: 0; z-index: 1;
-    }
-    .fc-viewfinder-guide {
+    /* 레터박스 뷰파인더 박스: 실제 사진이 찍히는 3:4 또는 4:3 규격 일체형 박스 */
+    .fc-viewfinder-box {
       position: absolute;
       top: 50%; left: 50%;
       transform: translate(-50%, -50%);
@@ -679,18 +676,33 @@
       height: calc(100vw * 4 / 3);
       max-height: 100vh;
       max-width: calc(100vh * 3 / 4);
-      border: 1.5px dashed rgba(255, 255, 255, 0.45);
-      border-radius: 8px;
-      pointer-events: none;
+      background: #000;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.95);
+      border-radius: 4px;
       z-index: 2;
-      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.22);
-      transition: all 0.25s ease-out;
     }
-    .fc-viewfinder-guide.landscape {
+    .fc-viewfinder-box.landscape {
       width: calc(100vh * 4 / 3);
       height: 100vh;
       max-width: 100vw;
       max-height: calc(100vw * 3 / 4);
+    }
+    #fast-camera-video {
+      width: 100%; height: 100%; object-fit: cover;
+      display: block; pointer-events: auto;
+    }
+    .fc-viewfinder-guide {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      border: 2px solid rgba(255, 255, 255, 0.85);
+      border-radius: 4px;
+      pointer-events: none;
+      z-index: 3;
+      box-sizing: border-box;
     }
     .fast-camera-top-bar {
       position: relative; z-index: 10;
@@ -1085,19 +1097,24 @@
 
   <!-- 인앱 고속 즉시 촬영 카메라 모달 -->
   <div id="fast-camera-modal" class="fast-camera-modal hidden">
-    <video id="fast-camera-video" playsinline autoplay muted></video>
-    <div id="fc-viewfinder-guide" class="fc-viewfinder-guide"></div>
+    <div id="fc-viewfinder-box" class="fc-viewfinder-box">
+      <video id="fast-camera-video" playsinline autoplay muted></video>
+      <div id="fc-viewfinder-guide" class="fc-viewfinder-guide"></div>
+    </div>
+    <div id="fc-focus-ring" class="fc-focus-ring"></div>
     <div class="fast-camera-top-bar">
       <button type="button" class="fc-btn" id="fc-close-btn" title="닫기">✕</button>
       <div class="fc-top-center">
         <span class="fc-mode-badge">⚡ 고속 즉시</span>
+        <button type="button" class="fc-size-btn" id="fc-orient-toggle-btn" title="촬영 방향 (자동 / 세로 3:4 / 가로 4:3 고정)">
+          <span id="fc-orient-icon">🔄</span> <span id="fc-orient-label">자동</span>
+        </button>
         <button type="button" class="fc-size-btn" id="fc-size-toggle-btn" title="촬영 화질/용량 변경 (터치하여 전환)">
           <span class="fc-size-badge-icon">📦</span> <span id="fc-size-label">1MB</span>
         </button>
       </div>
       <button type="button" class="fc-btn" id="fc-torch-btn" style="display:none;" title="플래시">⚡</button>
     </div>
-    <div id="fc-focus-ring" class="fc-focus-ring"></div>
     <div class="fast-camera-bottom-bar">
       <div class="fc-lens-controls" id="fc-lens-controls">
         <button type="button" class="fc-lens-btn" data-zoom="0.5" id="fc-lens-05">.5X</button>
