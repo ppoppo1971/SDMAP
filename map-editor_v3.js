@@ -17,6 +17,11 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
     if (id) { delete _domCache[id]; } else { _domCache = {}; }
   }
 
+  // [안전 방어] 슬라이드바 제거 후 잔여 호출 방어용 무동작 빈 함수 (런타임 에러 완전 차단)
+  function hideRelatedSpecSlideBar() {}
+  function showRelatedSpecSlideBar() {}
+  function triggerRelatedSpecCheck() {}
+
   // 시설물 제원 포맷 및 입력 양식 설정 (facility-config.js 연동)
   var FACILITY_CONFIG = window.FACILITY_CONFIG || {
     '참고사항': {
@@ -2440,22 +2445,27 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
 
       var allItems = [];
 
-      // 1) 빈도순 추천어(실제 데이터 기반)를 최상단에 배치 (getFieldSuggestions가 이미 lastSavedFieldValues를 최상단으로 올려줌)
-      if (resolvedSuggestions && resolvedSuggestions.length > 0) {
-        resolvedSuggestions.forEach(function (sug) {
-          if (allItems.indexOf(sug) === -1) {
-            allItems.push(sug);
-          }
-        });
-      }
+      // [방안 2] 기준 항목(내용/종류)에 따라 엄격 필터링된 결과인 경우, 해당 항목들만 단독으로 표시!
+      if (resolvedSuggestions && resolvedSuggestions.isStrict) {
+        allItems = resolvedSuggestions.slice();
+      } else {
+        // 1) 빈도순 추천어(실제 데이터 기반)를 최상단에 배치
+        if (resolvedSuggestions && resolvedSuggestions.length > 0) {
+          resolvedSuggestions.forEach(function (sug) {
+            if (allItems.indexOf(sug) === -1) {
+              allItems.push(sug);
+            }
+          });
+        }
 
-      // 2) 기본 설정 옵션 목록은 빈도 목록에 없는 것만 추가 (후순위, '기타'는 불필요하므로 완전 제외)
-      if (options && options.length > 0) {
-        options.forEach(function (opt) {
-          if (opt !== '기타' && allItems.indexOf(opt) === -1) {
-            allItems.push(opt);
-          }
-        });
+        // 2) 기본 설정 옵션 목록은 빈도 목록에 없는 것만 추가 (후순위, '기타'는 불필요하므로 완전 제외)
+        if (options && options.length > 0) {
+          options.forEach(function (opt) {
+            if (opt !== '기타' && allItems.indexOf(opt) === -1) {
+              allItems.push(opt);
+            }
+          });
+        }
       }
 
       var filtered = allItems;
@@ -2741,7 +2751,6 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
   // -------------------------------------------------------------
   function selectPhoto(photoId) {
     if (!metadata || !metadata.photos) return;
-    hideRelatedSpecSlideBar();
     
     // 수동 저장 규칙: 다른 사진 클릭 시 임시 작성 내용은 자동 폐기
     selectedPhotoId = photoId;
@@ -2848,7 +2857,9 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
 
       var parseResult = deserializeSpecText(textObj.text, textObj.layer);
       if (parseResult) {
-        renderAttributeCard(cardsContainer, parseResult.facilityType, parseResult.values, tId, parseResult.isSub);
+        // [현장 데이터 최우선] textObj에 현장 저장된 specValues가 존재하면 최우선 적용, 없으면 역파서 결과 적용
+        var cardVals = (textObj.specValues && Object.keys(textObj.specValues).length > 0) ? textObj.specValues : parseResult.values;
+        renderAttributeCard(cardsContainer, parseResult.facilityType, cardVals, tId, parseResult.isSub);
       }
     });
 
@@ -3073,6 +3084,69 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
         values['f_2'] = parts[2] || '';
         values['f_3'] = parts[3] || '';
       }
+    } else if (fType === '가로등(보안등)') {
+      // [현장 가로등 복합 제원 전용 지능형 역파서 - 주시설물 1개 카드 완벽 복원 (방안 C 및 구형 호환)]
+      var pList = parts.slice(1); // 접두어('가등') 제외
+      var secIdx = -1;
+      pList.forEach(function (p, i) {
+        if (p.indexOf('보안등') !== -1) secIdx = i;
+      });
+
+      // 초기화
+      config.fields.forEach(function (f) { values[f.id] = ''; });
+      values['f_7'] = '+보안등'; // 기본값
+
+      if (secIdx !== -1) {
+        // [방안 C 형식]: 가등 / [종류] / [재질] / 형태 / 광원 / 높이 / 암길이 / +보안등 / 부착형태 / 부착광원 / [사진]
+        var beforeSec = pList.slice(0, secIdx);
+        var afterSec = pList.slice(secIdx + 1);
+
+        values['f_7'] = pList[secIdx]; // '+보안등'
+
+        // 보안등 이후: 부착등 형태, 광원, 사진
+        if (afterSec.length > 0) values['f_8'] = afterSec[0]; // 부착 형태
+        if (afterSec.length > 1) values['f_9'] = afterSec[1]; // 부착 광원
+        if (afterSec.length > 2 && afterSec[2] === '사진') values['f_10'] = '사진';
+
+        // 보안등 이전: 끝에서부터 암길이, 높이 역추적
+        if (beforeSec.length >= 2 && !isNaN(parseFloat(beforeSec[beforeSec.length - 1]))) {
+          var armVal = beforeSec.pop();
+          values['f_6'] = (armVal.startsWith('/') ? armVal : '/' + armVal);
+          if (beforeSec.length >= 1 && !isNaN(parseFloat(beforeSec[beforeSec.length - 1]))) {
+            values['f_5'] = beforeSec.pop(); // 높이
+          }
+        }
+
+        // 남은 항목 중 광원, 본체 형태, 재질, 종류 매핑
+        var knownLights = ['LED', '고압나트륨', '메탈', '삼파장'];
+        if (beforeSec.length >= 1) {
+          var lastItem = beforeSec[beforeSec.length - 1];
+          if (knownLights.indexOf(lastItem) !== -1 || beforeSec.length >= 2) {
+            values['f_4'] = beforeSec.pop(); // 광원
+          }
+        }
+        if (beforeSec.length >= 1) values['f_3'] = beforeSec.pop(); // 본체 형태
+        if (beforeSec.length >= 1) values['f_2'] = beforeSec.pop(); // 재질
+        if (beforeSec.length >= 1) values['f_1'] = beforeSec.pop(); // 종류
+      } else if (pList.length >= 5) {
+        // [구형 현장 형식 호환]: 가등 / 형태1 / 광원1 / 형태2 / 광원2 / 높이 / 암길이 / 사진
+        values['f_1'] = '';
+        values['f_2'] = '';
+        values['f_3'] = pList[0] || '가오스형';
+        values['f_4'] = pList[1] || 'LED';
+        values['f_5'] = pList[4] || '10.0';
+        var rawArm = pList[5] || '1.7';
+        values['f_6'] = (rawArm.startsWith('/') ? rawArm : '/' + rawArm);
+        values['f_7'] = '+보안등';
+        values['f_8'] = pList[2] || '가오스형';
+        values['f_9'] = pList[3] || 'LED';
+        values['f_10'] = pList[6] || '사진';
+      } else {
+        // 필드 기본 순서 매핑
+        config.fields.forEach(function (f, idx) {
+          if (pList[idx] !== undefined) values[f.id] = pList[idx];
+        });
+      }
     } else if (config.joinFormat) {
       if (fType === '배수암거') {
         var dim = parts[1] || '';
@@ -3193,10 +3267,42 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
     return list.slice(0, 10).map(function (item) { return item.val; });
   }
 
-  // 시설물 카드의 필드별 다빈도 입력 제안어 추출 (자동완성 이식, 참조 데이터 빈도 병합)
-  function getFieldSuggestions(fieldId, layerName, excludeList) {
+  // 시설물 카드의 필드별 다빈도 입력 제안어 추출 (자동완성 이식, 참조 데이터 빈도 병합, 피벗 기준 엄격 필터링 지원)
+  function getFieldSuggestions(fieldId, layerName, excludeList, pivotFilter) {
     var excludes = excludeList || [];
     var counts = {};
+
+    // [방안 2] 피벗 기준 필터링 (예: 내용이 '단속중'인 텍스트만 엄격 집계하여 높이/제원 추출)
+    if (pivotFilter && pivotFilter.pivotFieldId && pivotFilter.pivotVal) {
+      var targetPivotVal = String(pivotFilter.pivotVal).trim();
+      if (metadata && metadata.texts) {
+        metadata.texts.forEach(function (t) {
+          if (t.layer === layerName) {
+            var parseResult = deserializeSpecText(t.text, t.layer);
+            if (parseResult && parseResult.values) {
+              var pVal = parseResult.values[pivotFilter.pivotFieldId];
+              if (pVal && String(pVal).trim() === targetPivotVal) {
+                var val = parseResult.values[fieldId];
+                if (val && String(val).trim() !== '' && val !== '기타' && excludes.indexOf(val) === -1) {
+                  counts[val] = (counts[val] || 0) + 1;
+                }
+              }
+            }
+          }
+        });
+      }
+
+      var pivotList = Object.keys(counts).map(function (k) {
+        return { val: k, count: counts[k] };
+      });
+
+      if (pivotList.length > 0) {
+        pivotList.sort(function (a, b) { return b.count - a.count; });
+        var strictVals = pivotList.slice(0, 10).map(function (item) { return item.val; });
+        strictVals.isStrict = true; // [방안 2] 엄격 필터링 플래그 설정 (기본 옵션 혼합 방지)
+        return strictVals;
+      }
+    }
 
     // 1) 현재 로드된 파일들 데이터 집계
     if (metadata && metadata.texts) {
@@ -3402,10 +3508,27 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
     var delBtn = document.createElement('button');
     delBtn.className = 'attribute-card-del-btn';
     delBtn.textContent = '제거';
-    delBtn.addEventListener('click', function () {
-      card.parentNode.removeChild(card);
-      updateFloatingWindowSpecs(); // 실시간 오버레이 동기화
-      saveCurrentPhoto();
+    delBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var cardContainer = card.parentNode;
+      if (cardContainer) {
+        cardContainer.removeChild(card);
+        // 남은 카드들의 주시설물/부속시설물 속성 및 미리보기 재동기화
+        var remainingCards = cardContainer.querySelectorAll('.attribute-card');
+        remainingCards.forEach(function (c, idx) {
+          if (idx === 0) {
+            c.removeAttribute('data-is-sub');
+          } else {
+            c.setAttribute('data-is-sub', 'true');
+          }
+          var cType = c.getAttribute('data-facility-type');
+          var cConfig = FACILITY_CONFIG[cType];
+          if (cConfig) {
+            updateSpecPreview(c, cConfig);
+          }
+        });
+      }
+      updateFloatingWindowSpecs(); // 실시간 오버레이 동기화 (사진창은 그대로 열림 유지!)
     });
 
     orderGroup.appendChild(upBtn);
@@ -3427,6 +3550,13 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
         return;
       }
 
+      // [부시설물 가로등 규격] 가로등이 부시설물인 경우: 형태와 광원만 노출하고 나머지 항목 생략
+      if (isSub && (type === '가로등' || type === '가로등(보안등)')) {
+        if (f.label !== '형태' && f.label !== '광원' && f.id !== 'f_3' && f.id !== 'f_4') {
+          return;
+        }
+      }
+
       var group = document.createElement('div');
       group.className = 'form-group';
       
@@ -3436,7 +3566,12 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       }
 
       var label = document.createElement('label');
-      label.textContent = f.label;
+      var labelText = f.label;
+      if (type === '가로등(보안등)' && !isSub) {
+        if (f.id === 'f_8') labelText = '부착등 형태';
+        if (f.id === 'f_9') labelText = '부착등 광원';
+      }
+      label.textContent = labelText;
       group.appendChild(label);
 
       // 입력값 우선순위: 기존 캐시값 > 마지막 저장값 > 기본값
@@ -3461,7 +3596,39 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       input.placeholder = f.placeholder || (f.options ? '목록 선택 또는 직접 입력' : '입력');
 
       var layerName = config.layer || (type + '_T');
-      var suggestions = getFieldSuggestions(f.id, layerName, f.options || []);
+
+      // [방안 2] 내용/종류 등 기준 항목에 따라 높이/제원 목록을 엄격 필터링하는 동적 공급자
+      var dynamicSuggestions = function () {
+        var pivotLabel = (typeof FACILITY_PIVOT_CRITERIA !== 'undefined' ? FACILITY_PIVOT_CRITERIA[type] : null);
+        var pivotField = null;
+        if (pivotLabel && config.fields) {
+          pivotField = config.fields.find(function (fld) {
+            return fld.label === pivotLabel || fld.label.indexOf(pivotLabel) !== -1;
+          });
+        }
+
+        var pivotVal = '';
+        if (pivotField) {
+          var pivotInput = card.querySelector('[data-field-id="' + pivotField.id + '"]');
+          if (pivotInput) {
+            pivotVal = pivotInput.value.trim();
+          }
+        }
+
+        // 기준 필드가 아닌 하위 필드이고, 기준값이 입력되어 있는 경우 엄격 필터링
+        if (pivotField && f.id !== pivotField.id && pivotVal && pivotVal !== '기타' && pivotVal !== '선택' && pivotVal !== '직접입력' && pivotVal !== '--') {
+          var filtered = getFieldSuggestions(f.id, layerName, f.options || [], {
+            facilityType: type,
+            pivotFieldId: pivotField.id,
+            pivotVal: pivotVal
+          });
+          if (filtered && filtered.length > 0) {
+            return filtered;
+          }
+        }
+
+        return getFieldSuggestions(f.id, layerName, f.options || []);
+      };
 
       // [방안 1] 사용자가 지정한 핵심 기준 항목(내용 또는 종류)인지 판별
       var pivotLabel = (typeof FACILITY_PIVOT_CRITERIA !== 'undefined' ? FACILITY_PIVOT_CRITERIA[type] : null);
@@ -3490,7 +3657,7 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       group.appendChild(input);
 
       // 커스텀 드롭다운 연동 및 엔터/화살표 키 조작 처리 (방안 2)
-      setupCustomDropdown(input, f.options, suggestions);
+      setupCustomDropdown(input, f.options, dynamicSuggestions);
 
       fieldsWrap.appendChild(group);
     });
@@ -3543,6 +3710,66 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       resultParts.push(prefixWord);
     }
 
+    // [부시설물 가로등 규격: +가등/형태/광원]
+    if (isSub && (type === '가로등' || type === '가로등(보안등)' || type === '가로등(부착)')) {
+      var pWord = prefixWord || '+가등';
+      if (!pWord.startsWith('+')) pWord = '+' + pWord;
+      var subParts = [pWord];
+      var fTypeVal = values['f_3'] || values['f_1'] || '';
+      var fLightVal = values['f_4'] || values['f_2'] || '';
+      if (fTypeVal && fTypeVal !== '--' && fTypeVal !== '입력생략' && fTypeVal !== '선택' && fTypeVal !== '기타' && fTypeVal !== '삭제') subParts.push(fTypeVal);
+      if (fLightVal && fLightVal !== '--' && fLightVal !== '입력생략' && fLightVal !== '선택' && fLightVal !== '기타' && fLightVal !== '삭제') subParts.push(fLightVal);
+      return subParts.join('/');
+    }
+
+    // [주시설물 가로등(보안등) 방안 C 순서 전개]
+    // 규격: 가등 / 종류 / 재질 / 형태 / 광원 / 높이 / 암길이 / +보안등 / 부착형태 / 부착광원 / 사진
+    // 예: 가등/원형/철재/가오스형/LED/10.0/1.7/+보안등/가오스형/LED/사진 (한 줄로 표기)
+    if (type === '가로등(보안등)') {
+      var partsList = [prefixWord || '가등'];
+      
+      // 1. 종류, 재질 (f_1, f_2)
+      ['f_1', 'f_2'].forEach(function(fid) {
+        var v = values[fid] ? String(values[fid]).trim() : '';
+        if (v && v !== '--' && v !== '입력생략' && v !== '선택' && v !== '기타' && v !== '삭제') partsList.push(v);
+      });
+      
+      // 2. 가로등 본체 형태, 광원 (f_3, f_4)
+      ['f_3', 'f_4'].forEach(function(fid) {
+        var v = values[fid] ? String(values[fid]).trim() : '';
+        if (v && v !== '--' && v !== '입력생략' && v !== '선택' && v !== '기타' && v !== '삭제') partsList.push(v);
+      });
+
+      // 3. 높이, 암길이 (f_5, f_6)
+      var vH = values['f_5'] ? String(values['f_5']).trim() : '';
+      if (vH && vH !== '--' && vH !== '입력생략' && vH !== '선택' && vH !== '기타' && vH !== '삭제') partsList.push(vH);
+
+      var vArm = values['f_6'] ? String(values['f_6']).trim() : '';
+      if (vArm && vArm !== '--' && vArm !== '입력생략' && vArm !== '선택' && vArm !== '기타' && vArm !== '삭제') {
+        partsList.push(vArm.replace(/^\/+/, '')); // 이중 슬래시 방지 (/1.7 -> 1.7)
+      }
+
+      // 4. 보안등유무 (+보안등) (f_7)
+      var vSec = values['f_7'] ? String(values['f_7']).trim() : '';
+      if (vSec && vSec !== '--' && vSec !== '입력생략' && vSec !== '선택' && vSec !== '기타' && vSec !== '삭제' && vSec !== '없음') {
+        partsList.push(vSec);
+      }
+
+      // 5. 부착 보안등 형태, 광원 (f_8, f_9)
+      ['f_8', 'f_9'].forEach(function(fid) {
+        var v = values[fid] ? String(values[fid]).trim() : '';
+        if (v && v !== '--' && v !== '입력생략' && v !== '선택' && v !== '기타' && v !== '삭제') partsList.push(v);
+      });
+
+      // 6. 사진 (f_10)
+      if (!isSub) {
+        var vPhoto = values['f_10'] ? String(values['f_10']).trim() : '';
+        if (vPhoto === '사진' || vPhoto === '입력') partsList.push('사진');
+      }
+
+      return partsList.join('/');
+    }
+
     if (config.fields && config.fields.length > 0) {
       config.fields.forEach(function (f) {
         if (f.id === 'name') return;
@@ -3559,6 +3786,11 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
         // [사용자 요구사항] 입력란이 빈칸이거나 생략 선택 시 도면 조립에서 완전히 생략!
         if (val === '' || val === '입력생략' || val === '삭제' || val === '제외' || val === '미표기' || val === '없음' || val === '--' || val === '선택' || val === '기타') {
           return;
+        }
+
+        // 암길이 필드 등에서 선행 슬래시(/)가 join('/')과 중복되어 // 가 되는 현상 방지
+        if (f.label === '암길이' || f.id === 'f_6') {
+          val = val.replace(/^\/+/, '');
         }
 
         // 사진 필드는 '사진' 그대로 전개
@@ -3680,7 +3912,8 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
   // -------------------------------------------------------------
   // [6] 데이터 수동 저장 및 로컬 쓰기 동기화
   // -------------------------------------------------------------
-  async function saveCurrentPhoto() {
+  async function saveCurrentPhoto(options) {
+    var keepOpen = options && options.keepOpen === true;
     if (!metadata || !selectedPhotoId) return;
 
     var p = metadata.photos.find(function (x) { return x.id === selectedPhotoId; });
@@ -3786,11 +4019,11 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       triggerManualJsonDownload();
     }
 
-    // 저장 후 플로팅 뷰어 자동 닫기 (하단 썸네일에 겹침 사진이 2장 이상이면 닫지 않음)
+    // 저장 후 플로팅 뷰어 자동 닫기 (하단 썸네일에 겹침 사진이 2장 이상이거나 keepOpen일 때는 닫지 않음)
     var _fw = getEl('floating-image-window');
     var _thumbs = getEl('floating-window-thumbnails');
     var hasSiblings = _thumbs && _thumbs.children.length > 1;
-    if (_fw && !hasSiblings) {
+    if (_fw && !hasSiblings && !keepOpen) {
       _fw.style.display = 'none';
     }
   }
@@ -5597,7 +5830,7 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       }
     }
 
-    // 주시설물(1번째)과 부속시설물(2번째 이후) 속성 자동 재동기화
+    // 주시설물(1번째)과 부속시설물(2번째 이후) 속성 자동 재동기화 및 각 카드 미리보기 갱신
     var cards = container.querySelectorAll('.attribute-card');
     cards.forEach(function (c, idx) {
       if (idx === 0) {
@@ -5605,10 +5838,14 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       } else {
         c.setAttribute('data-is-sub', 'true');
       }
+      var cType = c.getAttribute('data-facility-type');
+      var cConfig = FACILITY_CONFIG[cType];
+      if (cConfig) {
+        updateSpecPreview(c, cConfig);
+      }
     });
 
-    updateFloatingWindowSpecs(); // 화면 오버레이 실시간 갱신
-    saveCurrentPhoto(); // 메타데이터 및 캐드 전개 텍스트 순서 동기화 저장
+    updateFloatingWindowSpecs(); // 화면 오버레이 실시간 갱신 (사진창은 그대로 열림 유지!)
   }
 
   // =========================================================================
@@ -5633,8 +5870,27 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       return;
     }
 
+    // 실측 시야 확보를 위해 플로팅 사진창이 열려 있다면 잠시 숨김 (닫거나 완료 시 복원)
+    var fw = document.getElementById('floating-image-window');
+    var fwWasVisible = fw && (fw.style.display !== 'none');
+    if (fw) fw.style.display = 'none';
+    window._phmFwWasVisible = fwWasVisible;
+
+    var closeBtn = document.getElementById('phm-btn-close');
+    if (closeBtn && !closeBtn._restoreFwHooked) {
+      closeBtn._restoreFwHooked = true;
+      closeBtn.addEventListener('click', function () {
+        if (window._phmFwWasVisible) {
+          var w = document.getElementById('floating-image-window');
+          if (w) w.style.display = 'flex';
+          window._phmFwWasVisible = false;
+        }
+      });
+    }
+
     if (window.PhotoMeasure) {
       window.PhotoMeasure.open(imgSrc, function (annotatedBlob) {
+        window._phmFwWasVisible = false;
         var newFileName = '치수실측_' + Date.now() + '.jpg';
         var file = new File([annotatedBlob], newFileName, { type: 'image/jpeg' });
         photoBlobs[newFileName] = file;
@@ -5652,6 +5908,13 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
         alert('📐 치수 실측이 완료되었습니다!\n실측 주석 사진이 보조 사진으로 추가되었습니다.\n측정된 수치(높이, 폭)를 확인하시고 제원 입력칸에 직접 입력해 주세요.');
         saveCurrentPhoto();
       });
+
+      // PC 분할 모드 영역 크기 변화에 맞춰 사진 캔버스 자동 최적화
+      setTimeout(function () {
+        if (window.PhotoMeasure && typeof window.PhotoMeasure.fitToScreen === 'function') {
+          window.PhotoMeasure.fitToScreen();
+        }
+      }, 60);
     } else {
       alert('PhotoMeasure 모듈을 불러오지 못했습니다. 페이지를 새로고침(Ctrl+F5)해 주세요.');
     }

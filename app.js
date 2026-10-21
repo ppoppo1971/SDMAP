@@ -6221,8 +6221,8 @@ function openSuggestionPickerModal(targetInputId, fieldTitle, suggestions, field
   modal.classList.add('active');
 }
 
-// 특정 시설물 및 필드 ID에 매칭되는 이전 입력값들을 texts 이력 및 localStorage에서 추출하여 빈도순 정렬하여 반환 (블랙리스트 제외)
-function getFieldSuggestions(fieldId, config, defaultOptions) {
+// 특정 시설물 및 필드 ID에 매칭되는 이전 입력값들을 texts 이력 및 localStorage에서 추출하여 빈도순 정렬하여 반환 (블랙리스트 제외, 피벗 기준 엄격 필터링 지원)
+function getFieldSuggestions(fieldId, config, defaultOptions, pivotFilter) {
   var counts = {};
   var baseDefaults = [];
   var fieldKey = (config && (config.title || config.layer) ? (config.title || config.layer) : 'common') + '_' + fieldId;
@@ -6237,6 +6237,59 @@ function getFieldSuggestions(fieldId, config, defaultOptions) {
   })));
 
   var isExcludedDeleteField = isPhotoField || isDoubleSidedField;
+
+  // [방안 2] 피벗 기준 필터링 (예: 내용이 '단속중'인 텍스트들에서만 높이/제원 엄격 집계)
+  if (pivotFilter && pivotFilter.pivotFieldId && pivotFilter.pivotVal) {
+    var targetPivotVal = String(pivotFilter.pivotVal).trim();
+    if (window.texts && window.texts.length > 0 && config && config.layer) {
+      var confClean = String(config.layer || '').replace(/_T$/i, '').toLowerCase();
+      var confTitle = String(config.title || '').toLowerCase();
+
+      window.texts.forEach(function (t) {
+        var tClean = String(t.layer || '').replace(/_T$/i, '').toLowerCase();
+        var isMatching = (tClean === confClean || (confTitle && tClean === confTitle));
+        if (t.facilityType) {
+          isMatching = (String(t.facilityType).toLowerCase() === confTitle);
+        }
+        if (isMatching && t.text) {
+          var pVal = '';
+          var parsed = null;
+          if (t.specValues && t.specValues[pivotFilter.pivotFieldId] !== undefined) {
+            pVal = String(t.specValues[pivotFilter.pivotFieldId]).trim();
+          } else {
+            parsed = deserializeSpecText(t.text, config);
+            if (parsed && parsed[pivotFilter.pivotFieldId] !== undefined) {
+              pVal = String(parsed[pivotFilter.pivotFieldId]).trim();
+            }
+          }
+
+          if (pVal && pVal === targetPivotVal) {
+            var val = '';
+            if (t.specValues && t.specValues[fieldId] !== undefined) {
+              val = String(t.specValues[fieldId]).trim();
+            } else if (parsed && parsed[fieldId] !== undefined) {
+              val = String(parsed[fieldId]).trim();
+            }
+            if (val && val !== '' && val !== '기타' && val !== '직접입력' && val !== '선택' && val !== '--' && blacklist.indexOf(val) === -1) {
+              counts[val] = (counts[val] || 0) + 1;
+            }
+          }
+        }
+      });
+
+      var pivotList = Object.keys(counts).map(function (k) {
+        return { val: k, count: counts[k] };
+      });
+
+      if (pivotList.length > 0) {
+        pivotList.sort(function (a, b) {
+          if (b.count !== a.count) return b.count - a.count;
+          return a.val.localeCompare(b.val, 'ko');
+        });
+        return pivotList.map(function (item) { return item.val; });
+      }
+    }
+  }
 
   // 1. 기본 옵션 목록(사용자 지정 기본 목록)을 0회 카운트로 사전 등록 (블랙리스트 제외)
   if (defaultOptions && defaultOptions.length > 0) {
@@ -6805,6 +6858,13 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       return;
     }
 
+    // [부시설물 가로등 규격] 가로등이 부시설물인 경우: 형태와 광원만 노출하고 나머지 항목 생략
+    if (isSub && (config.title === '가로등' || config.title === '가로등(보안등)')) {
+      if (field.label !== '형태' && field.label !== '광원' && field.id !== 'f_3' && field.id !== 'f_4') {
+        return;
+      }
+    }
+
     var group = document.createElement('div');
     group.className = 'form-group';
 
@@ -6866,7 +6926,12 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       val = hasCache ? cachedVal : (field.default || '');
     }
 
-    var html = '<label>' + field.label + '</label>';
+    var fieldLabel = field.label;
+    if (config.title === '가로등(보안등)' && !isSub) {
+      if (field.id === 'f_8') fieldLabel = '부착등 형태';
+      if (field.id === 'f_9') fieldLabel = '부착등 광원';
+    }
+    var html = '<label>' + fieldLabel + '</label>';
 
     // 지능형 숫자형 필드 감지기
     var isNumericField = field.type === 'number' || field.isNumber || 
@@ -6932,7 +6997,32 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
         });
 
         listBtnEl.addEventListener('click', function () {
-          var currentOpts = getFieldSuggestions(field.id, config, field.options);
+          // [방안 2] 내용/종류 등 기준 항목에 따라 높이/제원 목록을 엄격 필터링
+          var pivotFilter = null;
+          var pivotLabel = (typeof FACILITY_PIVOT_CRITERIA !== 'undefined' ? FACILITY_PIVOT_CRITERIA[config.title] : null);
+          var pivotField = null;
+          if (pivotLabel && config.fields) {
+            pivotField = config.fields.find(function (fld) {
+              return fld.label === pivotLabel || fld.label.indexOf(pivotLabel) !== -1;
+            });
+          }
+
+          var pivotVal = '';
+          if (pivotField && container) {
+            var pivotInput = container.querySelector('#' + prefixId + '-' + pivotField.id);
+            if (pivotInput) {
+              pivotVal = pivotInput.value.trim();
+            }
+          }
+
+          if (pivotField && field.id !== pivotField.id && pivotVal && pivotVal !== '기타' && pivotVal !== '선택' && pivotVal !== '직접입력' && pivotVal !== '--') {
+            pivotFilter = {
+              pivotFieldId: pivotField.id,
+              pivotVal: pivotVal
+            };
+          }
+
+          var currentOpts = getFieldSuggestions(field.id, config, field.options, pivotFilter);
           openSuggestionPickerModal(inputId, field.label, currentOpts, fieldKey, function (chosenVal) {
             updatePreview();
             if (typeof window.updateAllPreviews === 'function') window.updateAllPreviews();
@@ -7068,6 +7158,74 @@ function serializeFacilityForm(container, config, prefixId) {
     if (!prefixWord.startsWith('+')) {
       prefixWord = '+' + prefixWord;
     }
+  }
+
+  // [부시설물 가로등 규격: +가등/형태/광원]
+  if (isSub && (config.title === '가로등' || config.title === '가로등(보안등)' || config.title === '가로등(부착)')) {
+    var pWord = prefixWord || '+가등';
+    if (!pWord.startsWith('+')) pWord = '+' + pWord;
+    var subParts = [pWord];
+    var fTypeVal = vals['f_3'] || vals['f_1'] || '';
+    var fLightVal = vals['f_4'] || vals['f_2'] || '';
+    if (fTypeVal && fTypeVal !== '--' && fTypeVal !== '입력생략' && fTypeVal !== '선택' && fTypeVal !== '기타' && fTypeVal !== '삭제') subParts.push(fTypeVal);
+    if (fLightVal && fLightVal !== '--' && fLightVal !== '입력생략' && fLightVal !== '선택' && fLightVal !== '기타' && fLightVal !== '삭제') subParts.push(fLightVal);
+    lastSpecs[config.title] = vals;
+    return {
+      layer: finalLayer,
+      specText: subParts.join('/'),
+      values: vals
+    };
+  }
+
+  // [주시설물 가로등(보안등) 방안 C 순서 전개]
+  // 규격: 가등 / 종류 / 재질 / 형태 / 광원 / 높이 / 암길이 / +보안등 / 부착형태 / 부착광원 / 사진
+  // 예: 가등/원형/철재/가오스형/LED/10.0/1.7/+보안등/가오스형/LED/사진 (한 줄로 표기)
+  if (config.title === '가로등(보안등)') {
+    var partsList = [prefixWord || '가등'];
+    
+    // 1. 종류, 재질 (f_1, f_2)
+    ['f_1', 'f_2'].forEach(function(fid) {
+      var v = vals[fid] ? String(vals[fid]).trim() : '';
+      if (v && v !== '--' && v !== '입력생략' && v !== '선택' && v !== '기타' && v !== '삭제') partsList.push(v);
+    });
+    
+    // 2. 가로등 본체 형태, 광원 (f_3, f_4)
+    ['f_3', 'f_4'].forEach(function(fid) {
+      var v = vals[fid] ? String(vals[fid]).trim() : '';
+      if (v && v !== '--' && v !== '입력생략' && v !== '선택' && v !== '기타' && v !== '삭제') partsList.push(v);
+    });
+
+    // 3. 높이, 암길이 (f_5, f_6)
+    var vH = vals['f_5'] ? String(vals['f_5']).trim() : '';
+    if (vH && vH !== '--' && vH !== '입력생략' && vH !== '선택' && vH !== '기타' && vH !== '삭제') partsList.push(vH);
+
+    var vArm = vals['f_6'] ? String(vals['f_6']).trim() : '';
+    if (vArm && vArm !== '--' && vArm !== '입력생략' && vArm !== '선택' && vArm !== '기타' && vArm !== '삭제') {
+      partsList.push(vArm.replace(/^\/+/, ''));
+    }
+
+    // 4. 보안등유무 (+보안등) (f_7)
+    var vSec = vals['f_7'] ? String(vals['f_7']).trim() : '';
+    if (vSec && vSec !== '--' && vSec !== '입력생략' && vSec !== '선택' && vSec !== '기타' && vSec !== '삭제' && vSec !== '없음') {
+      partsList.push(vSec);
+    }
+
+    // 5. 부착 보안등 형태, 광원 (f_8, f_9)
+    ['f_8', 'f_9'].forEach(function(fid) {
+      var v = vals[fid] ? String(vals[fid]).trim() : '';
+      if (v && v !== '--' && v !== '입력생략' && v !== '선택' && v !== '기타' && v !== '삭제') partsList.push(v);
+    });
+
+    // 6. 사진 (f_10)
+    var vPhoto = vals['f_10'] ? String(vals['f_10']).trim() : '';
+    if (vPhoto === '사진' || vPhoto === '입력') partsList.push('사진');
+
+    lastSpecs[config.title] = vals;
+    return {
+      layer: finalLayer,
+      specText: partsList.join('/'),
+      values: vals
+    };
   }
 
   var parts = [];
