@@ -77,28 +77,32 @@ function getLastSavedSpecForFacility(facilityType) {
   var config = (typeof FACILITY_CONFIG !== 'undefined' ? FACILITY_CONFIG[facilityType] : null);
   if (!config) return null;
   var confLayer = String(config.layer || '').replace(/_T$/i, '').toLowerCase();
-  var confPrefix = String(config.prefix || config.title || '').toLowerCase();
+  var confPrefix = String(config.prefix || config.title || '').replace(/^\+/, '').toLowerCase();
 
   for (var i = window.texts.length - 1; i >= 0; i--) {
     var t = window.texts[i];
     if (!t || !t.text) continue;
 
+    // 시설물 일치 판별: t.facilityType 우선 매칭, 부재 시 레이어 및 접두어 검사
+    var isMatched = false;
+    if (t.facilityType) {
+      isMatched = (t.facilityType === facilityType);
+    } else {
+      var tLayerStr = String(t.layer || '').replace(/_T$/i, '').toLowerCase();
+      var firstWord = String(t.text.split('/')[0] || '').replace(/^\+/, '').toLowerCase();
+      isMatched = (tLayerStr === confLayer || tLayerStr === facilityType.toLowerCase() || firstWord === confPrefix || firstWord === facilityType.toLowerCase());
+    }
+    if (!isMatched) continue;
+
     // A. specValues 속성이 존재하는 경우
-    if (t.specValues && t.layer) {
-      var tLayer = String(t.layer).replace(/_T$/i, '').toLowerCase();
-      if (tLayer === confLayer || tLayer === facilityType.toLowerCase()) {
-        return t.specValues;
-      }
+    if (t.specValues && Object.keys(t.specValues).length > 0) {
+      return t.specValues;
     }
 
     // B. text 문자열로부터 역직렬화
-    var tLayerStr = String(t.layer || '').replace(/_T$/i, '').toLowerCase();
-    var firstWord = String(t.text.split('/')[0] || '').replace(/^\+/, '').toLowerCase();
-    if (tLayerStr === confLayer || tLayerStr === facilityType.toLowerCase() || firstWord === confPrefix || firstWord === facilityType.toLowerCase()) {
-      var parsed = deserializeSpecText(t.text, config);
-      if (parsed && Object.keys(parsed).length > 0) {
-        return parsed;
-      }
+    var parsed = deserializeSpecText(t.text, config);
+    if (parsed && Object.keys(parsed).length > 0) {
+      return parsed;
     }
   }
   return null;
@@ -6474,6 +6478,98 @@ function getLastNonAttachedSupport(facilityType) {
   return null;
 }
 
+// [방안 1: 스마트 자동 일괄 동기화] 시설물별 핵심 기준 항목 매핑 테이블
+// 중앙분리대: '종류', 기타표지: '내용', 도로표지: '종류', 지시/규제/주의/보조표지: '내용'
+var FACILITY_PIVOT_CRITERIA = {
+  '중앙분리대': '종류',
+  '기타표지': '내용',
+  '도로표지': '종류',
+  '지시표지': '내용',
+  '규제표지': '내용',
+  '주의표지': '내용',
+  '보조표지': '내용'
+};
+
+// 과거 도면 데이터(texts)에서 시설물명과 특정 기준 항목(내용 또는 종류 등)의 값이 일치하는 가장 최근 제원 데이터를 역순 검색하는 함수
+function getLastSpecByPivotField(facilityType, pivotFieldId, chosenVal) {
+  if (!facilityType || !pivotFieldId || !chosenVal) return null;
+  if (!window.texts || window.texts.length === 0) return null;
+
+  var config = (typeof FACILITY_CONFIG !== 'undefined' ? FACILITY_CONFIG[facilityType] : null);
+  if (!config) return null;
+
+  var confLayer = String(config.layer || '').replace(/_T$/i, '').toLowerCase();
+  var confPrefix = String(config.prefix || config.title || '').replace(/^\+/, '').toLowerCase();
+  var targetValStr = String(chosenVal).trim();
+  if (targetValStr === '' || targetValStr === '직접입력' || targetValStr === '선택' || targetValStr === '--') return null;
+
+  // 가장 최신 데이터(맨 뒤)부터 과거(맨 앞)를 향해 역순 탐색
+  for (var i = window.texts.length - 1; i >= 0; i--) {
+    var t = window.texts[i];
+    if (!t || !t.text) continue;
+
+    // A. 동일 시설물 여부 확인 (t.facilityType 우선 매칭, 부재 시 레이어/접두어 검사)
+    var isMatchedFacility = false;
+    if (t.facilityType) {
+      isMatchedFacility = (t.facilityType === facilityType);
+    } else {
+      var tLayer = String(t.layer || '').replace(/_T$/i, '').toLowerCase();
+      var firstWord = String(t.text.split('/')[0] || '').replace(/^\+/, '').toLowerCase();
+      isMatchedFacility = (tLayer === confLayer || tLayer === facilityType.toLowerCase() || firstWord === confPrefix || firstWord === facilityType.toLowerCase());
+    }
+    if (!isMatchedFacility) continue;
+
+    // B. 제원 데이터 획득 (specValues 또는 역직렬화)
+    var parsed = null;
+    if (t.specValues && Object.keys(t.specValues).length > 0) {
+      parsed = t.specValues;
+    } else {
+      parsed = deserializeSpecText(t.text, config);
+    }
+
+    // C. 기준 필드의 값과 비교
+    if (parsed && parsed[pivotFieldId] !== undefined) {
+      var curFieldVal = String(parsed[pivotFieldId]).trim();
+      if (curFieldVal === targetValStr) {
+        return parsed; // 기준값이 일치하는 과거 최신 제원 세트 전체 반환
+      }
+    }
+  }
+  return null;
+}
+
+// 기준 항목(예: 기타표지의 '내용' = '단속중') 변경 시, 해당 기준값과 일치하는 과거 최신 제원 세트로 나머지 필드를 자동 일괄 채움
+function triggerPivotAttributesSync(container, config, prefixId, pivotFieldId, chosenVal) {
+  if (!container || !config || !pivotFieldId || !chosenVal) return;
+
+  var lastSpec = getLastSpecByPivotField(config.title, pivotFieldId, chosenVal);
+  if (!lastSpec) return; // 과거에 해당 기준값으로 입력된 이력이 없으면 기존 값을 유지하여 사용자가 직접 자유롭게 입력 가능
+
+  // 기준 필드를 제외한 나머지 필드들에 대해 과거 제원 자동 채움
+  config.fields.forEach(function (field) {
+    if (field.id === pivotFieldId) return; // 방금 사용자가 선택/입력한 기준 필드는 건드리지 않음
+
+    var inputId = prefixId + '-' + field.id;
+    var inpEl = document.getElementById(inputId);
+    var newVal = lastSpec[field.id];
+    if (newVal === undefined || newVal === null) return;
+
+    newVal = String(newVal).trim();
+    if (inpEl) {
+      inpEl.value = (newVal !== '직접입력' && newVal !== '선택') ? newVal : '';
+    }
+  });
+
+  // 전체 미리보기 일괄 업데이트
+  var previewEl = document.getElementById(prefixId + '-spec-preview');
+  if (previewEl && typeof serializeFacilityForm === 'function') {
+    var result = serializeFacilityForm(container, config, prefixId);
+    if (result) previewEl.textContent = result.specText;
+  }
+  if (typeof window.updateAllPreviews === 'function') window.updateAllPreviews();
+  if (typeof window.updateAllPreviewsPM === 'function') window.updateAllPreviewsPM();
+}
+
 // 과거 도면 데이터에서 역순으로 탐색하여 대분류와 소분류가 일치하는 최근 제원 데이터를 가져오는 함수
 function getLastSpecBySubType(facilityType, subType) {
   if (!window.texts || window.texts.length === 0) return null;
@@ -6811,6 +6907,10 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       var textInputEl = group.querySelector('input.combo-input');
       var listBtnEl = group.querySelector('button.combo-list-btn');
 
+      // [방안 1] 사용자가 지정한 핵심 기준 항목(내용 또는 종류)인지 판별
+      var pivotLabel = (typeof FACILITY_PIVOT_CRITERIA !== 'undefined' ? FACILITY_PIVOT_CRITERIA[config.title] : null);
+      var isPivotField = pivotLabel && (field.label === pivotLabel || field.label.indexOf(pivotLabel) !== -1);
+
       if (textInputEl && listBtnEl) {
         textInputEl.addEventListener('input', function () {
           updatePreview();
@@ -6821,7 +6921,9 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
           updatePreview();
           if (typeof window.updateAllPreviews === 'function') window.updateAllPreviews();
           if (typeof window.updateAllPreviewsPM === 'function') window.updateAllPreviewsPM();
-          if (idx === 0 && /종류|분류|재질|형식|구분/.test(field.label)) {
+          if (isPivotField) {
+            triggerPivotAttributesSync(container, config, prefixId, field.id, this.value.trim());
+          } else if (idx === 0 && /종류|분류|재질|형식|구분/.test(field.label)) {
             triggerSubAttributesReset(container, config, prefixId, this.value.trim());
           }
         });
@@ -6835,7 +6937,9 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
             updatePreview();
             if (typeof window.updateAllPreviews === 'function') window.updateAllPreviews();
             if (typeof window.updateAllPreviewsPM === 'function') window.updateAllPreviewsPM();
-            if (idx === 0 && /종류|분류|재질|형식|구분/.test(field.label)) {
+            if (isPivotField) {
+              triggerPivotAttributesSync(container, config, prefixId, field.id, chosenVal);
+            } else if (idx === 0 && /종류|분류|재질|형식|구분/.test(field.label)) {
               triggerSubAttributesReset(container, config, prefixId, chosenVal);
             }
           });
