@@ -4414,6 +4414,66 @@ function addTextAtPosition(xy, textStr) {
   });
 }
 
+// [방안 3] 과거 메타데이터(엑셀 순서 변경 전) 자동 감지 및 신규 필드 규격 정규화 함수
+function normalizeFacilityValues(fType, rawVals, textStr) {
+  if (!rawVals || typeof rawVals !== 'object') return {};
+  var vals = Object.assign({}, rawVals);
+
+  // 1. 레거시 생략 문자열('--', '삭제', '제외', '미표기', '없음', '선택', '직접입력')을 빈칸('')으로 표준화
+  // ※ '기타'는 실제 데이터이므로 절대 지우지 않고 온전히 보존!
+  for (var k in vals) {
+    var v = String(vals[k] || '').trim();
+    if (v === '--' || v === '삭제' || v === '제외' || v === '미표기' || v === '없음' || v === '선택' || v === '직접입력') {
+      vals[k] = '';
+    } else {
+      vals[k] = v;
+    }
+  }
+
+  var isNumberLike = function (s) {
+    if (!s) return false;
+    return /^\d+(\.\d+)?$/.test(String(s).trim());
+  };
+  var isSupportLike = function (s) {
+    if (!s) return false;
+    var str = String(s).trim();
+    return /단주|복주|부착|현수|측주|전주|신호|가로등주|L형|F형|지주/.test(str);
+  };
+
+  // 2. 엑셀 순서 변경 전 데이터 자동 감지 및 새 순서 매핑
+  if (fType === '기타표지') {
+    // 구 엑셀 순서: f_1=높이(숫자), f_2=지주 -> 신 엑셀 순서: f_1=지주, f_2=높이
+    if (isNumberLike(vals['f_1']) && (isSupportLike(vals['f_2']) || (!isNumberLike(vals['f_2']) && vals['f_2'] !== ''))) {
+      var oldH = vals['f_1'];
+      var oldSupp = vals['f_2'];
+      vals['f_1'] = oldSupp;
+      vals['f_2'] = oldH;
+    }
+  } else if (fType === '도로반사경') {
+    // 구 엑셀 순서: f_1=높이, f_2=제원, f_3=지주형식 -> 신 엑셀 순서: f_1=지주형식, f_2=높이, f_3=제원
+    if (isNumberLike(vals['f_1']) && (isSupportLike(vals['f_3']) || (!isNumberLike(vals['f_3']) && vals['f_3'] !== ''))) {
+      var oldH = vals['f_1'];
+      var oldSpec = vals['f_2'];
+      var oldSupp = vals['f_3'];
+      vals['f_1'] = oldSupp;
+      vals['f_2'] = oldH;
+      vals['f_3'] = oldSpec;
+    }
+  } else if (fType === '지시표지' || fType === '규제표지' || fType === '주의표지' || fType === '보조표지') {
+    // 구 엑셀 순서: f_1=높이, f_2=지주, f_3=제원 -> 신 엑셀 순서: f_1=지주, f_2=제원, f_3=높이
+    if (isNumberLike(vals['f_1']) && (isSupportLike(vals['f_2']) || (!isNumberLike(vals['f_2']) && vals['f_2'] !== ''))) {
+      var oldH = vals['f_1'];
+      var oldSupp = vals['f_2'];
+      var oldSpec = vals['f_3'];
+      vals['f_1'] = oldSupp;
+      vals['f_2'] = oldSpec;
+      vals['f_3'] = oldH;
+    }
+  }
+
+  return vals;
+}
+
 function deserializeSpecText(specText, config) {
   var values = {};
   if (!specText || !config) return values;
@@ -4540,7 +4600,7 @@ function deserializeSpecText(specText, config) {
     }
   }
 
-  return values;
+  return normalizeFacilityValues(config ? config.title : '', values, specText);
 }
 
 /** 사진 모달 내 서브사진 썸네일 바 렌더링 (메모리 버퍼 및 디스크 사진 통합) */
@@ -4956,8 +5016,8 @@ function showPhotoModal(photoId) {
             fType = (idx === 0) ? (p.facilityType || '일반시설물') : '일반시설물';
           }
 
-          var config = FACILITY_CONFIG[fType] || { title: fType, fields: [] };
-          var parsedValues = specTextObj.specValues || (p.specValuesList && p.specValuesList[idx]) || deserializeSpecText(specTextObj.text, config);
+          var rawVals = specTextObj.specValues || (p.specValuesList && p.specValuesList[idx]) || deserializeSpecText(specTextObj.text, config);
+          var parsedValues = normalizeFacilityValues(fType, rawVals, specTextObj.text);
           var uniquePrefix = 'pm-old-' + idx + '-' + Date.now();
           renderMultiAttributeCard(pmFormListContainer, fType, parsedValues, uniquePrefix);
         }
@@ -7133,9 +7193,10 @@ function serializeFacilityForm(container, config, prefixId) {
       }
     }
 
-    // [0925_01 버그수정] 사용자가 '--'를 선택했거나 빈칸으로 비운 경우, 기본값으로 강제 치환하지 않고 '--' (생략)으로 확실하게 보존!
-    if (val === '' || val === '--' || val === '직접입력' || val === '입력생략' || val === '삭제' || val === '제외' || val === '미표기' || val === '없음') {
-      val = '--';
+    // [방안 3 표준화] 사용자가 '입력생략'을 선택했거나 빈칸으로 비운 경우, 레거시 기호('--', '삭제', '제외', '미표기', '없음', '선택', '직접입력')를 빈칸('')으로 확실하게 정제!
+    // ※ '기타'는 실제 데이터이므로 절대 빈칸으로 치환하지 않고 값 그대로 보존!
+    if (val === '' || val === '--' || val === '직접입력' || val === '입력생략' || val === '삭제' || val === '제외' || val === '미표기' || val === '없음' || val === '선택') {
+      val = (val === '입력생략') ? '입력생략' : '';
     }
     vals[field.id] = val;
   });
@@ -7167,8 +7228,8 @@ function serializeFacilityForm(container, config, prefixId) {
     var subParts = [pWord];
     var fTypeVal = vals['f_3'] || vals['f_1'] || '';
     var fLightVal = vals['f_4'] || vals['f_2'] || '';
-    if (fTypeVal && fTypeVal !== '--' && fTypeVal !== '입력생략' && fTypeVal !== '선택' && fTypeVal !== '기타' && fTypeVal !== '삭제') subParts.push(fTypeVal);
-    if (fLightVal && fLightVal !== '--' && fLightVal !== '입력생략' && fLightVal !== '선택' && fLightVal !== '기타' && fLightVal !== '삭제') subParts.push(fLightVal);
+    if (fTypeVal && fTypeVal !== '--' && fTypeVal !== '입력생략' && fTypeVal !== '선택' && fTypeVal !== '삭제' && fTypeVal !== '제외') subParts.push(fTypeVal);
+    if (fLightVal && fLightVal !== '--' && fLightVal !== '입력생략' && fLightVal !== '선택' && fLightVal !== '삭제' && fLightVal !== '제외') subParts.push(fLightVal);
     lastSpecs[config.title] = vals;
     return {
       layer: finalLayer,
@@ -7186,34 +7247,34 @@ function serializeFacilityForm(container, config, prefixId) {
     // 1. 종류, 재질 (f_1, f_2)
     ['f_1', 'f_2'].forEach(function(fid) {
       var v = vals[fid] ? String(vals[fid]).trim() : '';
-      if (v && v !== '--' && v !== '입력생략' && v !== '선택' && v !== '기타' && v !== '삭제') partsList.push(v);
+      if (v && v !== '--' && v !== '입력생략' && v !== '선택' && v !== '삭제' && v !== '제외') partsList.push(v);
     });
     
     // 2. 가로등 본체 형태, 광원 (f_3, f_4)
     ['f_3', 'f_4'].forEach(function(fid) {
       var v = vals[fid] ? String(vals[fid]).trim() : '';
-      if (v && v !== '--' && v !== '입력생략' && v !== '선택' && v !== '기타' && v !== '삭제') partsList.push(v);
+      if (v && v !== '--' && v !== '입력생략' && v !== '선택' && v !== '삭제' && v !== '제외') partsList.push(v);
     });
 
     // 3. 높이, 암길이 (f_5, f_6)
     var vH = vals['f_5'] ? String(vals['f_5']).trim() : '';
-    if (vH && vH !== '--' && vH !== '입력생략' && vH !== '선택' && vH !== '기타' && vH !== '삭제') partsList.push(vH);
+    if (vH && vH !== '--' && vH !== '입력생략' && vH !== '선택' && vH !== '삭제' && vH !== '제외') partsList.push(vH);
 
     var vArm = vals['f_6'] ? String(vals['f_6']).trim() : '';
-    if (vArm && vArm !== '--' && vArm !== '입력생략' && vArm !== '선택' && vArm !== '기타' && vArm !== '삭제') {
+    if (vArm && vArm !== '--' && vArm !== '입력생략' && vArm !== '선택' && vArm !== '삭제' && vArm !== '제외') {
       partsList.push(vArm.replace(/^\/+/, ''));
     }
 
     // 4. 보안등유무 (+보안등) (f_7)
     var vSec = vals['f_7'] ? String(vals['f_7']).trim() : '';
-    if (vSec && vSec !== '--' && vSec !== '입력생략' && vSec !== '선택' && vSec !== '기타' && vSec !== '삭제' && vSec !== '없음') {
+    if (vSec && vSec !== '--' && vSec !== '입력생략' && vSec !== '선택' && vSec !== '삭제' && vSec !== '제외' && vSec !== '없음') {
       partsList.push(vSec);
     }
 
     // 5. 부착 보안등 형태, 광원 (f_8, f_9)
     ['f_8', 'f_9'].forEach(function(fid) {
       var v = vals[fid] ? String(vals[fid]).trim() : '';
-      if (v && v !== '--' && v !== '입력생략' && v !== '선택' && v !== '기타' && v !== '삭제') partsList.push(v);
+      if (v && v !== '--' && v !== '입력생략' && v !== '선택' && v !== '삭제' && v !== '제외') partsList.push(v);
     });
 
     // 6. 사진 (f_10)
@@ -7249,8 +7310,9 @@ function serializeFacilityForm(container, config, prefixId) {
       if (fieldVal === undefined || fieldVal === null) return;
       fieldVal = String(fieldVal).trim();
 
-      // [사용자 요구사항] '입력생략', '삭제', '제외', '미표기', '없음'을 선택했거나 공란/빈칸/-- 인 경우 해당 항목은 슬래시 조립에서 완전히 생략(skip)
-      if (fieldVal === '입력생략' || fieldVal === '삭제' || fieldVal === '제외' || fieldVal === '미표기' || fieldVal === '없음' || fieldVal === '--' || fieldVal === '') {
+      // [사용자 요구사항] 공란/빈칸('') 또는 '입력생략' 시 도면 조립에서 완전히 생략(skip)!
+      // 레거시 기호('--', '삭제', '제외', '미표기', '없음', '선택')도 빈칸 취급하여 생략하되, '기타'는 실제 데이터이므로 생략하지 않고 전개!
+      if (fieldVal === '' || fieldVal === '입력생략' || fieldVal === '삭제' || fieldVal === '제외' || fieldVal === '미표기' || fieldVal === '없음' || fieldVal === '--' || fieldVal === '선택') {
         return;
       }
 

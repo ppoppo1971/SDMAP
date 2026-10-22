@@ -2514,6 +2514,50 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
     }
   }
 
+  // [방안 1] 특정 텍스트 객체가 어떤 주시설물에 결합(부착)되어 있는지 실시간 추적하는 함수
+  function getTextAttachmentContext(txtObj) {
+    if (!txtObj) return null;
+    if (metadata && metadata.photos && metadata.photos.length > 0) {
+      var photo = metadata.photos.find(function (p) {
+        if (p.specTextIds && p.specTextIds.indexOf(txtObj.id) !== -1) return true;
+        if (p.specTextId === txtObj.id) return true;
+        return false;
+      });
+
+      if (photo) {
+        var textIds = photo.specTextIds || (photo.specTextId ? [photo.specTextId] : []);
+        var idx = textIds.indexOf(txtObj.id);
+        if (idx === 0) {
+          return '주시설물';
+        } else if (idx > 0) {
+          return photo.facilityType || '부속시설물';
+        }
+      }
+    }
+
+    // 사진 객체를 못 찾은 경우 텍스트 접두어(+)로 보조 판정
+    if (txtObj.text && String(txtObj.text).trim().startsWith('+')) {
+      // 같은 위치의 주시설물 텍스트 검색
+      if (metadata && metadata.texts) {
+        var parentTxt = metadata.texts.find(function (ot) {
+          return ot.id !== txtObj.id && Math.abs(ot.x - txtObj.x) < 0.0001 && Math.abs(ot.y - txtObj.y) < 0.0001 && !String(ot.text).trim().startsWith('+');
+        });
+        if (parentTxt) {
+          if (parentTxt.facilityType) {
+            return parentTxt.facilityType;
+          }
+          var parsed = deserializeSpecText(parentTxt.text, parentTxt.layer);
+          if (parsed && parsed.facilityType) {
+            return parsed.facilityType;
+          }
+        }
+      }
+      return '부속';
+    }
+
+    return '주시설물';
+  }
+
   // [방안 2] 인풋 요소에 커스텀 드롭다운 레이어 설정
   function setupCustomDropdown(input, options, suggestions) {
     var parent = input.parentNode;
@@ -2541,25 +2585,33 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
 
       var curVal = input.value ? input.value.trim() : '';
 
-      // [방안 2] 기준 항목(내용/종류)에 따라 엄격 필터링된 결과인 경우, 해당 항목들만 단독으로 표시! (현재 입력값 제외)
+      // [방안 C] 기준 항목(내용/종류)에 따라 엄격 필터링된 결과인 경우, 해당 항목들만 단독으로 표시! (최신 역순 온전히 유지)
       if (resolvedSuggestions && resolvedSuggestions.isStrict) {
-        allItems = resolvedSuggestions.filter(function (s) {
-          return !curVal || s !== curVal;
-        });
+        allItems = resolvedSuggestions.slice();
       } else {
-        // 1) 과거 역순 이력 추천어(실제 최신 데이터 기반)를 최상단에 배치 (현재 입력값 제외)
+        // 1) 과거 역순 이력 추천어(실제 최신 데이터 기반)를 최상단에 배치 (최신 역순 온전히 유지)
         if (resolvedSuggestions && resolvedSuggestions.length > 0) {
           resolvedSuggestions.forEach(function (sug) {
-            if ((!curVal || sug !== curVal) && allItems.indexOf(sug) === -1) {
+            var sugVal = typeof sug === 'object' ? sug.val : sug;
+            var exists = allItems.some(function (it) {
+              var itVal = typeof it === 'object' ? it.val : it;
+              return itVal === sugVal;
+            });
+            if (!exists) {
               allItems.push(sug);
             }
           });
         }
 
-        // 2) 기본 설정 옵션 목록은 추천 목록에 없는 것만 추가 (후순위, '기타' 및 현재 입력값 제외)
+        // 2) 기본 설정 옵션 목록은 추천 목록에 없는 것만 추가 (후순위)
         if (options && options.length > 0) {
           options.forEach(function (opt) {
-            if (opt !== '기타' && (!curVal || opt !== curVal) && allItems.indexOf(opt) === -1) {
+            var optVal = typeof opt === 'object' ? opt.val : opt;
+            var exists = allItems.some(function (it) {
+              var itVal = typeof it === 'object' ? it.val : it;
+              return itVal === optVal;
+            });
+            if (!exists) {
               allItems.push(opt);
             }
           });
@@ -2569,7 +2621,8 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       var filtered = allItems;
       if (filterText && filterText.trim() !== '') {
         var q = filterText.trim().toLowerCase();
-        filtered = allItems.filter(function (v) {
+        filtered = allItems.filter(function (it) {
+          var v = typeof it === 'object' ? it.val : it;
           return v.toLowerCase().indexOf(q) !== -1;
         });
       }
@@ -2585,10 +2638,64 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
         return;
       }
 
-      filtered.forEach(function (val) {
+      filtered.forEach(function (it) {
+        var val = typeof it === 'object' ? it.val : it;
+        var context = typeof it === 'object' ? it.context : null;
+
         var item = document.createElement('div');
         item.className = 'custom-dropdown-item';
-        item.textContent = val;
+        item.style.display = 'flex';
+        item.style.alignItems = 'center';
+        item.style.justifyContent = 'space-between';
+
+        var valSpan = document.createElement('span');
+        valSpan.textContent = val;
+        item.appendChild(valSpan);
+
+        var badgeWrap = document.createElement('span');
+        badgeWrap.style.display = 'inline-flex';
+        badgeWrap.style.alignItems = 'center';
+        badgeWrap.style.gap = '4px';
+
+        // [방안 1] 주시설물 결합 소속 뱃지 (가로등, 신호등, 주시설물 등)
+        if (context) {
+          var ctxBadge = document.createElement('span');
+          ctxBadge.style.fontSize = '10px';
+          ctxBadge.style.fontWeight = '600';
+          ctxBadge.style.padding = '1px 5px';
+          ctxBadge.style.borderRadius = '3px';
+          ctxBadge.style.whiteSpace = 'nowrap';
+
+          if (context === '주시설물') {
+            ctxBadge.style.backgroundColor = '#f3f4f6';
+            ctxBadge.style.color = '#4b5563';
+            ctxBadge.style.border = '1px solid #d1d5db';
+            ctxBadge.textContent = '주시설물';
+          } else if (context === '최근저장') {
+            ctxBadge.style.backgroundColor = '#fef3c7';
+            ctxBadge.style.color = '#b45309';
+            ctxBadge.style.border = '1px solid #fde68a';
+            ctxBadge.textContent = '방금입력';
+          } else {
+            ctxBadge.style.backgroundColor = '#eff6ff';
+            ctxBadge.style.color = '#1d4ed8';
+            ctxBadge.style.border = '1px solid #bfdbfe';
+            ctxBadge.textContent = context;
+          }
+          badgeWrap.appendChild(ctxBadge);
+        }
+
+        // [방안 C] 현재 입력칸에 이미 입력되어 있는 값과 일치하면 '(현재)' 뱃지 표시
+        if (curVal && val === curVal) {
+          var curBadge = document.createElement('span');
+          curBadge.style.fontSize = '10px';
+          curBadge.style.color = '#2563eb';
+          curBadge.style.fontWeight = '700';
+          curBadge.textContent = '(현재)';
+          badgeWrap.appendChild(curBadge);
+        }
+
+        item.appendChild(badgeWrap);
 
         // mousedown 시점에는 브라우저 기본 포커스 아웃(blur) 동작만 차단함
         item.addEventListener('mousedown', function (e) {
@@ -2970,7 +3077,8 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       var parseResult = deserializeSpecText(textObj.text, textObj.layer);
       if (parseResult) {
         // [현장 데이터 최우선] textObj에 현장 저장된 specValues가 존재하면 최우선 적용, 없으면 역파서 결과 적용
-        var cardVals = (textObj.specValues && Object.keys(textObj.specValues).length > 0) ? textObj.specValues : parseResult.values;
+        var rawCardVals = (textObj.specValues && Object.keys(textObj.specValues).length > 0) ? textObj.specValues : parseResult.values;
+        var cardVals = normalizeFacilityValues(parseResult.facilityType, rawCardVals, textObj.text);
         renderAttributeCard(cardsContainer, parseResult.facilityType, cardVals, tId, parseResult.isSub);
       }
     });
@@ -3060,6 +3168,80 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       opt.textContent = key + freqSuffix;
       select.appendChild(opt);
     });
+  }
+
+  // [방안 3] 과거 메타데이터(엑셀 순서 변경 전) 자동 감지 및 신규 필드 규격 정규화 함수
+  function normalizeFacilityValues(fType, rawVals, textStr) {
+    if (!rawVals || typeof rawVals !== 'object') return {};
+    var vals = Object.assign({}, rawVals);
+
+    // 1. 레거시 생략 문자열('--', '삭제', '제외', '미표기', '없음', '선택', '직접입력')을 빈칸('')으로 표준화
+    // ※ '기타'는 실제 데이터이므로 절대 지우지 않고 온전히 보존!
+    for (var k in vals) {
+      var v = String(vals[k] || '').trim();
+      if (v === '--' || v === '삭제' || v === '제외' || v === '미표기' || v === '없음' || v === '선택' || v === '직접입력') {
+        vals[k] = '';
+      } else {
+        vals[k] = v;
+      }
+    }
+
+    var isNumberLike = function (s) {
+      if (!s) return false;
+      return /^\d+(\.\d+)?$/.test(String(s).trim());
+    };
+    var isSupportLike = function (s) {
+      if (!s) return false;
+      var str = String(s).trim();
+      return /단주|복주|부착|현수|측주|전주|신호|가로등주|L형|F형|지주/.test(str);
+    };
+    var isSignSpecLike = function (s) {
+      if (!s) return false;
+      var str = String(s).trim();
+      return /%%C|삼각|오각|팔각|역삼각|\*|^\d+\.\d+\*\d+/.test(str);
+    };
+
+    // 2. 엑셀 순서 변경 전 데이터 자동 감지 및 새 순서 매핑
+    if (fType === '기타표지') {
+      // 구 엑셀 순서: f_1=높이(숫자), f_2=지주 -> 신 엑셀 순서: f_1=지주, f_2=높이
+      if (isNumberLike(vals['f_1']) && (isSupportLike(vals['f_2']) || (!isNumberLike(vals['f_2']) && vals['f_2'] !== ''))) {
+        var oldH = vals['f_1'];
+        var oldSupp = vals['f_2'];
+        vals['f_1'] = oldSupp;
+        vals['f_2'] = oldH;
+      }
+    } else if (fType === '도로반사경') {
+      // 구 엑셀 순서: f_1=높이, f_2=제원, f_3=지주형식 -> 신 엑셀 순서: f_1=지주형식, f_2=높이, f_3=제원
+      if (isNumberLike(vals['f_1']) && (isSupportLike(vals['f_3']) || (!isNumberLike(vals['f_3']) && vals['f_3'] !== ''))) {
+        var oldH = vals['f_1'];
+        var oldSpec = vals['f_2'];
+        var oldSupp = vals['f_3'];
+        vals['f_1'] = oldSupp;
+        vals['f_2'] = oldH;
+        vals['f_3'] = oldSpec;
+      }
+    } else if (fType === '지시표지' || fType === '규제표지' || fType === '주의표지' || fType === '보조표지') {
+      // [방안 3 신구 양방향 호환]
+      // 신규 엑셀 규격: f_1=지주, f_2=높이, f_3=제원
+      // 1) 레거시 순서 (f_1=높이, f_2=지주, f_3=제원) 감지
+      if (isNumberLike(vals['f_1']) && (isSupportLike(vals['f_2']) || (!isNumberLike(vals['f_2']) && vals['f_2'] !== ''))) {
+        var legacyH = vals['f_1'];
+        var legacySupp = vals['f_2'];
+        var legacySpec = vals['f_3'];
+        vals['f_1'] = legacySupp;
+        vals['f_2'] = legacyH;
+        vals['f_3'] = legacySpec;
+      }
+      // 2) 직전 버전 순서 (f_1=지주, f_2=제원, f_3=높이) 감지 -> f_2와 f_3 맞바꿈
+      else if ((isSignSpecLike(vals['f_2']) || (!isNumberLike(vals['f_2']) && vals['f_2'] !== '')) && isNumberLike(vals['f_3'])) {
+        var prevSpec = vals['f_2'];
+        var prevH = vals['f_3'];
+        vals['f_2'] = prevH;
+        vals['f_3'] = prevSpec;
+      }
+    }
+
+    return vals;
   }
 
   // 제원 역직렬화 (지능형 쌍둥이 접두어 분별 및 56개 전 시설물 스마트 매퍼)
@@ -3289,7 +3471,77 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
         values['f_3'] = dimParts[0] || '';
         values['f_4'] = dimParts[1] || '';
       }
-    } else if (config.fields) {
+    } else if (fType === '지시표지' || fType === '규제표지' || fType === '주의표지' || fType === '보조표지') {
+        // [방안 3 신구 양방향 스마트 파서]
+        // 신형 순서: 지시/단주/높이/제원/내용/양면/사진
+        // 구형 순서: 지시/단주/제원/높이/내용/양면/사진
+        // 부속(+) 순서: +지시/높이/제원/... 또는 +지시/제원/높이/...
+        var pList = parts.slice(1); // 접두어 제외
+
+        // 초기화
+        config.fields.forEach(function (f) { values[f.id] = ''; });
+
+        if (!isSub) {
+          if (pList.length > 0) {
+            values['f_1'] = pList.shift(); // 주시설물은 첫 번째가 지주
+          }
+        }
+
+        var isSignSpec = function (s) {
+          if (!s) return false;
+          var str = String(s).trim();
+          return /%%C|삼각|오각|팔각|역삼각|\*|^\d+\.\d+\*\d+/.test(str);
+        };
+        var isNum = function (s) {
+          if (!s) return false;
+          return /^\d+(\.\d+)?$/.test(String(s).trim());
+        };
+
+        // 남은 pList에서 높이(f_2)와 제원(f_3) 지능형 판별
+        if (pList.length >= 2) {
+          var itemA = pList[0];
+          var itemB = pList[1];
+
+          if (isSignSpec(itemA) && isNum(itemB)) {
+            // 구형 순서: [제원, 높이] -> 신형 규격 매핑: f_2=높이, f_3=제원
+            values['f_2'] = itemB;
+            values['f_3'] = itemA;
+            pList.splice(0, 2);
+          } else if (isNum(itemA) && isSignSpec(itemB)) {
+            // 신형 순서: [높이, 제원] -> 신형 규격 매핑: f_2=높이, f_3=제원
+            values['f_2'] = itemA;
+            values['f_3'] = itemB;
+            pList.splice(0, 2);
+          } else if (isSignSpec(itemA)) {
+            // itemA는 제원이고 itemB는 숫자가 아님 (예: 내용 등) -> 높이 생략된 경우
+            values['f_3'] = itemA;
+            pList.shift();
+          } else if (isNum(itemA)) {
+            // itemA는 높이이고 itemB는 제원이 아님 (예: 내용 등) -> 제원 생략된 경우
+            values['f_2'] = itemA;
+            pList.shift();
+          } else {
+            // 일반 순차 매핑
+            values['f_2'] = pList.shift();
+            values['f_3'] = pList.shift();
+          }
+        } else if (pList.length === 1) {
+          var singleItem = pList[0];
+          if (isNum(singleItem)) {
+            values['f_2'] = pList.shift();
+          } else if (isSignSpec(singleItem)) {
+            values['f_3'] = pList.shift();
+          } else {
+            // 숫자도 제원도 아니면 내용(f_4)일 수 있음
+            values['f_4'] = pList.shift();
+          }
+        }
+
+        // 남은 항목 순차 매핑: f_4(내용), f_5(양면유무), f_6(사진)
+        if (pList.length > 0) values['f_4'] = pList.shift();
+        if (pList.length > 0) values['f_5'] = pList.shift();
+        if (pList.length > 0) values['f_6'] = pList.shift();
+      } else if (config.fields) {
       // 56개 전 시설물 스마트 옵션 매퍼 (모든 필드 빈칸 기본화)
       var pIdx = 1; // parts[0]은 접두어
       var targetFields = config.fields.filter(function (f) {
@@ -3335,7 +3587,7 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       });
     }
 
-    return { facilityType: fType, values: values, isSub: isSub };
+    return { facilityType: fType, values: normalizeFacilityValues(fType, values), isSub: isSub };
   }
 
   function detectFacilityType(fileName, memo) {
@@ -3396,6 +3648,16 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
     var curVal = currentValue ? String(currentValue).trim() : '';
     var resultList = [];
 
+    // [방안 1] 제원 값과 소속 주시설물(가로등, 신호등, 주시설물 등) 정보를 함께 수집하는 내부 헬퍼
+    var addItem = function (vStr, ctx) {
+      if (!vStr) return;
+      for (var k = 0; k < resultList.length; k++) {
+        var existingVal = typeof resultList[k] === 'object' ? resultList[k].val : resultList[k];
+        if (existingVal === vStr) return;
+      }
+      resultList.push({ val: vStr, context: ctx || null });
+    };
+
     // [1] 피벗 기준 필터링 (예: 내용이 '단속중'인 경우, 해당 단속중에 입력되었던 제원만 최신 역순 추출)
     if (pivotFilter && pivotFilter.pivotFieldId && pivotFilter.pivotVal) {
       var targetPivotVal = String(pivotFilter.pivotVal).trim();
@@ -3407,9 +3669,7 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
           pHistArr.forEach(function (v) {
             var valStr = String(v).trim();
             if (valStr !== '' && valStr !== '기타' && valStr !== '--' && valStr !== '선택' && valStr !== '직접입력') {
-              if (resultList.indexOf(valStr) === -1 && (!curVal || valStr !== curVal)) {
-                resultList.push(valStr);
-              }
+              addItem(valStr, null);
             }
           });
         }
@@ -3440,9 +3700,8 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
                 if (val !== undefined && val !== null) {
                   var vStr = String(val).trim();
                   if (vStr !== '' && vStr !== '기타' && vStr !== '--' && vStr !== '선택' && vStr !== '직접입력') {
-                    if (resultList.indexOf(vStr) === -1 && (!curVal || vStr !== curVal)) {
-                      resultList.push(vStr);
-                    }
+                    var ctx = getTextAttachmentContext(t);
+                    addItem(vStr, ctx);
                   }
                 }
               }
@@ -3464,9 +3723,7 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
         editHistArr.forEach(function (v) {
           var valStr = String(v).trim();
           if (valStr !== '' && valStr !== '기타' && valStr !== '--' && valStr !== '선택' && valStr !== '직접입력') {
-            if (resultList.indexOf(valStr) === -1 && (!curVal || valStr !== curVal)) {
-              resultList.push(valStr);
-            }
+            addItem(valStr, null);
           }
         });
       }
@@ -3476,10 +3733,16 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
     var lastSaved = lastSavedFieldValues && lastSavedFieldValues[fType] && lastSavedFieldValues[fType][fieldId];
     if (lastSaved) {
       var sVal = String(lastSaved).trim();
-      if (sVal !== '' && sVal !== '기타' && sVal !== '--' && sVal !== '선택' && sVal !== '직접입력' && (!curVal || sVal !== curVal)) {
-        var exIdx = resultList.indexOf(sVal);
+      if (sVal !== '' && sVal !== '기타' && sVal !== '--' && sVal !== '선택' && sVal !== '직접입력') {
+        var exIdx = -1;
+        for (var k = 0; k < resultList.length; k++) {
+          if ((typeof resultList[k] === 'object' ? resultList[k].val : resultList[k]) === sVal) {
+            exIdx = k;
+            break;
+          }
+        }
         if (exIdx !== -1) resultList.splice(exIdx, 1);
-        resultList.unshift(sVal);
+        resultList.unshift({ val: sVal, context: '최근저장' });
       }
     }
 
@@ -3505,9 +3768,8 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
             if (rawVal !== undefined && rawVal !== null) {
               var strV = String(rawVal).trim();
               if (strV !== '' && strV !== '기타' && strV !== '--' && strV !== '선택' && strV !== '직접입력') {
-                if (resultList.indexOf(strV) === -1 && (!curVal || strV !== curVal)) {
-                  resultList.push(strV);
-                }
+                var ctx = getTextAttachmentContext(txtObj);
+                addItem(strV, ctx);
               }
             }
           }
@@ -3521,9 +3783,7 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       for (var rk in refVals) {
         var rStr = String(rk).trim();
         if (rStr !== '' && rStr !== '기타' && rStr !== '--' && rStr !== '선택' && rStr !== '직접입력') {
-          if (resultList.indexOf(rStr) === -1 && (!curVal || rStr !== curVal)) {
-            resultList.push(rStr);
-          }
+          addItem(rStr, null);
         }
       }
     }
@@ -3919,8 +4179,8 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       var subParts = [pWord];
       var fTypeVal = values['f_3'] || values['f_1'] || '';
       var fLightVal = values['f_4'] || values['f_2'] || '';
-      if (fTypeVal && fTypeVal !== '--' && fTypeVal !== '입력생략' && fTypeVal !== '선택' && fTypeVal !== '기타' && fTypeVal !== '삭제') subParts.push(fTypeVal);
-      if (fLightVal && fLightVal !== '--' && fLightVal !== '입력생략' && fLightVal !== '선택' && fLightVal !== '기타' && fLightVal !== '삭제') subParts.push(fLightVal);
+      if (fTypeVal && fTypeVal !== '--' && fTypeVal !== '입력생략' && fTypeVal !== '선택' && fTypeVal !== '삭제' && fTypeVal !== '제외') subParts.push(fTypeVal);
+      if (fLightVal && fLightVal !== '--' && fLightVal !== '입력생략' && fLightVal !== '선택' && fLightVal !== '삭제' && fLightVal !== '제외') subParts.push(fLightVal);
       return subParts.join('/');
     }
 
@@ -3933,34 +4193,34 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       // 1. 종류, 재질 (f_1, f_2)
       ['f_1', 'f_2'].forEach(function(fid) {
         var v = values[fid] ? String(values[fid]).trim() : '';
-        if (v && v !== '--' && v !== '입력생략' && v !== '선택' && v !== '기타' && v !== '삭제') partsList.push(v);
+        if (v && v !== '--' && v !== '입력생략' && v !== '선택' && v !== '삭제' && v !== '제외') partsList.push(v);
       });
       
       // 2. 가로등 본체 형태, 광원 (f_3, f_4)
       ['f_3', 'f_4'].forEach(function(fid) {
         var v = values[fid] ? String(values[fid]).trim() : '';
-        if (v && v !== '--' && v !== '입력생략' && v !== '선택' && v !== '기타' && v !== '삭제') partsList.push(v);
+        if (v && v !== '--' && v !== '입력생략' && v !== '선택' && v !== '삭제' && v !== '제외') partsList.push(v);
       });
 
       // 3. 높이, 암길이 (f_5, f_6)
       var vH = values['f_5'] ? String(values['f_5']).trim() : '';
-      if (vH && vH !== '--' && vH !== '입력생략' && vH !== '선택' && vH !== '기타' && vH !== '삭제') partsList.push(vH);
+      if (vH && vH !== '--' && vH !== '입력생략' && vH !== '선택' && vH !== '삭제' && vH !== '제외') partsList.push(vH);
 
       var vArm = values['f_6'] ? String(values['f_6']).trim() : '';
-      if (vArm && vArm !== '--' && vArm !== '입력생략' && vArm !== '선택' && vArm !== '기타' && vArm !== '삭제') {
+      if (vArm && vArm !== '--' && vArm !== '입력생략' && vArm !== '선택' && vArm !== '삭제' && vArm !== '제외') {
         partsList.push(vArm.replace(/^\/+/, '')); // 이중 슬래시 방지 (/1.7 -> 1.7)
       }
 
       // 4. 보안등유무 (+보안등) (f_7)
       var vSec = values['f_7'] ? String(values['f_7']).trim() : '';
-      if (vSec && vSec !== '--' && vSec !== '입력생략' && vSec !== '선택' && vSec !== '기타' && vSec !== '삭제' && vSec !== '없음') {
+      if (vSec && vSec !== '--' && vSec !== '입력생략' && vSec !== '선택' && vSec !== '삭제' && vSec !== '제외' && vSec !== '없음') {
         partsList.push(vSec);
       }
 
       // 5. 부착 보안등 형태, 광원 (f_8, f_9)
       ['f_8', 'f_9'].forEach(function(fid) {
         var v = values[fid] ? String(values[fid]).trim() : '';
-        if (v && v !== '--' && v !== '입력생략' && v !== '선택' && v !== '기타' && v !== '삭제') partsList.push(v);
+        if (v && v !== '--' && v !== '입력생략' && v !== '선택' && v !== '삭제' && v !== '제외') partsList.push(v);
       });
 
       // 6. 사진 (f_10)
@@ -3985,8 +4245,9 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
         if (val === undefined || val === null) return;
         val = String(val).trim();
 
-        // [사용자 요구사항] 입력란이 빈칸이거나 생략 선택 시 도면 조립에서 완전히 생략!
-        if (val === '' || val === '입력생략' || val === '삭제' || val === '제외' || val === '미표기' || val === '없음' || val === '--' || val === '선택' || val === '기타') {
+        // [사용자 요구사항] 공란/빈칸('') 또는 '입력생략' 시 도면 조립에서 완전히 생략!
+        // 레거시 기호('--', '삭제', '제외', '미표기', '없음', '선택')도 빈칸 취급하여 생략하되, '기타'는 실제 데이터이므로 생략하지 않고 전개!
+        if (val === '' || val === '입력생략' || val === '삭제' || val === '제외' || val === '미표기' || val === '없음' || val === '--' || val === '선택') {
           return;
         }
 

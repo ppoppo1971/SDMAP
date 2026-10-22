@@ -2142,6 +2142,18 @@
       },
       {
         "id": "f_2",
+        "label": "높이",
+        "type": "select",
+        "options": [
+          "2.5",
+          "기타"
+        ],
+        "default": "2.5",
+        "isSupport": false,
+        "isPhoto": false
+      },
+      {
+        "id": "f_3",
         "label": "제원",
         "type": "select",
         "options": [
@@ -2159,18 +2171,6 @@
           "기타"
         ],
         "default": "%%C600",
-        "isSupport": false,
-        "isPhoto": false
-      },
-      {
-        "id": "f_3",
-        "label": "높이",
-        "type": "select",
-        "options": [
-          "2.5",
-          "기타"
-        ],
-        "default": "2.5",
         "isSupport": false,
         "isPhoto": false
       },
@@ -2250,6 +2250,18 @@
       },
       {
         "id": "f_2",
+        "label": "높이",
+        "type": "select",
+        "options": [
+          "2.5",
+          "기타"
+        ],
+        "default": "2.5",
+        "isSupport": false,
+        "isPhoto": false
+      },
+      {
+        "id": "f_3",
         "label": "제원",
         "type": "select",
         "options": [
@@ -2267,18 +2279,6 @@
           "기타"
         ],
         "default": "%%C600",
-        "isSupport": false,
-        "isPhoto": false
-      },
-      {
-        "id": "f_3",
-        "label": "높이",
-        "type": "select",
-        "options": [
-          "2.5",
-          "기타"
-        ],
-        "default": "2.5",
         "isSupport": false,
         "isPhoto": false
       },
@@ -2356,6 +2356,18 @@
       },
       {
         "id": "f_2",
+        "label": "높이",
+        "type": "select",
+        "options": [
+          "2.5",
+          "기타"
+        ],
+        "default": "2.5",
+        "isSupport": false,
+        "isPhoto": false
+      },
+      {
+        "id": "f_3",
         "label": "제원",
         "type": "select",
         "options": [
@@ -2373,18 +2385,6 @@
           "기타"
         ],
         "default": "%%C600",
-        "isSupport": false,
-        "isPhoto": false
-      },
-      {
-        "id": "f_3",
-        "label": "높이",
-        "type": "select",
-        "options": [
-          "2.5",
-          "기타"
-        ],
-        "default": "2.5",
         "isSupport": false,
         "isPhoto": false
       },
@@ -2461,6 +2461,18 @@
       },
       {
         "id": "f_2",
+        "label": "높이",
+        "type": "select",
+        "options": [
+          "2.5",
+          "기타"
+        ],
+        "default": "2.5",
+        "isSupport": false,
+        "isPhoto": false
+      },
+      {
+        "id": "f_3",
         "label": "제원",
         "type": "select",
         "options": [
@@ -2471,18 +2483,6 @@
           "기타"
         ],
         "default": "1.0*1.0",
-        "isSupport": false,
-        "isPhoto": false
-      },
-      {
-        "id": "f_3",
-        "label": "높이",
-        "type": "select",
-        "options": [
-          "2.5",
-          "기타"
-        ],
-        "default": "2.5",
         "isSupport": false,
         "isPhoto": false
       },
