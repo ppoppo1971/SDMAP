@@ -1453,18 +1453,6 @@
     "fields": [
       {
         "id": "f_1",
-        "label": "높이",
-        "type": "select",
-        "options": [
-          "3.0",
-          "기타"
-        ],
-        "default": "3.0",
-        "isSupport": false,
-        "isPhoto": false
-      },
-      {
-        "id": "f_2",
         "label": "지주",
         "type": "select",
         "options": [
@@ -1477,6 +1465,18 @@
         ],
         "default": "단주",
         "isSupport": true,
+        "isPhoto": false
+      },
+      {
+        "id": "f_2",
+        "label": "높이",
+        "type": "select",
+        "options": [
+          "3.0",
+          "기타"
+        ],
+        "default": "3.0",
+        "isSupport": false,
         "isPhoto": false
       },
       {
@@ -1601,31 +1601,6 @@
     "fields": [
       {
         "id": "f_1",
-        "label": "높이",
-        "type": "select",
-        "options": [
-          "1.8",
-          "기타"
-        ],
-        "default": "1.8",
-        "isSupport": false,
-        "isPhoto": false
-      },
-      {
-        "id": "f_2",
-        "label": "제원",
-        "type": "select",
-        "options": [
-          "%%C1000",
-          "%%C1200",
-          "기타"
-        ],
-        "default": "%%C1000",
-        "isSupport": false,
-        "isPhoto": false
-      },
-      {
-        "id": "f_3",
         "label": "지주형식",
         "type": "select",
         "options": [
@@ -1638,6 +1613,31 @@
         ],
         "default": "단주",
         "isSupport": true,
+        "isPhoto": false
+      },
+      {
+        "id": "f_2",
+        "label": "높이",
+        "type": "select",
+        "options": [
+          "1.8",
+          "기타"
+        ],
+        "default": "1.8",
+        "isSupport": false,
+        "isPhoto": false
+      },
+      {
+        "id": "f_3",
+        "label": "제원",
+        "type": "select",
+        "options": [
+          "%%C1000",
+          "%%C1200",
+          "기타"
+        ],
+        "default": "%%C1000",
+        "isSupport": false,
         "isPhoto": false
       },
       {
@@ -2126,18 +2126,6 @@
     "fields": [
       {
         "id": "f_1",
-        "label": "높이",
-        "type": "select",
-        "options": [
-          "2.5",
-          "기타"
-        ],
-        "default": "2.5",
-        "isSupport": false,
-        "isPhoto": false
-      },
-      {
-        "id": "f_2",
         "label": "지주",
         "type": "select",
         "options": [
@@ -2153,7 +2141,7 @@
         "isPhoto": false
       },
       {
-        "id": "f_3",
+        "id": "f_2",
         "label": "제원",
         "type": "select",
         "options": [
@@ -2171,6 +2159,18 @@
           "기타"
         ],
         "default": "%%C600",
+        "isSupport": false,
+        "isPhoto": false
+      },
+      {
+        "id": "f_3",
+        "label": "높이",
+        "type": "select",
+        "options": [
+          "2.5",
+          "기타"
+        ],
+        "default": "2.5",
         "isSupport": false,
         "isPhoto": false
       },
@@ -2234,18 +2234,6 @@
     "fields": [
       {
         "id": "f_1",
-        "label": "높이",
-        "type": "select",
-        "options": [
-          "2.5",
-          "기타"
-        ],
-        "default": "2.5",
-        "isSupport": false,
-        "isPhoto": false
-      },
-      {
-        "id": "f_2",
         "label": "지주",
         "type": "select",
         "options": [
@@ -2261,7 +2249,7 @@
         "isPhoto": false
       },
       {
-        "id": "f_3",
+        "id": "f_2",
         "label": "제원",
         "type": "select",
         "options": [
@@ -2279,6 +2267,18 @@
           "기타"
         ],
         "default": "%%C600",
+        "isSupport": false,
+        "isPhoto": false
+      },
+      {
+        "id": "f_3",
+        "label": "높이",
+        "type": "select",
+        "options": [
+          "2.5",
+          "기타"
+        ],
+        "default": "2.5",
         "isSupport": false,
         "isPhoto": false
       },
@@ -2340,18 +2340,6 @@
     "fields": [
       {
         "id": "f_1",
-        "label": "높이",
-        "type": "select",
-        "options": [
-          "2.5",
-          "기타"
-        ],
-        "default": "2.5",
-        "isSupport": false,
-        "isPhoto": false
-      },
-      {
-        "id": "f_2",
         "label": "지주",
         "type": "select",
         "options": [
@@ -2367,7 +2355,7 @@
         "isPhoto": false
       },
       {
-        "id": "f_3",
+        "id": "f_2",
         "label": "제원",
         "type": "select",
         "options": [
@@ -2385,6 +2373,18 @@
           "기타"
         ],
         "default": "%%C600",
+        "isSupport": false,
+        "isPhoto": false
+      },
+      {
+        "id": "f_3",
+        "label": "높이",
+        "type": "select",
+        "options": [
+          "2.5",
+          "기타"
+        ],
+        "default": "2.5",
         "isSupport": false,
         "isPhoto": false
       },
@@ -2445,18 +2445,6 @@
     "fields": [
       {
         "id": "f_1",
-        "label": "높이",
-        "type": "select",
-        "options": [
-          "2.5",
-          "기타"
-        ],
-        "default": "2.5",
-        "isSupport": false,
-        "isPhoto": false
-      },
-      {
-        "id": "f_2",
         "label": "지주",
         "type": "select",
         "options": [
@@ -2472,7 +2460,7 @@
         "isPhoto": false
       },
       {
-        "id": "f_3",
+        "id": "f_2",
         "label": "제원",
         "type": "select",
         "options": [
@@ -2483,6 +2471,18 @@
           "기타"
         ],
         "default": "1.0*1.0",
+        "isSupport": false,
+        "isPhoto": false
+      },
+      {
+        "id": "f_3",
+        "label": "높이",
+        "type": "select",
+        "options": [
+          "2.5",
+          "기타"
+        ],
+        "default": "2.5",
         "isSupport": false,
         "isPhoto": false
       },
