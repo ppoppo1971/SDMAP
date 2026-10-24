@@ -1,4 +1,4 @@
-const CACHE_NAME = 'road-survey-cache-v3';
+const CACHE_NAME = 'road-survey-cache-v4';
 
 // 설치 시 즉시 활성화
 self.addEventListener('install', (event) => {

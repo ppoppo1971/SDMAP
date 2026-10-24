@@ -1139,11 +1139,11 @@
   <!-- DXF 파서: 로컬 libs (오프라인용). 없으면 npm run copy-libs 또는 ADMAP-main/libs에서 복사 -->
   <script src="libs/dxf-parser.min.js"></script>
   <script src="dxf-to-geojson.js"></script>
-  <!-- 사진 마커 클러스터링 (200~300장 대응) -->
-  <script src="https://unpkg.com/@googlemaps/markerclusterer@2.5.3/dist/index.min.js"></script>
+  <!-- 사진 마커 클러스터링 (로컬 오프라인 즉시 로드) -->
+  <script src="libs/markerclusterer.min.js"></script>
   <!-- 사진 정밀 실측 모듈 -->
   <script src="photo-measure.js"></script>
-  <script src="app.js?v=5.0"></script>
+  <script src="app.js?v=5.1"></script>
   <script>
     (function() {
       var key = window.DMAP_CONFIG && window.DMAP_CONFIG.GMAPS_API_KEY;
@@ -1154,12 +1154,12 @@
       document.head.appendChild(s);
     })();
   </script>
-  <!-- vConsole: URL에 ?debug=1 파라미터가 있을 때만 로드 (배터리·메모리 절감) -->
+  <!-- vConsole: URL에 ?debug=1 파라미터가 있을 때만 로드 (로컬 오프라인 즉시 로드) -->
   <script>
     (function() {
       if (new URLSearchParams(window.location.search).get('debug') !== '1') return;
       var s = document.createElement('script');
-      s.src = 'https://unpkg.com/vconsole@3.15.1/dist/vconsole.min.js';
+      s.src = 'libs/vconsole.min.js';
       s.onload = function() {
         if (typeof window.VConsole === 'undefined') return;
         var vConsole = new window.VConsole({
