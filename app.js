@@ -6194,10 +6194,59 @@ function openSuggestionPickerModal(targetInputId, fieldTitle, suggestions, field
     emptyEl.textContent = '등록된 추천 항목이 없습니다.';
     listEl.appendChild(emptyEl);
   } else {
-    suggestions.forEach(function (val) {
+    var currentTargetVal = '';
+    if (targetInput && targetInput.value) {
+      currentTargetVal = String(targetInput.value).trim();
+    }
+
+    suggestions.forEach(function (sug) {
+      var val = (typeof sug === 'object' && sug !== null) ? sug.val : sug;
+      var context = (typeof sug === 'object' && sug !== null) ? sug.context : null;
+
       var itemEl = document.createElement('div');
       itemEl.className = 'suggestion-picker-item';
-      itemEl.textContent = val;
+      itemEl.style.display = 'flex';
+      itemEl.style.alignItems = 'center';
+      itemEl.style.justifyContent = 'space-between';
+      itemEl.style.gap = '8px';
+
+      // 좌측 본문 텍스트 (순수 값)
+      var valSpan = document.createElement('span');
+      valSpan.textContent = val;
+      valSpan.style.flex = '1';
+      valSpan.style.overflow = 'hidden';
+      valSpan.style.textOverflow = 'ellipsis';
+      valSpan.style.whiteSpace = 'nowrap';
+      itemEl.appendChild(valSpan);
+
+      // 우측 괄호 병기 텍스트 영역 (가독성 높은 은은한 회색)
+      var rightSpan = document.createElement('span');
+      rightSpan.style.display = 'inline-flex';
+      rightSpan.style.alignItems = 'center';
+      rightSpan.style.gap = '6px';
+      rightSpan.style.flexShrink = '0';
+
+      if (context) {
+        var ctxSpan = document.createElement('span');
+        ctxSpan.style.fontSize = '12px';
+        ctxSpan.style.color = (context === '최근저장' ? '#b45309' : '#6b7280');
+        ctxSpan.style.fontWeight = (context === '최근저장' ? '600' : 'normal');
+        ctxSpan.textContent = '(' + context + ')';
+        rightSpan.appendChild(ctxSpan);
+      }
+
+      if (currentTargetVal && val === currentTargetVal) {
+        var curSpan = document.createElement('span');
+        curSpan.style.fontSize = '12px';
+        curSpan.style.color = '#2563eb';
+        curSpan.style.fontWeight = 'bold';
+        curSpan.textContent = '(현재)';
+        rightSpan.appendChild(curSpan);
+      }
+
+      if (rightSpan.children.length > 0) {
+        itemEl.appendChild(rightSpan);
+      }
 
       var pressTimer = null;
       var isLongPressed = false;
@@ -6281,11 +6330,55 @@ function openSuggestionPickerModal(targetInputId, fieldTitle, suggestions, field
   modal.classList.add('active');
 }
 
-// 특정 시설물 및 필드 ID에 매칭되는 이전 입력값들을 texts 이력 및 localStorage에서 추출하여 빈도순 정렬하여 반환 (블랙리스트 제외, 피벗 기준 엄격 필터링 지원)
+// 특정 텍스트 객체가 어떤 주시설물에 결합(부착)되어 있는지 실시간 추적하는 함수
+function getTextAttachmentContext(txtObj) {
+  if (!txtObj) return null;
+  if (window.photos && window.photos.length > 0) {
+    var photo = window.photos.find(function (p) {
+      if (p.specTextIds && p.specTextIds.indexOf(txtObj.id) !== -1) return true;
+      if (p.specTextId === txtObj.id) return true;
+      return false;
+    });
+
+    if (photo) {
+      var textIds = photo.specTextIds || (photo.specTextId ? [photo.specTextId] : []);
+      var idx = textIds.indexOf(txtObj.id);
+      if (idx === 0) {
+        return '주시설물';
+      } else if (idx > 0) {
+        return photo.facilityType || '부속시설물';
+      }
+    }
+  }
+
+  // 사진 객체를 못 찾은 경우 텍스트 접두어(+)로 보조 판정
+  if (txtObj.text && String(txtObj.text).trim().startsWith('+')) {
+    if (window.texts) {
+      var parentTxt = window.texts.find(function (ot) {
+        return ot.id !== txtObj.id && Math.abs(ot.x - txtObj.x) < 0.0001 && Math.abs(ot.y - txtObj.y) < 0.0001 && !String(ot.text).trim().startsWith('+');
+      });
+      if (parentTxt) {
+        if (parentTxt.facilityType) {
+          return parentTxt.facilityType;
+        }
+        if (typeof deserializeSpecText === 'function') {
+          var parsed = deserializeSpecText(parentTxt.text, parentTxt.layer);
+          if (parsed && parsed.facilityType) {
+            return parsed.facilityType;
+          }
+        }
+      }
+    }
+    return '부속';
+  }
+
+  return '주시설물';
+}
+
+// 특정 시설물 및 필드 ID에 매칭되는 추천 목록을 데스크톱과 동일한 최신순(LIFO) 3단계 체계로 추출 (블랙리스트 제외, 피벗 기준 엄격 필터링 지원)
 function getFieldSuggestions(fieldId, config, defaultOptions, pivotFilter) {
-  var counts = {};
-  var baseDefaults = [];
-  var fieldKey = (config && (config.title || config.layer) ? (config.title || config.layer) : 'common') + '_' + fieldId;
+  var fType = (config && (config.title || config.layer)) ? (config.title || config.layer) : 'common';
+  var fieldKey = fType + '_' + fieldId;
   var blacklist = getFieldBlacklist(fieldKey);
 
   var isPhotoField = (fieldId === 'photo' || /사진/.test(fieldKey) || (config && config.fields && config.fields.some(function (f) {
@@ -6298,25 +6391,44 @@ function getFieldSuggestions(fieldId, config, defaultOptions, pivotFilter) {
 
   var isExcludedDeleteField = isPhotoField || isDoubleSidedField;
 
-  // [방안 2] 피벗 기준 필터링 (예: 내용이 '단속중'인 텍스트들에서만 높이/제원 엄격 집계)
+  var resultList = [];
+  var addItem = function (vStr, ctx) {
+    if (vStr === undefined || vStr === null) return;
+    vStr = String(vStr).trim();
+    if (vStr === '' || vStr === '기타' || vStr === '직접입력' || vStr === '선택' || vStr === '--') return;
+    if (isExcludedDeleteField && (vStr === '삭제' || vStr === '제외' || vStr === '미표기')) return;
+    if (blacklist.indexOf(vStr) !== -1) return;
+
+    for (var k = 0; k < resultList.length; k++) {
+      var existingVal = typeof resultList[k] === 'object' ? resultList[k].val : resultList[k];
+      if (existingVal === vStr) return;
+    }
+    resultList.push({ val: vStr, context: ctx || null });
+  };
+
+  // [1] 피벗 기준 필터링 (예: 내용이 '단속중'인 텍스트들에서만 최신 역순 추출)
   if (pivotFilter && pivotFilter.pivotFieldId && pivotFilter.pivotVal) {
     var targetPivotVal = String(pivotFilter.pivotVal).trim();
-    if (window.texts && window.texts.length > 0 && config && config.layer) {
+    if (window.texts && window.texts.length > 0 && config) {
       var confClean = String(config.layer || '').replace(/_T$/i, '').toLowerCase();
       var confTitle = String(config.title || '').toLowerCase();
 
-      window.texts.forEach(function (t) {
+      for (var i = window.texts.length - 1; i >= 0; i--) {
+        var t = window.texts[i];
+        if (!t || !t.text) continue;
+
         var tClean = String(t.layer || '').replace(/_T$/i, '').toLowerCase();
         var isMatching = (tClean === confClean || (confTitle && tClean === confTitle));
         if (t.facilityType) {
           isMatching = (String(t.facilityType).toLowerCase() === confTitle);
         }
-        if (isMatching && t.text) {
+
+        if (isMatching) {
           var pVal = '';
           var parsed = null;
           if (t.specValues && t.specValues[pivotFilter.pivotFieldId] !== undefined) {
             pVal = String(t.specValues[pivotFilter.pivotFieldId]).trim();
-          } else {
+          } else if (typeof deserializeSpecText === 'function') {
             parsed = deserializeSpecText(t.text, config);
             if (parsed && parsed[pivotFilter.pivotFieldId] !== undefined) {
               pVal = String(parsed[pivotFilter.pivotFieldId]).trim();
@@ -6329,109 +6441,96 @@ function getFieldSuggestions(fieldId, config, defaultOptions, pivotFilter) {
               val = String(t.specValues[fieldId]).trim();
             } else if (parsed && parsed[fieldId] !== undefined) {
               val = String(parsed[fieldId]).trim();
+            } else if (typeof deserializeSpecText === 'function') {
+              parsed = parsed || deserializeSpecText(t.text, config);
+              if (parsed && parsed[fieldId] !== undefined) {
+                val = String(parsed[fieldId]).trim();
+              }
             }
-            if (val && val !== '' && val !== '기타' && val !== '직접입력' && val !== '선택' && val !== '--' && blacklist.indexOf(val) === -1) {
-              counts[val] = (counts[val] || 0) + 1;
+
+            if (val) {
+              var ctx = getTextAttachmentContext(t);
+              addItem(val, ctx);
             }
           }
         }
-      });
+      }
+    }
 
-      var pivotList = Object.keys(counts).map(function (k) {
-        return { val: k, count: counts[k] };
-      });
+    return resultList.slice(0, 10);
+  }
 
-      if (pivotList.length > 0) {
-        pivotList.sort(function (a, b) {
-          if (b.count !== a.count) return b.count - a.count;
-          return a.val.localeCompare(b.val, 'ko');
-        });
-        return pivotList.map(function (item) { return item.val; });
+  // [2] 일반 필드 (피벗 필터 없음): 3단계 최신순 체계
+  // 2-1) 🥇 1순위: 직전 저장한 필드값 (최근저장) 최상단 배치
+  var lastSavedVal = null;
+  if (lastSpecs && lastSpecs[fType] && lastSpecs[fType][fieldId] !== undefined) {
+    lastSavedVal = lastSpecs[fType][fieldId];
+  } else if (typeof getLastSavedSpecForFacility === 'function') {
+    var cachedSpec = getLastSavedSpecForFacility(fType);
+    if (cachedSpec && cachedSpec[fieldId] !== undefined) {
+      lastSavedVal = cachedSpec[fieldId];
+    }
+  }
+
+  if (lastSavedVal !== null && lastSavedVal !== undefined) {
+    var sVal = String(lastSavedVal).trim();
+    if (sVal !== '' && sVal !== '기타' && sVal !== '직접입력' && sVal !== '선택' && sVal !== '--') {
+      if (!isExcludedDeleteField || (sVal !== '삭제' && sVal !== '제외' && sVal !== '미표기')) {
+        if (blacklist.indexOf(sVal) === -1) {
+          resultList.push({ val: sVal, context: '최근저장' });
+        }
       }
     }
   }
 
-  // 1. 기본 옵션 목록(사용자 지정 기본 목록)을 0회 카운트로 사전 등록 (블랙리스트 제외)
-  if (defaultOptions && defaultOptions.length > 0) {
-    defaultOptions.forEach(function (opt) {
-      var val = String(opt).trim();
-      // [사용자 요구사항] 사진 및 양면 항목에서는 '삭제', '제외' 등 불필요/오해 유발 옵션을 원천 제외하여 표시하지 않음
-      if (isExcludedDeleteField && (val === '삭제' || val === '제외' || val === '미표기')) {
-        return;
-      }
-      if (val !== '' && val !== '기타' && val !== '직접입력' && val !== '선택' && val !== '--' && blacklist.indexOf(val) === -1) {
-        counts[val] = 0;
-        baseDefaults.push(val);
-      }
-    });
-  }
+  // 2-2) 🥈 2순위: 도면 텍스트(window.texts) 최신 역순(LIFO) 탐색
+  if (window.texts && window.texts.length > 0 && config) {
+    var confClean2 = String(config.layer || '').replace(/_T$/i, '').toLowerCase();
+    var confTitle2 = String(config.title || '').toLowerCase();
 
-  // 2. 현재 도면에서 실제로 입력된 값들을 집계하여 빈도수 가산 (블랙리스트 제외)
-  // [시설물별 엄격 분리] 다른 시설물의 입력값이 섞이지 않도록 해당 시설물 레이어/타이틀과 100% 일치하는 텍스트만 집계
-  if (window.texts && window.texts.length > 0 && config && config.layer) {
-    var confClean = String(config.layer || '').replace(/_T$/i, '').toLowerCase();
-    var confTitle = String(config.title || '').toLowerCase();
-    window.texts.forEach(function (t) {
-      var tClean = String(t.layer || '').replace(/_T$/i, '').toLowerCase();
-      var isMatching = (tClean === confClean || (confTitle && tClean === confTitle));
-      if (t.facilityType) {
-        isMatching = (String(t.facilityType).toLowerCase() === confTitle);
+    for (var j = window.texts.length - 1; j >= 0; j--) {
+      var txtObj = window.texts[j];
+      if (!txtObj || !txtObj.text) continue;
+
+      var tClean2 = String(txtObj.layer || '').replace(/_T$/i, '').toLowerCase();
+      var isMatching2 = (tClean2 === confClean2 || (confTitle2 && tClean2 === confTitle2));
+      if (txtObj.facilityType) {
+        isMatching2 = (String(txtObj.facilityType).toLowerCase() === confTitle2);
       }
-      if (isMatching && t.text) {
-        var val = '';
-        if (t.specValues && t.specValues[fieldId] !== undefined) {
-          val = String(t.specValues[fieldId]).trim();
-        } else {
-          var parsed = deserializeSpecText(t.text, config);
-          if (parsed && parsed[fieldId] !== undefined) {
-            val = String(parsed[fieldId]).trim();
+
+      if (isMatching2) {
+        var tVal = '';
+        if (txtObj.specValues && txtObj.specValues[fieldId] !== undefined) {
+          tVal = String(txtObj.specValues[fieldId]).trim();
+        } else if (typeof deserializeSpecText === 'function') {
+          var pRes = deserializeSpecText(txtObj.text, config);
+          if (pRes && pRes[fieldId] !== undefined) {
+            tVal = String(pRes[fieldId]).trim();
           }
         }
-        if (isExcludedDeleteField && (val === '삭제' || val === '제외' || val === '미표기')) {
-          return;
-        }
-        if (val !== '' && val !== '기타' && val !== '직접입력' && val !== '선택' && val !== '--' && blacklist.indexOf(val) === -1) {
-          counts[val] = (counts[val] || 0) + 1;
+
+        if (tVal) {
+          var tCtx = getTextAttachmentContext(txtObj);
+          addItem(tVal, tCtx);
         }
       }
-    });
+    }
   }
 
-  // 3. 브라우저 localStorage 사용자 사전에서도 집계 가산 (블랙리스트 제외)
+  // 2-3) 로컬 사용자 사전(localStorage) 추가 보완
   var customStore = getFieldCustomSuggestions(fieldKey);
   for (var cVal in customStore) {
-    if (isExcludedDeleteField && (cVal === '삭제' || cVal === '제외' || cVal === '미표기')) {
-      continue;
-    }
-    if (blacklist.indexOf(cVal) === -1) {
-      counts[cVal] = (counts[cVal] || 0) + customStore[cVal];
-    }
+    addItem(cVal, null);
   }
 
-  var list = Object.keys(counts).map(function (k) {
-    return { val: k, count: counts[k] };
-  });
+  // 2-4) 🥉 3순위: 기본 설정 옵션 목록(defaultOptions) 중 아직 없는 항목 후순위 추가
+  if (defaultOptions && defaultOptions.length > 0) {
+    defaultOptions.forEach(function (opt) {
+      addItem(opt, null);
+    });
+  }
 
-  // 빈도순 정렬 (동일할 경우 가나다 순)
-  list.sort(function (a, b) {
-    if (b.count !== a.count) return b.count - a.count;
-    return a.val.localeCompare(b.val, 'ko');
-  });
-
-  // 정렬된 결과 값 리스트 추출
-  var sortedValues = list.map(function (item) { return item.val; });
-
-  // 4. 상위 15개로 1차 제한
-  var result = sortedValues.slice(0, 15);
-
-  // 5. 상위 15개 목록에 포함되지 않은 기본 설정값(defaultOptions)이 있다면 뒤에 추가로 병합
-  baseDefaults.forEach(function (defVal) {
-    if (result.indexOf(defVal) === -1 && blacklist.indexOf(defVal) === -1) {
-      result.push(defVal);
-    }
-  });
-
-  return result;
+  return resultList.slice(0, 20);
 }
 
 // 그동안 입력된 사진메모들의 빈도수를 집계하여 빈도순으로 정렬된 추천 목록 반환

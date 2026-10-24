@@ -197,7 +197,10 @@
 
     /* 우측 사이드바 (제원 입력 패널) */
     .sidebar {
+      position: relative;
       width: 480px;
+      min-width: 380px;
+      max-width: 85vw;
       background: var(--bg-sidebar);
       border-left: 1px solid var(--border);
       height: 100%;
@@ -205,6 +208,26 @@
       flex-direction: column;
       box-shadow: -4px 0 24px rgba(0, 0, 0, 0.25);
       z-index: 5;
+    }
+
+    /* 사이드바 좌우 드래그 리사이즈 핸들 */
+    .sidebar-resizer {
+      position: absolute;
+      top: 0;
+      left: -4px;
+      width: 8px;
+      height: 100%;
+      cursor: col-resize;
+      z-index: 50;
+      user-select: none;
+      -webkit-user-select: none;
+      transition: background 0.15s ease;
+    }
+
+    .sidebar-resizer:hover,
+    .sidebar-resizer.is-resizing {
+      background: rgba(99, 102, 241, 0.6);
+      box-shadow: 0 0 10px rgba(99, 102, 241, 0.8);
     }
 
     .sidebar-header {
@@ -315,49 +338,173 @@
       gap: 12px;
     }
 
-    /* 다중 속성 카드 스타일 (기존 앱 스타일 차용) */
+    /* 다중 속성 카드 스타일 (슬림 캐드 토큰 바 모드) */
     .attribute-card {
-      background: rgba(255, 255, 255, 0.02);
+      background: rgba(255, 255, 255, 0.03);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 16px;
-      margin-bottom: 16px;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
       position: relative;
+      transition: all 0.15s ease-in-out;
     }
 
-    .attribute-card-header {
+    .attribute-card:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(99, 102, 241, 0.3);
+    }
+
+    /* 토큰 바 행 컨테이너 */
+    .token-bar-row {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      margin-bottom: 12px;
-      border-bottom: 1px dashed var(--border);
-      padding-bottom: 8px;
+      flex-wrap: wrap;
+      gap: 4px 6px;
+      width: 100%;
     }
 
-    .attribute-card-title {
+    /* 접두어 뱃지 (주시설물: 보라, 부속: 청록/민트) */
+    .token-prefix-badge {
+      font-size: 13px;
+      font-weight: 700;
+      color: #a5b4fc;
+      background: rgba(99, 102, 241, 0.18);
+      border: 1px solid rgba(99, 102, 241, 0.4);
+      padding: 4px 8px;
+      border-radius: 5px;
+      user-select: none;
+      white-space: nowrap;
+      letter-spacing: -0.3px;
+    }
+
+    .attribute-card[data-is-sub="true"] .token-prefix-badge {
+      color: #34d399;
+      background: rgba(16, 185, 129, 0.18);
+      border-color: rgba(16, 185, 129, 0.4);
+    }
+
+    /* 슬래시 구분자 */
+    .token-slash-sep {
+      color: rgba(255, 255, 255, 0.25);
+      font-weight: 700;
       font-size: 14px;
+      user-select: none;
+      padding: 0 1px;
+    }
+
+    /* 개별 필드 캡슐 */
+    .token-capsule {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 5px;
+      padding: 2px 4px 2px 6px;
+      transition: all 0.15s;
+    }
+
+    .token-capsule:hover {
+      border-color: rgba(99, 102, 241, 0.6);
+      background: rgba(99, 102, 241, 0.12);
+    }
+
+    .token-capsule:focus-within {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+      background: rgba(0, 0, 0, 0.5);
+    }
+
+    /* 피벗 기준 필드(내용, 종류 등) 강조 */
+    .token-capsule.is-pivot {
+      border-color: rgba(99, 102, 241, 0.45);
+      background: rgba(99, 102, 241, 0.08);
+    }
+
+    /* 캡슐 내 직접 타이핑 입력창 */
+    .token-input {
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #f3f4f6;
+      font-size: 13px;
       font-weight: 600;
+      padding: 2px 0;
+      min-width: 36px;
+      max-width: 140px;
+      text-align: center;
+      font-family: 'Inter', -apple-system, sans-serif;
+    }
+
+    .token-input::placeholder {
+      color: rgba(255, 255, 255, 0.35);
+      font-weight: normal;
+      font-size: 11px;
+    }
+
+    /* 캡슐 내 작은 드롭다운 화살표 아이콘 */
+    .token-arrow {
+      color: rgba(255, 255, 255, 0.4);
+      font-size: 10px;
+      margin-left: 2px;
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.15s;
+    }
+
+    .token-capsule:hover .token-arrow {
       color: #a5b4fc;
     }
 
-    .attribute-card-del-btn {
-      color: var(--danger);
-      background: transparent;
-      border: none;
-      cursor: pointer;
-      font-size: 12px;
+    /* 캡슐 내 커스텀 드롭다운 패널 너비 확보 */
+    .token-capsule .custom-dropdown-panel {
+      min-width: 170px;
+      max-width: 260px;
+      left: 0;
+      top: 100%;
+      margin-top: 5px;
     }
 
+    /* 우측 이동(▲/▼) 및 삭제(✕) 버튼 그룹 */
+    .token-card-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      margin-left: auto;
+    }
+
+    .token-action-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #cbd5e1;
+      border-radius: 4px;
+      width: 22px;
+      height: 22px;
+      font-size: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s;
+      padding: 0;
+      line-height: 1;
+    }
+
+    .token-action-btn:hover {
+      background: rgba(99, 102, 241, 0.4);
+      border-color: #818cf8;
+      color: white;
+    }
+
+    .token-action-btn.del:hover {
+      background: rgba(239, 68, 68, 0.4);
+      border-color: #ef4444;
+      color: white;
+    }
+
+    /* 사진창에서 확인 가능하므로 카드 하단 중복 CAD 전개 박스 완전 제거 */
     .preview-spec-box {
-      background: rgba(16, 185, 129, 0.1);
-      border: 1px solid rgba(16, 185, 129, 0.2);
-      padding: 12px;
-      border-radius: 8px;
-      font-size: 13px;
-      color: #6ee7b7;
-      font-weight: 600;
-      margin-top: 10px;
-      word-break: break-all;
+      display: none !important;
     }
 
     .sidebar-actions {
@@ -1106,6 +1253,18 @@
       transform: translate(-50%, -50%) scale(1.08) !important;
     }
 
+    /* 검색/검수 모드 전용 클러스터 배지 (파란색 검수 마커와 혼동 방지: 보라색/인디고 그라데이션) */
+    .photo-overlay-card.cluster-mode.inspect-cluster-mode {
+      background: linear-gradient(135deg, #8b5cf6, #6366f1) !important;
+      border: 2px solid #a5b4fc !important;
+      box-shadow: 0 4px 16px rgba(99, 102, 241, 0.6) !important;
+    }
+
+    .photo-overlay-card.cluster-mode.inspect-cluster-mode:hover {
+      background: linear-gradient(135deg, #7c3aed, #4f46e5) !important;
+      transform: translate(-50%, -50%) scale(1.12) !important;
+    }
+
     /* [방안 3 추가] 중첩 그룹 ＋N 뱃지 스타일 */
     .label-photo-plus-badge {
       position: absolute;
@@ -1235,6 +1394,41 @@
       /* 보라색 대신 진한 파란색 원 */
       border-color: #ffffff !important;
       box-shadow: 0 0 0 1.5px #2563eb, 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+    }
+
+    /* [방안 1] 시설물 검수/검색 도면 전용 마커 스타일 (미검수: 주황색 / 완료: 파란색) */
+    .photo-overlay-card.inspect-marker-mode {
+      width: 12px !important;
+      height: 12px !important;
+      border-radius: 50% !important;
+      background: #f97316 !important; /* 미검수 마커: 선명한 주황색 */
+      border: 2px solid #ffffff !important;
+      box-shadow: 0 0 0 1.5px #f97316, 0 2px 6px rgba(0, 0, 0, 0.4) !important;
+      cursor: pointer !important;
+      transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+    }
+
+    /* 검수 완료된 마커는 시원한 파란색 마커로 실시간 전환 */
+    .photo-overlay-card.inspect-marker-mode.is-saved {
+      background: #2563eb !important; /* 검수 완료: 파란색 */
+      box-shadow: 0 0 0 1.5px #2563eb, 0 2px 6px rgba(0, 0, 0, 0.4) !important;
+    }
+
+    /* 마우스 호버 시 썸네일 카드로 커지지 않고 마커 점만 살짝 강조 */
+    .photo-overlay-card.inspect-marker-mode:hover {
+      width: 12px !important;
+      height: 12px !important;
+      transform: translate(-50%, -50%) scale(1.3) !important;
+      margin-top: 0 !important;
+      padding: 0 !important;
+      border-radius: 50% !important;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.8), 0 3px 8px rgba(0, 0, 0, 0.5) !important;
+    }
+
+    .photo-overlay-card.inspect-marker-mode .photo-overlay-label-panel,
+    .photo-overlay-card.inspect-marker-mode > *,
+    .photo-overlay-card.inspect-marker-mode:hover > * {
+      display: none !important;
     }
 
     /* 카드 모드 또는 텍스트 모드인 경우에도 작업 완료 상태임을 나타내는 파란색 도트 표시 및 테두리 */
@@ -2082,6 +2276,324 @@
       color: #34d399 !important;
       font-weight: 600 !important;
     }
+
+    /* [신규] 시설물 전수 검수 상단 빠른 필터 버튼 스타일 */
+    .inspect-filter-btn {
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 500;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #94a3b8;
+    }
+    .inspect-filter-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #f1f5f9;
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+    .inspect-filter-btn.active#inspect-filter-all {
+      background: rgba(99, 102, 241, 0.25);
+      border-color: #6366f1;
+      color: #a5b4fc;
+      font-weight: 700;
+    }
+    .inspect-filter-btn.pending {
+      color: #fb923c;
+      border-color: rgba(251, 146, 60, 0.3);
+      background: rgba(251, 146, 60, 0.08);
+    }
+    .inspect-filter-btn.pending:hover {
+      background: rgba(251, 146, 60, 0.2);
+      border-color: rgba(251, 146, 60, 0.5);
+    }
+    .inspect-filter-btn.active.pending {
+      background: rgba(239, 68, 68, 0.25);
+      border-color: #ef4444;
+      color: #fca5a5;
+      font-weight: 700;
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
+    }
+    .inspect-filter-btn.done {
+      color: #34d399;
+      border-color: rgba(16, 185, 129, 0.3);
+      background: rgba(16, 185, 129, 0.08);
+    }
+    .inspect-filter-btn.done:hover {
+      background: rgba(16, 185, 129, 0.2);
+      border-color: rgba(16, 185, 129, 0.5);
+    }
+    .inspect-filter-btn.active.done {
+      background: rgba(16, 185, 129, 0.25);
+      border-color: #10b981;
+      color: #6ee7b7;
+      font-weight: 700;
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+    }
+
+    /* [고도화] 시설물 전수 검수 엑셀 그리드(Grid Table) 스타일 (노트북/모니터 화면 잘림 완벽 방지) */
+    .inspect-grid-wrapper {
+      width: 100%;
+      height: 100%;
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #141416;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      position: relative;
+    }
+
+    .inspect-grid-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 12px;
+      color: #e2e8f0;
+      white-space: nowrap;
+      table-layout: auto;
+    }
+
+    /* 상단 고정 헤더 (Sticky Header) */
+    .inspect-grid-table thead tr:first-child th {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: #1e1e24;
+      color: #94a3b8;
+      font-weight: 600;
+      font-size: 11px;
+      padding: 7px 8px;
+      border-bottom: 1px solid var(--border);
+      border-right: 1px solid rgba(255, 255, 255, 0.05);
+      text-align: center;
+      user-select: none;
+    }
+
+    .inspect-grid-table thead tr:first-child th.sortable {
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .inspect-grid-table thead tr:first-child th.sortable:hover {
+      background: #282830;
+      color: #f8fafc;
+    }
+
+    .inspect-grid-table thead tr:first-child th .sort-icon {
+      display: inline-block;
+      margin-left: 3px;
+      font-size: 10px;
+      color: #64748b;
+    }
+
+    .inspect-grid-table thead tr:first-child th.sorted .sort-icon {
+      color: #818cf8;
+      font-weight: bold;
+    }
+
+    /* 상단 고정 필터 행 (Filter Row - 헤더 바로 아래 고정) */
+    .inspect-grid-table thead tr.filter-row th {
+      position: sticky;
+      top: 31px;
+      z-index: 9;
+      background: #18181c;
+      padding: 3px 4px;
+      border-bottom: 2px solid var(--border);
+      border-right: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .inspect-grid-table thead tr.filter-row input {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      color: #f1f5f9;
+      font-size: 11px;
+      padding: 2px 4px;
+      text-align: center;
+      box-sizing: border-box;
+    }
+
+    .inspect-grid-table thead tr.filter-row input:focus {
+      outline: none;
+      border-color: var(--primary);
+      background: rgba(0, 0, 0, 0.6);
+    }
+
+    .inspect-grid-table td {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      border-right: 1px solid rgba(255, 255, 255, 0.04);
+      padding: 0;
+      height: 28px;
+      text-align: center;
+      vertical-align: middle;
+      background: transparent;
+    }
+
+    .inspect-grid-table tr:hover td {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .inspect-grid-table tr.active td {
+      background: rgba(99, 102, 241, 0.15);
+    }
+
+    /* 사진# 열 (클릭 시 지도 위치로 이동) */
+    .inspect-grid-table td.col-num {
+      font-weight: 600;
+      color: #818cf8;
+      padding: 0 6px;
+      font-family: monospace;
+      cursor: pointer;
+      text-decoration: underline;
+      transition: color 0.15s, background 0.15s;
+    }
+
+    .inspect-grid-table td.col-num:hover {
+      color: #c7d2fe;
+      background: rgba(99, 102, 241, 0.2);
+    }
+
+    .inspect-grid-table td.col-gubun {
+      font-weight: 700;
+      font-size: 11px;
+      padding: 0 4px;
+      color: #cbd5e1;
+    }
+
+    .inspect-grid-table td.col-gubun.is-sub {
+      color: #c084fc; /* 부속(+) 연보라색 */
+    }
+
+    .inspect-grid-table td.col-gubun.is-main {
+      color: #2dd4bf; /* 주시설물 청록색 */
+    }
+
+    .inspect-grid-table td.col-facility {
+      padding: 0;
+      position: relative;
+    }
+
+    /* 인라인 입력 셀 (엑셀 스타일) */
+    .grid-cell-input {
+      width: 100%;
+      height: 28px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: #f1f5f9;
+      font-size: 12px;
+      padding: 2px 6px;
+      text-align: center;
+      box-sizing: border-box;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .grid-cell-input:hover {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .grid-cell-input:focus {
+      outline: none;
+      background: #0f172a;
+      border-color: var(--primary);
+      box-shadow: inset 0 0 0 1px var(--primary);
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    .grid-cell-input.saved-flash {
+      background: rgba(16, 185, 129, 0.35) !important;
+      transition: background 0.4s ease-out;
+    }
+
+    /* [방안 3] 엑셀 스타일 다중 셀 드래그 블록 선택 영역 */
+    .inspect-grid-table td.grid-cell-selected {
+      background: rgba(59, 130, 246, 0.28) !important;
+      outline: 1px solid #3b82f6 !important;
+      outline-offset: -1px;
+    }
+    .inspect-grid-table td.grid-cell-selected input {
+      background: transparent !important;
+    }
+
+    /* [사용자 요청] 가로등이 함께 설치된 시설물의 시설물명 열 주황색 강조 */
+    .inspect-grid-table input.facility-has-streetlight,
+    .inspect-grid-table td.has-streetlight-attached input,
+    .inspect-grid-table td.has-streetlight-attached {
+      color: #f97316 !important;
+      font-weight: 700 !important;
+    }
+
+    /* 저장 버튼 (파란 마커 검수 완료용) */
+    .grid-save-btn {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      color: #34d399;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 3px 8px;
+      border-radius: 4px;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .grid-save-btn:hover {
+      background: #10b981;
+      color: #ffffff;
+      border-color: #10b981;
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+    }
+
+    .grid-save-btn.is-edited {
+      background: rgba(59, 130, 246, 0.15);
+      border-color: rgba(59, 130, 246, 0.4);
+      color: #60a5fa;
+    }
+
+    .grid-save-btn.is-edited:hover {
+      background: #3b82f6;
+      color: #ffffff;
+      border-color: #3b82f6;
+    }
+
+    /* 시설물명 자동완성 드롭다운 팝업 */
+    .grid-facility-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      background: #18181c;
+      border: 1px solid var(--primary);
+      border-radius: 6px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+      max-height: 220px;
+      overflow-y: auto;
+      z-index: 1000;
+      display: none;
+      min-width: 140px;
+      width: 100%;
+      text-align: left;
+    }
+
+    .grid-facility-item {
+      padding: 6px 10px;
+      font-size: 12px;
+      color: #e2e8f0;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+
+    .grid-facility-item:hover, .grid-facility-item.selected {
+      background: rgba(99, 102, 241, 0.25);
+      color: #ffffff;
+      font-weight: 600;
+    }
   </style>
   <link rel="stylesheet" href="photo-measure.css">
 
@@ -2183,6 +2695,9 @@
 
     <!-- 우측 사이드바 (편집 폼) -->
     <aside class="sidebar">
+      <!-- 사이드바 좌우 리사이저 드래그 핸들 -->
+      <div id="sidebar-resizer" class="sidebar-resizer" title="마우스로 드래그하여 패널 너비 조절"></div>
+
       <!-- 탭 선택 헤더 -->
       <div class="sidebar-tabs"
         style="display: flex; border-bottom: 1px solid var(--border); background: #18181c; min-height: 48px; align-items: center; padding-right: 10px; gap: 8px;">
@@ -2227,18 +2742,6 @@
 
           <!-- 사진 상세 내용 패널 (선택 시 활성화) -->
           <div id="detail-panel" style="display: none;">
-            <!-- 작업 진도율 표시 -->
-            <div class="progress-text"
-              style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">
-              <span>속성 입력 진도율</span>
-              <span id="progress-percent">0% (0/0개 완료)</span>
-            </div>
-            <div class="progress-container"
-              style="width: 100%; height: 6px; background: #27272a; border-radius: 3px; overflow: hidden; margin-bottom: 16px;">
-              <div class="progress-bar" id="progress-bar-fill"
-                style="width: 0%; height: 100%; background: var(--accent); transition: width 0.3s ease;"></div>
-            </div>
-
             <!-- 사진 미리보기 박스 (뷰어로 확인 가능하므로 가림) -->
             <div class="photo-preview-box" style="display: none;">
               <div class="photo-info-overlay" id="preview-photo-number">#1</div>
@@ -2249,12 +2752,7 @@
             <div class="photo-thumbnail-list" id="sidebar-thumbnails" style="display: none;"></div>
 
             <!-- 기본 정보 영역 -->
-            <!-- [치수 실측 기능] index.html 과 동일한 사진 치수 실측 단추 -->
-            <button type="button" class="btn" id="panel-photo-measure-btn"
-              style="width: 100%; margin-bottom: 14px; background: linear-gradient(135deg, #4f46e5, #6366f1); color: #ffffff; font-weight: 600; font-size: 13px; padding: 10px 14px; border-radius: 8px; border: none; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; box-shadow: 0 2px 8px rgba(79, 70, 229, 0.35); transition: all 0.15s ease;">
-              <span>📐 사진 치수 실측 (스타프 보정)</span>
-            </button>
-            <div class="form-group">
+            <div class="form-group" style="margin-top: 4px;">
               <label for="photo-memo">메모</label>
               <input type="text" id="photo-memo" class="form-control" placeholder="현장 메모 입력" autocomplete="off">
             </div>
@@ -2293,68 +2791,43 @@
         <!-- 상단 컨트롤 헤더 -->
         <div
           style="padding: 16px 20px; border-bottom: 1px solid var(--border); background: #18181c; display: flex; flex-direction: column; gap: 10px;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h2 style="font-size: 15px; font-weight: 600; color: var(--text);">📋 시설물 전수 검수</h2>
-            <span id="inspect-total-badge"
-              style="font-size: 11px; padding: 2px 8px; border-radius: 12px; background: rgba(99, 102, 241, 0.2); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.3);">도면
-              내 0개 시설물</span>
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+            <h2 style="font-size: 15px; font-weight: 600; color: var(--text); margin: 0; white-space: nowrap;">📋 시설물 전수 검수</h2>
+            <div id="inspect-status-filter-group" style="display: flex; gap: 4px; align-items: center;">
+              <button type="button" id="inspect-filter-all" class="inspect-filter-btn active" title="전체 사진/시설물 보기">전체 0</button>
+              <button type="button" id="inspect-filter-pending" class="inspect-filter-btn pending" title="아직 검수/저장되지 않은 항목만 보기">🚨 미검수 0</button>
+              <button type="button" id="inspect-filter-done" class="inspect-filter-btn done" title="검수 완료된 항목만 보기">✅ 완료 0</button>
+            </div>
           </div>
 
           <!-- 통합 검색창 (시설물명 또는 제원 특정 단어 검색) -->
           <div style="display: flex; gap: 6px; align-items: center; position: relative;">
             <input type="text" id="inspect-search-input" class="form-control"
-              placeholder="시설물명 또는 제원단어 검색 (예: 가로등, LED, 흄관)..." autocomplete="off"
-              style="flex: 1; padding: 9px 32px 9px 12px; font-size: 13px; background: rgba(0, 0, 0, 0.35); border-radius: 6px;">
-            <button type="button" id="inspect-search-clear" title="검색어 지우기"
-              style="display: none; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); font-size: 14px; cursor: pointer; padding: 2px 4px; line-height: 1;">✕</button>
-          </div>
-
-          <!-- 시설물 선택 드롭다운 (빠른 선택) -->
-          <div style="display: flex; gap: 8px; align-items: center;">
-            <select id="inspect-facility-select" class="form-control"
-              style="flex: 1; padding: 8px 10px; font-size: 12px; font-weight: 500; background: #202024; color: #f3f4f6; border-radius: 6px;">
-              <option value="">시설물 종류별 빠른 선택...</option>
-            </select>
-          </div>
-
-          <!-- 보조 조작 바: 도면 전체 복원 & 이전/다음 이동 단추 -->
-          <div style="display: flex; gap: 8px; align-items: center; justify-content: space-between;">
-            <button type="button" class="btn" id="inspect-map-reset-btn" title="도면 필터를 해제하고 모든 마커를 원래대로 복원합니다"
-              style="font-size: 11px; padding: 6px 10px; color: var(--text-muted); background: rgba(255, 255, 255, 0.04); white-space: nowrap;">
-              🔄 전체 마커 복원
-            </button>
-            <div style="display: flex; gap: 6px;">
-              <button type="button" class="btn" id="inspect-prev-btn" title="이전 시설물로 이동"
-                style="padding: 6px 12px; font-size: 12px;">◀ 이전</button>
-              <button type="button" class="btn" id="inspect-next-btn" title="다음 시설물로 이동"
-                style="padding: 6px 12px; font-size: 12px;">다음 ▶</button>
+              placeholder="시설물명, 제원단어 또는 '@미검수', '@일반사진', '@사진메모' 검색..." autocomplete="off"
+              style="flex: 1; padding: 9px 85px 9px 12px; font-size: 13px; background: rgba(0, 0, 0, 0.35); border-radius: 6px;">
+            <div id="inspect-search-badge-wrap" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 4px;">
+              <span id="inspect-search-count" style="display: none; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 10px; background: rgba(99, 102, 241, 0.25); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.4); white-space: nowrap;">0건</span>
+              <button type="button" id="inspect-search-clear" title="검색어 지우기"
+                style="display: none; background: none; border: none; color: var(--text-muted); font-size: 14px; cursor: pointer; padding: 2px 4px; line-height: 1;">✕</button>
             </div>
           </div>
 
-          <!-- 검수 현황 요약 바 -->
-          <div id="inspect-stats-bar"
-            style="display: none; padding: 8px 12px; background: rgba(255, 255, 255, 0.03); border-radius: 6px; font-size: 12px; color: var(--text-muted); justify-content: space-between; align-items: center; border: 1px solid var(--border);">
-            <span>대상: <strong id="inspect-target-name" style="color: #ffffff;">-</strong></span>
-            <span>
-              <span id="inspect-done-count" style="color: #10b981; font-weight: 600;">완료 0</span> /
-              <span id="inspect-pending-count" style="color: #f59e0b; font-weight: 600;">미입력 0</span>
-              (<span id="inspect-total-count" style="font-weight: 600;">총 0건</span>)
-            </span>
-          </div>
         </div>
 
-        <!-- 검수 카드 스크롤 목록 -->
-        <div class="sidebar-scroll" id="inspect-scroll" style="flex: 1; overflow-y: auto; padding: 16px 20px;">
+        <!-- 검수 결과 스크롤 목록 (엑셀 테이블용 최적화: 노트북/모니터 화면에 딱 맞게 flex 100% 적용) -->
+        <div class="sidebar-scroll" id="inspect-scroll" style="flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; padding: 8px 10px; box-sizing: border-box;">
           <div id="inspect-placeholder"
             style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 60px 20px; font-style: italic; line-height: 1.6;">
-            상단에서 검수할 시설물 종류를 선택하시면<br>
-            해당 시설물의 전체 목록과 제원 입력 상태를 확인하실 수 있습니다.<br>
-            <span style="font-size: 11px; color: rgba(99, 102, 241, 0.8); display: block; margin-top: 10px;">
-              ※ 목록 항목을 클릭하면 도면 위치로 즉시 이동하며,<br>
-              더블클릭 또는 [편집] 클릭 시 즉시 제원을 수정할 수 있습니다.
+            상단 검색창에 <strong>시설물명</strong>(예: 가로등, 배수관)이나<br>
+            <strong>특정 제원 단어</strong>(예: LED, 흄관, 10.0)를 입력해 보세요.<br>
+            <span style="font-size: 11px; color: #a5b4fc; display: block; margin-top: 6px;">
+              💡 특수 전수검수: <strong>@미검수</strong> (미검수 전수), <strong>@일반사진</strong> (일반사진 전수), <strong>@사진메모</strong> (메모 전수), <strong>@글자만</strong> (사진없는 제원 전수)
+            </span>
+            <span style="font-size: 11px; color: rgba(99, 102, 241, 0.8); display: block; margin-top: 4px;">
+              ※ 검색된 시설물만 도면에 <strong>캐드 제원 문자</strong>로 자동 전개됩니다.
             </span>
           </div>
-          <div id="inspect-items-container" style="display: flex; flex-direction: column; gap: 8px;"></div>
+          <div id="inspect-items-container" style="width: 100%; height: 100%; flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden;"></div>
         </div>
       </div>
     </aside>
@@ -2460,7 +2933,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <!-- 메인 웹 편집기 비즈니스 로직 -->
   <script src="photo-measure.js"></script>
-  <script src="map-editor_v3.js?v=5.2"></script>
+  <script src="map-editor_v3.js?v=5.6"></script>
 
   <!-- 구글 맵 동적 로딩 -->
   <script>
