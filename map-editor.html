@@ -2594,33 +2594,195 @@
       color: #ffffff;
       font-weight: 600;
     }
-  </style>
-  <link rel="stylesheet" href="photo-measure.css">
 
-  <!-- [방안 1] PC 웹 편집기 전용 사진 실측 분할 레이아웃 (우측 제원 입력창 유지) -->
+    /* [텍스트 찾아 바꾸기 모달] 단축키 Ctrl+H / Alt+H 전용 모달 스타일 */
+    .grid-replace-modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.15s ease-in-out;
+      pointer-events: none;
+    }
+
+    .grid-replace-modal-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .grid-replace-modal-card {
+      background: #18181c;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      width: 390px;
+      max-width: 90vw;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transform: scale(0.95);
+      transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .grid-replace-modal-overlay.active .grid-replace-modal-card {
+      transform: scale(1);
+    }
+
+    .grid-replace-modal-header {
+      padding: 13px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #1e1e24;
+    }
+
+    .grid-replace-modal-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #f3f4f6;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .grid-replace-close-btn {
+      background: none;
+      border: none;
+      color: #9ca3af;
+      font-size: 20px;
+      cursor: pointer;
+      line-height: 1;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: all 0.12s;
+    }
+    .grid-replace-close-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .grid-replace-modal-body {
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 13px;
+    }
+
+    .grid-replace-scope-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 6px;
+      font-size: 12px;
+    }
+
+    .grid-replace-scope-label {
+      color: #94a3b8;
+      font-weight: 600;
+      font-size: 11px;
+    }
+
+    .grid-replace-radio-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: #e2e8f0;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .grid-replace-form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .grid-replace-form-group label {
+      font-size: 11px;
+      color: #94a3b8;
+      font-weight: 500;
+    }
+
+    .grid-replace-form-group input {
+      background: #121214;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 13px;
+      color: #f8fafc;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .grid-replace-form-group input:focus {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 1px #6366f1;
+    }
+
+    .grid-replace-option-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      margin-top: 2px;
+    }
+
+    .grid-replace-checkbox-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: #cbd5e1;
+      cursor: pointer;
+      font-size: 11px;
+    }
+
+    .grid-replace-shortcut-hint {
+      color: #64748b;
+      font-size: 10px;
+    }
+
+    .grid-replace-modal-footer {
+      padding: 12px 18px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      background: #18181c;
+    }
+
+    .grid-replace-btn-primary {
+      background: #6366f1 !important;
+      border-color: #6366f1 !important;
+      color: #ffffff !important;
+      font-weight: 600 !important;
+    }
+    .grid-replace-btn-primary:hover {
+      background: #4f46e5 !important;
+      border-color: #4f46e5 !important;
+    }
+  </style>
+  <link rel="stylesheet" href="photo-measure.css?v=6.7">
+
+  <!-- [방안 1] PC 웹 편집기 전용 사진 실측 독립 플로팅 윈도우 레이아웃 (사진창과 동일한 자유 이동/크기조절 지원) -->
   <style>
     @media (min-width: 1024px) {
-
-      /* 실측창: 전체화면 대신 상단 헤더(64px) 아래, 우측 사이드바(480px)를 제외한 좌측 지도 영역에 맞춤 표시 */
-      #phm-overlay {
-        position: fixed !important;
-        top: 64px !important;
-        left: 0 !important;
-        width: calc(100vw - 480px) !important;
-        right: 480px !important;
-        height: calc(100vh - 64px) !important;
-        height: calc(100dvh - 64px) !important;
-        z-index: 80 !important;
-        border-right: 1px solid var(--border) !important;
-        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.45) !important;
-      }
-
-      /* 우측 제원 사이드바: 실측창보다 위에 위치하여 실측 수치를 보면서 즉시 입력 및 저장 가능 */
+      /* 우측 제원 사이드바 및 상단 헤더 z-index 유지 */
       .sidebar {
         z-index: 90 !important;
       }
-
-      /* 상단 헤더: 최상위 레이어 유지 */
       header {
         z-index: 100 !important;
       }
@@ -2800,15 +2962,17 @@
             </div>
           </div>
 
-          <!-- 통합 검색창 (시설물명 또는 제원 특정 단어 검색) -->
+          <!-- 통합 검색창 (시설물명 또는 제원 특정 단어 입력 후 Enter 검색) -->
           <div style="display: flex; gap: 6px; align-items: center; position: relative;">
             <input type="text" id="inspect-search-input" class="form-control"
-              placeholder="시설물명, 제원단어 또는 '@미검수', '@일반사진', '@사진메모' 검색..." autocomplete="off"
-              style="flex: 1; padding: 9px 85px 9px 12px; font-size: 13px; background: rgba(0, 0, 0, 0.35); border-radius: 6px;">
+              placeholder="시설물명, 제원단어 입력 후 [Enter] 검색... (@미검수, @사진메모)" autocomplete="off"
+              style="flex: 1; padding: 9px 95px 9px 12px; font-size: 13px; background: rgba(0, 0, 0, 0.35); border-radius: 6px;">
             <div id="inspect-search-badge-wrap" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 4px;">
               <span id="inspect-search-count" style="display: none; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 10px; background: rgba(99, 102, 241, 0.25); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.4); white-space: nowrap;">0건</span>
-              <button type="button" id="inspect-search-clear" title="검색어 지우기"
+              <button type="button" id="inspect-search-clear" title="검색어 지우기 (ESC)"
                 style="display: none; background: none; border: none; color: var(--text-muted); font-size: 14px; cursor: pointer; padding: 2px 4px; line-height: 1;">✕</button>
+              <button type="button" id="inspect-search-btn" title="검색 실행 (Enter)"
+                style="background: none; border: none; color: #a5b4fc; font-size: 13px; cursor: pointer; padding: 2px 4px; line-height: 1;">🔍</button>
             </div>
           </div>
 
@@ -2921,6 +3085,57 @@
     <div id="loading-text" style="font-size: 14px; font-weight: 500;">파일 처리 중...</div>
   </div>
 
+  <!-- 검색결과표 텍스트 찾아 바꾸기 모달 (단축키: Ctrl+H / Alt+H / Ctrl+Shift+H) -->
+  <div class="grid-replace-modal-overlay" id="grid-replace-modal-overlay" style="display: none;">
+    <div class="grid-replace-modal-card" id="grid-replace-modal-card">
+      <div class="grid-replace-modal-header">
+        <div class="grid-replace-modal-title">
+          <span style="color: #6366f1;">🔄</span> 텍스트 찾아 바꾸기
+        </div>
+        <button type="button" class="grid-replace-close-btn" id="grid-replace-close-btn" title="닫기 (ESC)">&times;</button>
+      </div>
+      <div class="grid-replace-modal-body">
+        <!-- 대상 범위 표시 (셀 선택 시 자동 감지) -->
+        <div class="grid-replace-scope-row">
+          <span class="grid-replace-scope-label">바꿀 대상:</span>
+          <label class="grid-replace-radio-label">
+            <input type="radio" name="grid-replace-scope" value="selection" id="grid-replace-scope-sel">
+            <span id="grid-replace-scope-sel-text">선택된 셀 (0개)</span>
+          </label>
+          <label class="grid-replace-radio-label">
+            <input type="radio" name="grid-replace-scope" value="all" id="grid-replace-scope-all" checked>
+            <span>표 전체</span>
+          </label>
+        </div>
+
+        <!-- 찾을 문자 -->
+        <div class="grid-replace-form-group">
+          <label for="grid-replace-find-input">찾을 문자</label>
+          <input type="text" id="grid-replace-find-input" placeholder="바꿀 대상 단어 입력..." autocomplete="off">
+        </div>
+
+        <!-- 바꿀 문자 -->
+        <div class="grid-replace-form-group">
+          <label for="grid-replace-replace-input">바꿀 문자</label>
+          <input type="text" id="grid-replace-replace-input" placeholder="새로운 단어 입력..." autocomplete="off">
+        </div>
+
+        <!-- 옵션: 전체 일치 여부 및 단축키 안내 -->
+        <div class="grid-replace-option-row">
+          <label class="grid-replace-checkbox-label">
+            <input type="checkbox" id="grid-replace-exact-match">
+            <span>셀 전체 내용이 일치할 때만 바꾸기</span>
+          </label>
+          <span class="grid-replace-shortcut-hint">단축키: Ctrl+H / ESC(닫기)</span>
+        </div>
+      </div>
+      <div class="grid-replace-modal-footer">
+        <button type="button" class="btn" id="grid-replace-cancel-btn">취소 (ESC)</button>
+        <button type="button" class="btn grid-replace-btn-primary" id="grid-replace-exec-btn">모두 바꾸기 (Enter)</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 설정 및 데이터 변환 스크립트 로드 -->
   <script src="config.js"></script>
   <script src="facility-config.js?v=5.0"></script>
@@ -2932,8 +3147,8 @@
   <!-- JSZip 라이브러리 (ZIP 파일 해제 및 생성용: 로컬 오프라인 즉시 로드) -->
   <script src="libs/jszip.min.js"></script>
   <!-- 메인 웹 편집기 비즈니스 로직 -->
-  <script src="photo-measure.js"></script>
-  <script src="map-editor_v3.js?v=5.7"></script>
+  <script src="photo-measure.js?v=6.7"></script>
+  <script src="map-editor_v3.js?v=7.0"></script>
 
   <!-- 구글 맵 동적 로딩 -->
   <script>

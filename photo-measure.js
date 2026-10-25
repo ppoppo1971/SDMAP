@@ -161,6 +161,10 @@
       this.onSaveSubPhotoCallback = null;
       this.renderPending = false;
 
+      // 플로팅 윈도우 상태 관리 (방안 1)
+      this.isMaximized = false;
+      this.preMaxCoords = { left: '70px', top: '76px', width: '680px', height: '590px' };
+
       this.initDom();
     }
 
@@ -175,16 +179,18 @@
       const savedZ = this.getSavedStaffValues();
 
       div.innerHTML = `
-        <div class="phm-header">
+        <div class="phm-header" id="phm-drag-handle">
           <div class="phm-title-box">
-            <span class="phm-title">📏 사진 실측</span>
+            <span class="phm-title">📏 사진 정밀 실측</span>
             <span id="phm-step-badge" class="phm-step-badge">1. 스타프 보정</span>
           </div>
           <div class="phm-header-actions">
             <button id="phm-btn-save-photo" class="phm-btn phm-btn-primary" title="치수선이 각인된 증빙사진 서브사진 저장">
               📸 치수사진 저장
             </button>
-            <button id="phm-btn-close" class="phm-btn phm-btn-close" title="닫기">×</button>
+            <button id="phm-btn-reset-view-header" class="phm-win-ctrl-btn" title="화면 크기에 맞춤">⛶</button>
+            <button id="phm-btn-maximize" class="phm-win-ctrl-btn" title="도면 영역 크기로 최대화">🗖</button>
+            <button id="phm-btn-close" class="phm-win-ctrl-btn phm-win-close" title="닫기">✕</button>
           </div>
         </div>
 
@@ -237,6 +243,9 @@
           <!-- 측정 내역 히스토리 칩스 -->
           <div class="phm-history-box" id="phm-history-box"></div>
         </div>
+
+        <!-- [신규] 우측 하단 리사이즈 손잡이 -->
+        <div class="phm-resize-handle" id="phm-resize-handle" title="드래그하여 창 크기 조절"></div>
       `;
 
       document.body.appendChild(div);
@@ -275,8 +284,17 @@
     bindEvents() {
       // 닫기
       this.overlay.querySelector('#phm-btn-close').onclick = () => this.close();
-      // 화면 맞춤
-      this.overlay.querySelector('#phm-btn-reset-view').onclick = () => this.fitToScreen();
+
+      // 화면 맞춤 (상단 헤더 및 툴바)
+      const resetView = () => this.fitToScreen();
+      this.overlay.querySelector('#phm-btn-reset-view').onclick = resetView;
+      const headerResetBtn = this.overlay.querySelector('#phm-btn-reset-view-header');
+      if (headerResetBtn) headerResetBtn.onclick = resetView;
+
+      // 최대화 / 복원 토글
+      const maxBtn = this.overlay.querySelector('#phm-btn-maximize');
+      if (maxBtn) maxBtn.onclick = () => this.toggleMaximize();
+
       // 다시 보정
       this.overlay.querySelector('#phm-btn-recalibrate').onclick = () => this.startCalibration();
       // 되돌리기
@@ -297,10 +315,160 @@
       });
 
       this.bindCanvasGestures();
+      this.bindFloatingWindowControls();
 
       window.addEventListener('resize', () => {
         if (this.overlay && this.overlay.style.display !== 'none') {
           this.resizeCanvas();
+        }
+      });
+    }
+
+    // -------------------------------------------------------------
+    // ★ [플로팅 윈도우 드래그, 리사이즈, 최대화 제어 엔진]
+    // -------------------------------------------------------------
+    toggleMaximize() {
+      const win = this.overlay;
+      const maxBtn = win.querySelector('#phm-btn-maximize');
+      if (!win) return;
+
+      if (!this.isMaximized) {
+        // 1. 현재 좌표 및 크기 백업
+        this.preMaxCoords = {
+          width: win.style.width || (win.offsetWidth + 'px'),
+          height: win.style.height || (win.offsetHeight + 'px'),
+          left: win.style.left || (win.offsetLeft + 'px'),
+          top: win.style.top || (win.offsetTop + 'px')
+        };
+
+        // 2. 도면 영역의 BoundingClientRect 계산 (우측 제원 입력창 유지)
+        const canvasContainer = document.querySelector('.canvas-container');
+        if (canvasContainer) {
+          const rect = canvasContainer.getBoundingClientRect();
+          win.style.left = rect.left + 'px';
+          win.style.top = rect.top + 'px';
+          win.style.width = rect.width + 'px';
+          win.style.height = rect.height + 'px';
+        } else {
+          win.style.left = '0px';
+          win.style.top = '64px';
+          win.style.width = (window.innerWidth - 480) + 'px';
+          win.style.height = (window.innerHeight - 64) + 'px';
+        }
+
+        win.classList.add('phm-maximized');
+        this.isMaximized = true;
+        if (maxBtn) {
+          maxBtn.textContent = '❐';
+          maxBtn.title = '이전 크기로 복원';
+        }
+      } else {
+        // 3. 이전 크기로 복원
+        win.style.width = this.preMaxCoords.width;
+        win.style.height = this.preMaxCoords.height;
+        win.style.left = this.preMaxCoords.left;
+        win.style.top = this.preMaxCoords.top;
+
+        win.classList.remove('phm-maximized');
+        this.isMaximized = false;
+        if (maxBtn) {
+          maxBtn.textContent = '🗖';
+          maxBtn.title = '도면 영역 크기로 최대화';
+        }
+      }
+
+      setTimeout(() => {
+        this.resizeCanvas();
+        this.fitToScreen();
+      }, 50);
+    }
+
+    bindFloatingWindowControls() {
+      const win = this.overlay;
+      const dragHandle = win.querySelector('#phm-drag-handle');
+      const resizeHandle = win.querySelector('#phm-resize-handle');
+
+      // 클릭 시 창 포커스 (z-index 우선순위 보장)
+      win.addEventListener('mousedown', () => {
+        win.style.zIndex = '1008';
+      });
+
+      // 1) 윈도우 헤더 드래그 이동 기능
+      let isWinDragging = false;
+      let winStartX = 0, winStartY = 0;
+
+      dragHandle.addEventListener('mousedown', (e) => {
+        // 버튼이나 입력창 클릭 시 드래그 방지
+        if (e.target.closest('button') || e.target.closest('input')) return;
+
+        // 최대화 상태에서 드래그 시도 시 이전 크기로 복원 후 드래그
+        if (this.isMaximized) {
+          this.toggleMaximize();
+        }
+
+        isWinDragging = true;
+        winStartX = e.clientX - win.offsetLeft;
+        winStartY = e.clientY - win.offsetTop;
+        document.body.style.userSelect = 'none';
+      });
+
+      // 2) 윈도우 창 크기 조절 (Resize) 기능
+      let isResizing = false;
+      let startWidth = 0, startHeight = 0;
+      let startResizeX = 0, startResizeY = 0;
+
+      if (resizeHandle) {
+        resizeHandle.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+
+          if (this.isMaximized) {
+            this.toggleMaximize();
+          }
+
+          isResizing = true;
+          startWidth = win.offsetWidth;
+          startHeight = win.offsetHeight;
+          startResizeX = e.clientX;
+          startResizeY = e.clientY;
+          document.body.style.userSelect = 'none';
+        });
+      }
+
+      // 전역 마우스 이동 이벤트
+      window.addEventListener('mousemove', (e) => {
+        // 드래그 이동
+        if (isWinDragging) {
+          let newLeft = e.clientX - winStartX;
+          let newTop = e.clientY - winStartY;
+          // 브라우저 화면 밖 이탈 방지
+          newLeft = Math.max(0, Math.min(window.innerWidth - win.offsetWidth, newLeft));
+          newTop = Math.max(0, Math.min(window.innerHeight - win.offsetHeight, newTop));
+          win.style.left = newLeft + 'px';
+          win.style.top = newTop + 'px';
+        }
+
+        // 크기 조절
+        if (isResizing) {
+          const diffX = e.clientX - startResizeX;
+          const diffY = e.clientY - startResizeY;
+          const newWidth = Math.max(380, startWidth + diffX);
+          const newHeight = Math.max(320, startHeight + diffY);
+          win.style.width = newWidth + 'px';
+          win.style.height = newHeight + 'px';
+          this.resizeCanvas();
+        }
+      });
+
+      // 전역 마우스 업 이벤트
+      window.addEventListener('mouseup', () => {
+        if (isWinDragging || isResizing) {
+          if (isResizing) {
+            this.resizeCanvas();
+            this.requestRender();
+          }
+          isWinDragging = false;
+          isResizing = false;
+          document.body.style.userSelect = '';
         }
       });
     }
@@ -952,8 +1120,20 @@
 
         this.img = finalCanvas || img;
         this.overlay.style.display = 'flex';
+        
+        // 플로팅 윈도우 기본 좌표 및 크기 보장
+        if (!this.overlay.style.width || this.overlay.style.width === '100vw') {
+          this.overlay.style.width = '680px';
+          this.overlay.style.height = '590px';
+          this.overlay.style.left = '70px';
+          this.overlay.style.top = '76px';
+        }
+        this.overlay.style.zIndex = '1008';
+
         this.startCalibration();
-        this.fitToScreen();
+        setTimeout(() => {
+          this.fitToScreen();
+        }, 60);
       };
 
       if (typeof imageSource === 'string') {

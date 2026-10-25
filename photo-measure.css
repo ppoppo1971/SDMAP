@@ -2,13 +2,19 @@
 
 #phm-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  height: 100dvh;
-  background-color: #0b0d11;
-  z-index: 10000;
+  top: 76px;
+  left: 70px;
+  width: 680px;
+  height: 590px;
+  min-width: 380px;
+  min-height: 320px;
+  max-width: 100vw;
+  max-height: 100vh;
+  background-color: #12141a;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(99, 102, 241, 0.25);
+  z-index: 1006;
   display: flex;
   flex-direction: column;
   user-select: none;
@@ -16,14 +22,17 @@
   touch-action: none;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   overflow: hidden;
-  padding-top: env(safe-area-inset-top, 0px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* 상단 네비게이션 헤더 */
+/* 최대화 상태 */
+#phm-overlay.phm-maximized {
+  border-radius: 0 !important;
+}
+
+/* 상단 네비게이션 헤더 (창 드래그 핸들) */
 .phm-header {
-  height: 52px;
-  background: rgba(18, 22, 30, 0.96);
+  height: 48px;
+  background: rgba(22, 26, 36, 0.98);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
@@ -33,28 +42,32 @@
   padding: 0 12px;
   color: #fff;
   z-index: 20;
+  cursor: move; /* 창 드래그 이동 */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .phm-title-box {
   display: flex;
   align-items: center;
   gap: 8px;
+  pointer-events: none; /* 드래그 방해 방지 */
 }
 
 .phm-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   color: #ffffff;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
 }
 
 .phm-step-badge {
   font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 12px;
-  background: #2563eb;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: #3b82f6;
   color: #fff;
   font-weight: 600;
 }
@@ -69,8 +82,8 @@
   background: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.18);
   color: #fff;
-  padding: 6px 11px;
-  border-radius: 8px;
+  padding: 5px 10px;
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -82,6 +95,10 @@
   -webkit-user-select: none;
 }
 
+.phm-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 .phm-btn:active {
   transform: scale(0.95);
   background: rgba(255, 255, 255, 0.25);
@@ -91,19 +108,49 @@
   background: #2563eb;
   border-color: #3b82f6;
 }
+.phm-btn-primary:hover {
+  background: #1d4ed8;
+}
 
-.phm-btn-close {
-  background: rgba(239, 68, 68, 0.18);
-  border-color: rgba(239, 68, 68, 0.4);
-  color: #fca5a5;
-  width: 32px;
-  height: 32px;
-  padding: 0;
+/* 윈도우 조절 버튼 (배율 맞춤, 최대화, 닫기) */
+.phm-win-ctrl-btn {
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: bold;
+  padding: 4px 6px;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
-  border-radius: 8px;
+  min-width: 24px;
+  height: 26px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.phm-win-ctrl-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.phm-win-close:hover {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.2);
+}
+
+/* 우측 하단 리사이즈 손잡이 */
+.phm-resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: se-resize;
+  background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.25) 50%);
+  border-bottom-right-radius: 12px;
+  z-index: 50;
 }
 
 /* 중앙 메인 캔버스 뷰포트 */
