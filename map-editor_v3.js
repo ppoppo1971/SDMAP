@@ -4840,7 +4840,8 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
         layer: config.layer || (type + '_T'),
         color: (config.color !== undefined && config.color !== null) ? Number(config.color) : 7,
         facilityType: type,
-        specValues: Object.assign({}, values)
+        specValues: Object.assign({}, values),
+        edited: true // [신규] 텍스트 객체 자체에 검수 완료 상태 명시 등록 (검색결과표 저장 버튼 파란색 연동)
       };
 
       // [방안 B] 메타데이터 독립 편집 이력 저장 (_editHistory 및 _pivotHistory)
@@ -4895,27 +4896,41 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       p.specTextId = newTextIds[0];
       p.specTextIds = newTextIds;
       p.additionalTypes = addTypes;
+      p.edited = isPhotoAllSpecsEdited(p);
     } else {
       // 속성을 다 비우고 저장했을 경우 '일반사진'으로 명시 전환
       p.facilityType = '일반사진';
       p.specTextId = null;
       p.specTextIds = null;
       p.additionalTypes = [];
+      p.edited = true;
     }
-
-    // [고도화 추가] 저장 완료 상태 플래그 설정 (마커 색상 파란색 전환용)
-    p.edited = true;
 
     updateFacilitySelectOptions();
     updateInspectFacilityOptions();
-    if (inspectActiveFacility) {
-      renderInspectList(inspectActiveFacility);
+    
+    // [신규] 검수 탭 실시간 연동 (방안 1 + 방안 2 최적화)
+    var inspectContent = document.getElementById('tab-inspect-content');
+    var isInspectTabActive = inspectContent && inspectContent.style.display !== 'none';
+    if (isInspectTabActive && typeof isInspectFilterActive === 'function' && isInspectFilterActive()) {
+      if (typeof renderInspectList === 'function') {
+        renderInspectList({ keepFilters: true });
+      }
+    } else {
+      // 제원편집 탭 등 다른 화면에 있는 경우: 검수 탭 진입 시 지연 갱신하도록 플래그 설정
+      inspectNeedsRefresh = true;
+    }
+    if (typeof updateInspectStatusCounts === 'function') {
+      updateInspectStatusCounts();
     }
     
     // 지도의 오버레이를 전부 삭제 후 새로 생성하는 무거운 작업 대신,
     // 이미 맵에 생성된 마커들의 CSS 클래스와 가시성 정보만 실시간 동기화하여 갱신 지연(마우스 움직여야 반응하는 버그)을 완벽히 해결함
     updateMarkerModeOnMap();
     updateLabelsOnMap();
+    if (typeof updateFloatingWindowSpecs === 'function') {
+      updateFloatingWindowSpecs(p.id);
+    }
     
     updateProgressBar();
 
@@ -5527,6 +5542,7 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
   var inspectCurrentIndex = -1;         // 순차 탐색용 현재 인덱스
   var inspectGridSort = { col: null, dir: 'asc' }; // 엑셀 그리드 정렬 상태 ({ col: 'num'|'gubun'|..., dir: 'asc'|'desc' })
   var inspectGridFilters = {};                     // 엑셀 그리드 열별 필터 상태 ({ colKey: 'keyword' })
+  var inspectNeedsRefresh = false;                 // [신규] 다른 탭에서 저장 후 검수 탭 이동 시 지연 새로고침 플래그
 
   // =========================================================================
   // [작업 되돌리기 (Undo / Redo) 시스템: 표준 단축키 Ctrl+Z, Ctrl+Y 지원]
@@ -6187,17 +6203,28 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
   }
 
   /** 검색 조건에 따른 검수 엑셀 그리드(Grid Table) 렌더링 및 도면 실시간 동기화 */
-  function renderInspectList() {
+  function renderInspectList(options) {
     var container = document.getElementById('inspect-items-container');
     var placeholder = document.getElementById('inspect-placeholder');
     var statsBar = document.getElementById('inspect-stats-bar');
     if (!container || !placeholder) return;
 
+    var keepFilters = options && options.keepFilters === true;
+
+    // 이전 스크롤 위치 기억 (저장 후 스크롤이 맨 위로 튀지 않도록 보존)
+    var prevScrollTop = 0;
+    var oldWrapper = container.querySelector('.inspect-grid-wrapper');
+    if (oldWrapper) {
+      prevScrollTop = oldWrapper.scrollTop;
+    }
+
     container.innerHTML = '';
     inspectCurrentPhotoList = [];
     inspectCurrentIndex = -1;
-    // [사용자 요구사항] 새로운 검색 시 이전 열별 필터 잔상 자동 초기화
-    inspectGridFilters = {};
+    // [사용자 요구사항] 새로운 검색 시 이전 열별 필터 잔상 자동 초기화 (단, 저장에 의한 재렌더링 시에는 필터 유지)
+    if (!keepFilters) {
+      inspectGridFilters = {};
+    }
     updateInspectStatusCounts();
 
     // 검색 조건이 전혀 없는 경우: 전체 안내 문구 노출 및 도면 복원
@@ -6709,6 +6736,11 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
     });
     wrapper.appendChild(table);
     container.appendChild(wrapper);
+
+    // [스크롤 복원] 저장으로 인한 재렌더링 시 기존 스크롤 위치 완벽 복원
+    if (prevScrollTop > 0) {
+      wrapper.scrollTop = prevScrollTop;
+    }
 
     // [스크롤 감지] 실제 스크롤바가 생기는 wrapper와 부모 container 모두에 스크롤 감지 센서 연결!
     wrapper.onscroll = function () {
@@ -8507,6 +8539,16 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       editContent.style.display = 'none';
 
       updateInspectFacilityOptions();
+
+      // [신규] 제원편집탭 또는 사진창에서 저장된 변경사항이 있을 때 검수 탭 진입 시 최신 상태 자동 새로고침!
+      if (inspectNeedsRefresh) {
+        inspectNeedsRefresh = false;
+        if (typeof isInspectFilterActive === 'function' && isInspectFilterActive()) {
+          if (typeof renderInspectList === 'function') {
+            renderInspectList({ keepFilters: true });
+          }
+        }
+      }
     }
   }
 
