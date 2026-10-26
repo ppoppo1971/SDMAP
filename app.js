@@ -1274,7 +1274,9 @@ function saveMetadataToLocalFs() {
         text: t.text || '',
         fontSize: t.fontSize || 12,
         layer: t.layer || '일반_T',
-        color: t.color !== undefined ? t.color : 7
+        color: t.color !== undefined ? t.color : 7,
+        specValues: t.specValues || null,
+        facilityType: t.facilityType || null
       };
     })
   };
@@ -4565,7 +4567,7 @@ function deserializeSpecText(specText, config) {
       if (field.options && field.options.length > 0) {
         if ((field.isPhoto || field.label === '사진') && curPart === '사진') {
           matchesField = true;
-          curPart = '입력';
+          curPart = '사진';
         } else {
           matchesField = (field.options.indexOf(curPart) !== -1);
         }
@@ -4591,6 +4593,13 @@ function deserializeSpecText(specText, config) {
 
       values[field.id] = curPart;
       pIdx++;
+    });
+
+    // 사진 필드가 도면 텍스트에 포함되지 않아 비어있는 경우 '입력생략'으로 복원
+    targetFields.forEach(function (f) {
+      if ((f.isPhoto || f.label === '사진') && !values[f.id]) {
+        values[f.id] = '입력생략';
+      }
     });
 
     if (config.fields) {
@@ -6457,7 +6466,14 @@ function getFieldSuggestions(fieldId, config, defaultOptions, pivotFilter) {
       }
     }
 
-    return resultList.slice(0, 10);
+    // [방안 1 개선] 과거 일치값 뒤에 엑셀 기본 옵션 목록(defaultOptions)을 빠짐없이 덧붙임
+    if (defaultOptions && defaultOptions.length > 0) {
+      defaultOptions.forEach(function (opt) {
+        addItem(opt, null);
+      });
+    }
+
+    return resultList.slice(0, 20);
   }
 
   // [2] 일반 필드 (피벗 필터 없음): 3단계 최신순 체계
@@ -7107,9 +7123,13 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       group.innerHTML = html;
       container.appendChild(group);
     } else {
-      // 사진 필드일 경우 기본값 '사진' 보장
-      if (isPhotoField && !val) {
-        val = '사진';
+      // 사진 필드일 경우 캐시된 직전 값(예: '입력생략' 또는 '사진')을 최우선 적용하고, 캐시가 없을 때만 '사진' 기본값 적용
+      if (isPhotoField) {
+        if (hasCache && cachedVal) {
+          val = cachedVal;
+        } else if (!val) {
+          val = '사진';
+        }
       }
 
       // 콤보 인풋 박스 생성 (인라인 직접 타이핑 + 우측 📋 추천 목록 모달 버튼)
