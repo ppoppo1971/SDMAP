@@ -3310,6 +3310,24 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
           renderAttributeCard(cardsContainer, autoType, null);
         }
       }
+    } else if (p.facilityType && p.facilityType !== '일반사진' && p.facilityType !== '속성 미입력') {
+      // [과거/연계 데이터 완벽 보정] 사진의 주시설물(p.facilityType)이 유효한데
+      // 렌더링된 카드 중 주시설물 카드가 없고 부시설물들만 존재하는 경우, 맨 앞에 주시설물 카드 자동 보충 복원!
+      var hasMainCard = false;
+      for (var ci = 0; ci < cardsContainer.children.length; ci++) {
+        var cEl = cardsContainer.children[ci];
+        if (!cEl.hasAttribute('data-is-sub') || cEl.getAttribute('data-is-sub') !== 'true') {
+          hasMainCard = true;
+          break;
+        }
+      }
+      if (!hasMainCard) {
+        var tempDiv = document.createElement('div');
+        renderAttributeCard(tempDiv, p.facilityType, null, null, false);
+        if (tempDiv.firstElementChild) {
+          cardsContainer.insertBefore(tempDiv.firstElementChild, cardsContainer.firstChild);
+        }
+      }
     }
 
     // 사진 전환 시, 이전 선택되었던 마커와 새로 선택된 마커의 지도 상 겉모양을 지연 없이 즉시 동기화
@@ -3354,10 +3372,8 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       }
     }
 
-    // [고도화 개선] 전력주/통신주 등 비대상만 제외하고 엑셀의 모든 시설물 종류를 목록에 등록!
-    var candidateKeys = Object.keys(FACILITY_CONFIG).filter(function (k) {
-      return k !== '전력주' && k !== '통신주';
-    });
+    // [전 시설물 등록] 전력주/통신주 포함 엑셀의 모든 시설물 종류를 목록에 등록
+    var candidateKeys = Object.keys(FACILITY_CONFIG);
 
     // [사용자 요청: 방안 1] 한글 가나다(ㄱ~ㅎ) 순 정렬 (빈도 숫자 유지)
     var sortedKeys = candidateKeys.slice().sort(function (a, b) {
@@ -4148,11 +4164,43 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
     }
   }
 
+  // [신규 보강] 속성 카드 위/아래 순서 이동 및 주/부속시설물 실시간 동기화
+  function moveAttributeCard(card, direction) {
+    var parent = card.parentNode;
+    if (!parent) return;
+
+    if (direction === -1) {
+      var prev = card.previousElementSibling;
+      if (prev && prev.classList.contains('attribute-card')) {
+        parent.insertBefore(card, prev);
+      }
+    } else if (direction === 1) {
+      var next = card.nextElementSibling;
+      if (next && next.classList.contains('attribute-card')) {
+        parent.insertBefore(next, card);
+      }
+    }
+
+    var allCards = parent.querySelectorAll('.attribute-card');
+    allCards.forEach(function (c, idx) {
+      if (idx === 0) {
+        c.removeAttribute('data-is-sub');
+      } else {
+        c.setAttribute('data-is-sub', 'true');
+      }
+      var cType = c.getAttribute('data-facility-type');
+      var cConfig = FACILITY_CONFIG[cType];
+      if (cConfig) {
+        updateCardPrefixBadge(c);
+        updateSpecPreview(c, cConfig);
+      }
+    });
+
+    updateFloatingWindowSpecs();
+  }
+
   // 속성 카드 렌더링 (방안 1: 슬림 캐드 토큰 캡슐 바 모드)
   function renderAttributeCard(container, type, cachedVals, existingTextId, isSubParam) {
-    // 전력주와 통신주는 캐드 전개 비대상 시설물이므로 속성 카드 노출을 원천 차단
-    if (type === '전력주' || type === '통신주') return;
-    
     var config = FACILITY_CONFIG[type];
     if (!config) return;
 
@@ -4165,6 +4213,7 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
     card.setAttribute('data-facility-type', type);
     if (existingTextId) {
       card.setAttribute('data-existing-text-id', existingTextId);
+      card.setAttribute('data-text-id', existingTextId); // [식별자 동기화] data-text-id 속성 부여
     }
 
     // 부속시설물 판별 (파라미터 전달 또는 컨테이너 내에 이미 카드가 1개 이상 존재할 경우)
@@ -4554,77 +4603,92 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
     // 3. 사진의 전체 검수 완료 여부 판정 (파란색 마커 여부)
     var isAllSaved = isPhotoAllSpecsEdited(currentPhoto);
 
-    // 4. [방안 3 핵심] 탭 구분 없이 단일 진실 소스(metadata.texts)를 기준으로 CAD 전개 텍스트 100% 수집!
+    // 4. [방안 1 하이브리드 스마트 동기화 엔진]
+    // 3중 안전 격리 체크:
+    // (1) 요청된 사진이 현재 선택된 사진(selectedPhotoId)과 일치하는지
+    // (2) 우측 [제원 편집] 탭이 활성화되어 있는지
+    // (3) 사이드바의 상세 패널(detail-panel)이 실제로 열려 있는지
     var specItems = [];
-    var textIds = currentPhoto.specTextIds || [];
-    if (textIds.length === 0 && currentPhoto.specTextId) {
-      textIds = [currentPhoto.specTextId];
-    }
+    var editTab = document.getElementById('tab-edit-content');
+    var isEditTabActive = editTab && editTab.style.display !== 'none';
+    var detailPanel = document.getElementById('detail-panel');
+    var isDetailActive = detailPanel && detailPanel.style.display !== 'none';
+    var cardsContainer = document.getElementById('attribute-cards-container');
+    var liveCards = (cardsContainer && isEditTabActive && isDetailActive && photoIdToUse === selectedPhotoId)
+      ? Array.from(cardsContainer.querySelectorAll('.attribute-card'))
+      : [];
 
-    // 제원 편집 탭의 실시간 속성 카드 매핑 맵 (화면에서 수정 중인 값이 있으면 실시간 반영)
-    var cardMapByTextId = {};
-    var cards = document.querySelectorAll('.attribute-card');
-    if (cards.length > 0) {
-      cards.forEach(function (card) {
-        var tId = card.getAttribute('data-text-id');
+    if (liveCards.length > 0) {
+      // ---------------------------------------------------------
+      // [모드 A: 실시간 카드 수집 모드] (제원 편집 탭에서 타이핑/추가/삭제/순서변경 즉시 반영)
+      // ---------------------------------------------------------
+      liveCards.forEach(function (card) {
         var type = card.getAttribute('data-facility-type');
         var cfg = FACILITY_CONFIG[type];
-        if (cfg) {
-          var liveStr = buildSpecString(card, cfg);
-          if (liveStr) {
-            if (tId) cardMapByTextId[tId] = liveStr;
+        if (!cfg) return;
+
+        var liveStr = buildSpecString(card, cfg);
+        if (!liveStr) return;
+
+        // 검수 완료(파란색) / 미검수·수정중(주황색) 정밀 판정
+        var tId = card.getAttribute('data-text-id') || card.getAttribute('data-existing-text-id');
+        var textObj = (tId && metadata && metadata.texts) ? metadata.texts.find(function (t) { return t.id === tId; }) : null;
+
+        var isLineDone = false;
+        if (textObj) {
+          // 저장된 텍스트와 현재 화면 텍스트가 일치하고 기존 검수 완료된 줄인 경우에만 파란색 유지!
+          // 사용자가 한 글자라도 수정했다면 즉시 주황색(미저장/수정중)으로 시각 피드백 제공!
+          if (liveStr === textObj.text) {
+            isLineDone = isAllSaved ? true : isTextSpecEdited(textObj, currentPhoto);
+          } else {
+            isLineDone = false;
           }
+        } else {
+          // 새로 추가된 시설물 카드 (+ 시설물 종류 추가 등) -> 미검수(주황색)
+          isLineDone = false;
         }
-      });
-    }
 
-    if (metadata.texts && textIds.length > 0) {
-      textIds.forEach(function (tId) {
-        var textObj = metadata.texts.find(function (t) { return t.id === tId; });
-        if (textObj && textObj.text) {
-          // 화면에 떠 있는 속성 카드의 실시간 값이 있다면 우선 적용, 없으면 textObj.text 사용
-          var displayText = cardMapByTextId[tId] || textObj.text;
-          
-          // [사용자 핵심 요구사항]
-          // 1) 전체 검수 완료 사진(파란 마커)을 열면 모든 줄이 파란색(isEdited = true)
-          // 2) 말풍선(미검수 사진)을 열면 검수 완료된 줄은 파란색, 미검수 줄은 주황색(isEdited = false)
-          var isLineDone = isAllSaved ? true : isTextSpecEdited(textObj, currentPhoto);
-          specItems.push({ text: displayText, isEdited: isLineDone });
-        }
+        specItems.push({ text: liveStr, isEdited: isLineDone });
       });
-    }
+    } else {
+      // ---------------------------------------------------------
+      // [모드 B: 도면 DB 조회 모드] (검수 탭이거나 제원 편집창이 닫혀 있을 때 안전 격리)
+      // ---------------------------------------------------------
+      var textIds = currentPhoto.specTextIds || [];
+      if (textIds.length === 0 && currentPhoto.specTextId) {
+        textIds = [currentPhoto.specTextId];
+      }
 
-    // 만약 텍스트 객체가 연결되지 않은 단독 사진인 경우: 사진 자체의 속성으로 대체 출력
-    if (specItems.length === 0) {
-      if (cards.length > 0) {
-        cards.forEach(function (card) {
-          var type = card.getAttribute('data-facility-type');
-          var cfg = FACILITY_CONFIG[type];
-          if (cfg) {
-            var specStr = buildSpecString(card, cfg);
-            if (specStr) {
-              specItems.push({ text: specStr, isEdited: isAllSaved });
-            }
+      if (metadata && metadata.texts && textIds.length > 0) {
+        textIds.forEach(function (tId) {
+          var textObj = metadata.texts.find(function (t) { return t.id === tId; });
+          if (textObj && textObj.text) {
+            var isLineDone = isAllSaved ? true : isTextSpecEdited(textObj, currentPhoto);
+            specItems.push({ text: textObj.text, isEdited: isLineDone });
           }
         });
       }
-      if (specItems.length === 0 && currentPhoto.facilityType && currentPhoto.facilityType !== '일반사진') {
+
+      // 텍스트 객체가 연결되지 않은 단독 사진인 경우
+      if (specItems.length === 0 && currentPhoto.facilityType && currentPhoto.facilityType !== '일반사진' && currentPhoto.facilityType !== '속성 미입력') {
         specItems.push({ text: currentPhoto.facilityType, isEdited: isAllSaved });
       }
     }
 
     // 5. 메모 텍스트 취합 (자동 생성형 가짜 메모 제외)
     var memoVal = '';
-    var pMemoInput = getEl('photo-memo');
-    if (pMemoInput && pMemoInput.value) {
-      memoVal = pMemoInput.value;
+    if (isEditTabActive && isDetailActive && photoIdToUse === selectedPhotoId) {
+      var pMemoInput = getEl('photo-memo');
+      if (pMemoInput && pMemoInput.value !== undefined) {
+        memoVal = pMemoInput.value;
+      }
     }
     if (!memoVal && currentPhoto.memo) {
       memoVal = currentPhoto.memo;
     }
     var memoText = (memoVal && memoVal.trim() !== '' && !isAutoGeneratedMemo(memoVal)) ? ('[메모] ' + memoVal.trim()) : '';
 
-    // 6. [화면 렌더링] 검수 완료 줄은 파란색(#60a5fa), 미검수 줄은 주황색(#fb923c)
+    // 6. [화면 렌더링] 검수 완료 줄은 파란색(#60a5fa), 미검수/수정중 줄은 주황색(#fb923c)
     specEl.innerHTML = '';
     if (specItems.length > 0 || memoText) {
       specItems.forEach(function (item) {

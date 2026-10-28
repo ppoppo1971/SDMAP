@@ -2891,7 +2891,32 @@
     "detectionLayers": [
       "전력주"
     ],
-    "isSubAttachable": false,
+    "isSubAttachable": true,
+    "fields": [
+      {
+        "id": "f_1",
+        "label": "사진",
+        "type": "select",
+        "options": [
+          "사진",
+          "입력생략"
+        ],
+        "default": "사진",
+        "isSupport": false,
+        "isPhoto": true
+      }
+    ]
+  },
+  "통신주": {
+    "title": "통신주",
+    "layer": "통신주_T",
+    "color": 1,
+    "prefix": "통신주",
+    "detectionLayers": [
+      "통신주",
+      "통신"
+    ],
+    "isSubAttachable": true,
     "fields": [
       {
         "id": "f_1",
