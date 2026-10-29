@@ -4425,7 +4425,7 @@ function normalizeFacilityValues(fType, rawVals, textStr) {
   // ※ '기타'는 실제 데이터이므로 절대 지우지 않고 온전히 보존!
   for (var k in vals) {
     var v = String(vals[k] || '').trim();
-    if (v === '--' || v === '삭제' || v === '제외' || v === '미표기' || v === '없음' || v === '선택' || v === '직접입력') {
+    if (v === '--' || v === '삭제' || v === '제외' || v === '미표기' || v === '없음' || v === '선택' || v === '직접입력' || v === '입력생략' || v === '옵션생략') {
       vals[k] = '';
     } else {
       vals[k] = v;
@@ -4549,6 +4549,87 @@ function deserializeSpecText(specText, config) {
       values['lightSource'] = parts[2] || '';
       values['type3'] = parts[3] || '';
     }
+  } else if (config.title === '지시표지' || config.title === '규제표지' || config.title === '주의표지' || config.title === '보조표지' || config.title === '사설표지' || config.title === '기타표지') {
+    // [방안 A] 표지판 6종 신구 양방향 스마트 파서 & 지능형 값 매핑 (map-editor와 100% 동일 동기화)
+    var isSub = rawPrefix.startsWith('+');
+    var pList = parts.slice(0); // 접두어는 이미 위에서 제거됨
+
+    config.fields.forEach(function (f) { values[f.id] = ''; });
+
+    if (!isSub) {
+      if (pList.length > 0) {
+        values['f_1'] = pList.shift(); // 주시설물은 첫 번째가 지주
+      }
+    }
+
+    var isSignSpec = function (s) {
+      if (!s) return false;
+      var str = String(s).trim();
+      return /%%C|삼각|오각|팔각|역삼각|\*|^\d+\.\d+\*\d+/.test(str);
+    };
+    var isNum = function (s) {
+      if (!s) return false;
+      return /^\d+(\.\d+)?$/.test(String(s).trim());
+    };
+
+    if (pList.length >= 2) {
+      var itemA = pList[0];
+      var itemB = pList[1];
+
+      if (isSignSpec(itemA) && isNum(itemB)) {
+        values['f_2'] = itemB;
+        values['f_3'] = itemA;
+        pList.splice(0, 2);
+      } else if (isNum(itemA) && isSignSpec(itemB)) {
+        values['f_2'] = itemA;
+        values['f_3'] = itemB;
+        pList.splice(0, 2);
+      } else if (isSignSpec(itemA)) {
+        values['f_3'] = itemA;
+        pList.shift();
+      } else if (isNum(itemA)) {
+        values['f_2'] = itemA;
+        pList.shift();
+      } else {
+        values['f_2'] = pList.shift();
+        values['f_3'] = pList.shift();
+      }
+    } else if (pList.length === 1) {
+      var singleItem = pList[0];
+      if (isNum(singleItem)) {
+        values['f_2'] = pList.shift();
+      } else if (isSignSpec(singleItem)) {
+        values['f_3'] = pList.shift();
+      } else {
+        values['f_4'] = pList.shift();
+      }
+    }
+
+    // [방안 A 핵심] 남은 항목 지능형 값 매핑: f_4(내용), f_5(양면유무), f_6(사진)
+    while (pList.length > 0) {
+      var item = pList.shift();
+      if (!item) continue;
+      var trimmed = String(item).trim();
+
+      if (trimmed === '사진' || trimmed === '입력생략') {
+        values['f_6'] = trimmed;
+      } else if (trimmed === '양면' || trimmed === '단면') {
+        values['f_5'] = trimmed;
+      } else {
+        if (!values['f_4']) {
+          values['f_4'] = trimmed;
+        } else {
+          values['f_4'] += '/' + trimmed;
+        }
+      }
+    }
+
+    if (!isSub) {
+      if (!values['f_6']) values['f_6'] = '사진';
+    }
+    if (!values['f_5']) {
+      values['f_5'] = (config.title === '기타표지') ? '단면' : '양면';
+    }
   } else {
     // [0925_01 혁신] 지능형 옵션 필드 역파서: 생략된 옵션(--)이 있을 때 뒤 필드가 당겨져 들어가는 현상 원천 차단
     var pIdx = 0;
@@ -4595,10 +4676,10 @@ function deserializeSpecText(specText, config) {
       pIdx++;
     });
 
-    // 사진 필드가 도면 텍스트에 포함되지 않아 비어있는 경우 '입력생략'으로 복원
+    // 사진 필드가 도면 텍스트에 포함되지 않아 비어있는 경우 빈칸('')으로 설정
     targetFields.forEach(function (f) {
       if ((f.isPhoto || f.label === '사진') && !values[f.id]) {
-        values[f.id] = '입력생략';
+        values[f.id] = '';
       }
     });
 
@@ -6158,6 +6239,9 @@ function openSuggestionPickerModal(targetInputId, fieldTitle, suggestions, field
   listEl.appendChild(directItem);
 
   function applySelection(chosenVal) {
+    if (chosenVal === '입력생략' || chosenVal === '--' || chosenVal === '삭제' || chosenVal === '옵션생략') {
+      chosenVal = '';
+    }
     if (targetInput) {
       targetInput.value = chosenVal;
       try {
@@ -6181,15 +6265,15 @@ function openSuggestionPickerModal(targetInputId, fieldTitle, suggestions, field
     closeModal();
   }
 
-  // 공백 또는 초기화용 옵션 추가 (시설물 옵션은 '-- (옵션생략)', 메모 필드는 '메모 비우기')
+  // 공백 또는 초기화용 옵션 추가 (시설물 옵션은 '입력생략', 메모 필드는 '메모 비우기')
   var isMemoField = (targetInputId === 'sw-form-memo' || targetInputId === 'photo-modal-memo' || fieldTitle === '사진메모' || (fieldKey && fieldKey.indexOf('memo_') === 0));
   var clearItem = document.createElement('div');
   clearItem.className = 'suggestion-picker-item';
   clearItem.style.color = '#8E8E93';
-  clearItem.textContent = isMemoField ? '메모 비우기 (초기화)' : '-- (옵션생략)';
+  clearItem.textContent = isMemoField ? '메모 비우기 (초기화)' : '입력생략';
   clearItem.addEventListener('click', function (e) {
     e.stopPropagation();
-    var clearVal = isMemoField ? '' : '--';
+    var clearVal = '';
     applySelection(clearVal);
   });
   listEl.appendChild(clearItem);
@@ -7099,6 +7183,14 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
       }
     } else {
       val = hasCache ? cachedVal : (field.default || '');
+      // [방안 A 안전망] 양면유무 필드: 첫 입력(!hasCache)일 때만 기본값 적용하고, 캐시가 있으면 사용자의 빈칸('') 선택을 온전히 보존
+      if (field.label === '양면유무' || field.id === 'f_5') {
+        if (!hasCache) {
+          val = field.default || (config.title === '기타표지' ? '단면' : '양면');
+        } else if (val === '사진' || val === '입력생략') {
+          val = '';
+        }
+      }
     }
 
     var fieldLabel = field.label;
@@ -7116,19 +7208,23 @@ function renderFacilityForm(container, config, cachedVals, prefixId) {
     var inputId = prefixId + '-' + field.id;
     var listId = inputId + '-list';
 
-    var isPhotoField = field.isPhoto || field.label === '사진' || (field.options && field.options.indexOf('사진') !== -1 && (field.options.indexOf('삭제') !== -1 || field.options.indexOf('제외') !== -1));
+    var isPhotoField = field.isPhoto || field.label === '사진' || (field.options && field.options.indexOf('사진') !== -1 && (field.options.indexOf('삭제') !== -1 || field.options.indexOf('제외') !== -1 || field.options.indexOf('입력생략') !== -1));
 
     if (field.readonly) {
       html += '<input type="text" readonly id="' + inputId + '" value="' + val + '">';
       group.innerHTML = html;
       container.appendChild(group);
     } else {
-      // 사진 필드일 경우 캐시된 직전 값(예: '입력생략' 또는 '사진')을 최우선 적용하고, 캐시가 없을 때만 '사진' 기본값 적용
+      // 사진 필드일 경우 캐시된 직전 값(빈칸 포함)을 최우선 보존하고, 캐시가 없을 때만 '사진' 기본값 적용
       if (isPhotoField) {
-        if (hasCache && cachedVal) {
-          val = cachedVal;
-        } else if (!val) {
+        if (!hasCache) {
           val = '사진';
+        } else if (cachedVal === '양면' || cachedVal === '단면') {
+          val = '사진';
+        } else if (cachedVal === '입력생략') {
+          val = '';
+        } else {
+          val = cachedVal;
         }
       }
 
@@ -7312,10 +7408,10 @@ function serializeFacilityForm(container, config, prefixId) {
       }
     }
 
-    // [방안 3 표준화] 사용자가 '입력생략'을 선택했거나 빈칸으로 비운 경우, 레거시 기호('--', '삭제', '제외', '미표기', '없음', '선택', '직접입력')를 빈칸('')으로 확실하게 정제!
+    // [방안 A 표준화] 사용자가 '입력생략'을 선택했거나 빈칸으로 비운 경우, 빈칸('')으로 통일하여 누락 없이 메타데이터(vals)에 보존
     // ※ '기타'는 실제 데이터이므로 절대 빈칸으로 치환하지 않고 값 그대로 보존!
-    if (val === '' || val === '--' || val === '직접입력' || val === '입력생략' || val === '삭제' || val === '제외' || val === '미표기' || val === '없음' || val === '선택') {
-      val = (val === '입력생략') ? '입력생략' : '';
+    if (val === '' || val === '--' || val === '직접입력' || val === '입력생략' || val === '삭제' || val === '제외' || val === '미표기' || val === '없음' || val === '선택' || val === '옵션생략') {
+      val = '';
     }
     vals[field.id] = val;
   });

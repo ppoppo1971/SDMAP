@@ -2896,7 +2896,8 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
 
         // 실제 클릭이 완전히 해제(완료)된 click 시점에 로직 실행
         item.addEventListener('click', function (e) {
-          input.value = val;
+          var finalVal = (val === '입력생략' || val === '삭제' || val === '--' || val === '옵션생략') ? '' : val;
+          input.value = finalVal;
           input.dispatchEvent(new Event('input'));
           input.dispatchEvent(new Event('change'));
           
@@ -3407,7 +3408,7 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
     // ※ '기타'는 실제 데이터이므로 절대 지우지 않고 온전히 보존!
     for (var k in vals) {
       var v = String(vals[k] || '').trim();
-      if (v === '--' || v === '삭제' || v === '제외' || v === '미표기' || v === '없음' || v === '선택' || v === '직접입력') {
+      if (v === '--' || v === '삭제' || v === '제외' || v === '미표기' || v === '없음' || v === '선택' || v === '직접입력' || v === '입력생략' || v === '옵션생략') {
         vals[k] = '';
       } else {
         vals[k] = v;
@@ -3448,7 +3449,7 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
         vals['f_2'] = oldH;
         vals['f_3'] = oldSpec;
       }
-    } else if (fType === '지시표지' || fType === '규제표지' || fType === '주의표지' || fType === '보조표지') {
+    } else if (fType === '지시표지' || fType === '규제표지' || fType === '주의표지' || fType === '보조표지' || fType === '사설표지' || fType === '기타표지') {
       // [방안 3 신구 양방향 호환]
       // 신규 엑셀 규격: f_1=지주, f_2=높이, f_3=제원
       // 1) 레거시 순서 (f_1=높이, f_2=지주, f_3=제원) 감지
@@ -3699,7 +3700,7 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
         values['f_3'] = dimParts[0] || '';
         values['f_4'] = dimParts[1] || '';
       }
-    } else if (fType === '지시표지' || fType === '규제표지' || fType === '주의표지' || fType === '보조표지') {
+    } else if (fType === '지시표지' || fType === '규제표지' || fType === '주의표지' || fType === '보조표지' || fType === '사설표지' || fType === '기타표지') {
         // [방안 3 신구 양방향 스마트 파서]
         // 신형 순서: 지시/단주/높이/제원/내용/양면/사진
         // 구형 순서: 지시/단주/제원/높이/내용/양면/사진
@@ -3765,10 +3766,38 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
           }
         }
 
-        // 남은 항목 순차 매핑: f_4(내용), f_5(양면유무), f_6(사진)
-        if (pList.length > 0) values['f_4'] = pList.shift();
-        if (pList.length > 0) values['f_5'] = pList.shift();
-        if (pList.length > 0) values['f_6'] = pList.shift();
+        // [방안 A] 남은 항목 지능형 값 매핑: f_4(내용), f_5(양면유무), f_6(사진)
+        // 단순 shift() 순서 꺼내기를 방지하여, 생략된 항목이 있어도 사진과 양면유무가 100% 제자리로 복원됨
+        while (pList.length > 0) {
+          var item = pList.shift();
+          if (!item) continue;
+          var trimmed = String(item).trim();
+
+          // 1. 사진 필드 완전 일치 판별
+          if (trimmed === '사진' || trimmed === '입력생략') {
+            values['f_6'] = trimmed;
+          }
+          // 2. 양면유무 필드 완전 일치 판별
+          else if (trimmed === '양면' || trimmed === '단면') {
+            values['f_5'] = trimmed;
+          }
+          // 3. 그 외는 내용 필드에 할당 (만약 이미 내용이 있다면 슬래시로 안전하게 보존)
+          else {
+            if (!values['f_4']) {
+              values['f_4'] = trimmed;
+            } else {
+              values['f_4'] += '/' + trimmed;
+            }
+          }
+        }
+
+        // 기본값 안전망: 주시설물일 때 사진 기본값 보장 및 양면유무 기본값 보장
+        if (!isSub) {
+          if (!values['f_6']) values['f_6'] = '사진';
+        }
+        if (!values['f_5']) {
+          values['f_5'] = (fType === '기타표지') ? '단면' : '양면';
+        }
       } else if (config.fields) {
       // 56개 전 시설물 스마트 옵션 매퍼 (모든 필드 빈칸 기본화)
       var pIdx = 1; // parts[0]은 접두어
@@ -4260,14 +4289,33 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       tokenRow.appendChild(slash);
 
       // 입력값 우선순위: 기존 캐시값 > 마지막 저장값 > 기본값
-      var lastSaved = lastSavedFieldValues[type] && lastSavedFieldValues[type][f.id];
+      var hasCached = (cachedVals && cachedVals[f.id] !== undefined);
+      var hasLastSaved = (lastSavedFieldValues[type] && lastSavedFieldValues[type][f.id] !== undefined);
+      var lastSaved = hasLastSaved ? lastSavedFieldValues[type][f.id] : undefined;
       var inputVal = '';
-      if (cachedVals && cachedVals[f.id] !== undefined) {
+      if (hasCached) {
         inputVal = cachedVals[f.id];
-      } else if (lastSaved !== undefined && lastSaved !== '') {
+      } else if (hasLastSaved) {
         inputVal = lastSaved;
       } else {
         inputVal = f.default || '';
+      }
+
+      // [방안 A 안전망] 양면유무 및 사진 필드: 첫 입력(!hasCached && !hasLastSaved)일 때만 기본값 적용하고 사용자의 빈칸('') 선택을 온전히 보존
+      if (f.label === '양면유무' || f.id === 'f_5') {
+        if (!hasCached && !hasLastSaved) {
+          inputVal = f.default || (type === '기타표지' ? '단면' : '양면');
+        } else if (inputVal === '사진' || inputVal === '입력생략') {
+          inputVal = '';
+        }
+      } else if (f.isPhoto || f.label === '사진') {
+        if (!hasCached && !hasLastSaved) {
+          inputVal = '사진';
+        } else if (inputVal === '양면' || inputVal === '단면') {
+          inputVal = '사진';
+        } else if (inputVal === '입력생략') {
+          inputVal = '';
+        }
       }
 
       // 피벗 기준 필드 판별 (내용, 종류 등)
@@ -5015,7 +5063,7 @@ console.log("NDMAP MAP-EDITOR V3 LOADED - SMART PIVOT SPEC SYNC");
       fieldInputs.forEach(function (inp) {
         var fId = inp.getAttribute('data-field-id');
         var val = inp.value ? inp.value.trim() : '';
-        if (fId && val && val !== '') {
+        if (fId) {
           lastSavedFieldValues[fType][fId] = val;
         }
       });
