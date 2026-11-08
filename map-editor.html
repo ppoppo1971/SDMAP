@@ -1164,6 +1164,21 @@
       margin-bottom: 4px;
     }
 
+    /* [방안 A] 말풍선 내 제원 텍스트 줄별 상태 스타일 (완료: 파란색 / 미저장: 주황색) */
+    .label-spec-line {
+      line-height: 1.45;
+      word-break: break-all;
+      font-family: monospace;
+    }
+    .label-spec-line.is-done {
+      color: #60a5fa !important; /* 저장 완료 제원: 시원한 파란색 */
+      font-weight: 600;
+    }
+    .label-spec-line.is-pending {
+      color: #fb923c !important; /* 미저장 제원: 선명한 주황색 */
+      font-weight: 500;
+    }
+
     .label-photo-memo {
       color: #10b981;
       font-style: italic;
@@ -1423,6 +1438,13 @@
       padding: 0 !important;
       border-radius: 50% !important;
       box-shadow: 0 0 10px rgba(255, 255, 255, 0.8), 0 3px 8px rgba(0, 0, 0, 0.5) !important;
+    }
+
+    /* 검수 목록에서 행을 선택하거나 마커를 클릭했을 때 강조 스타일 */
+    .photo-overlay-card.inspect-marker-mode.selected {
+      transform: translate(-50%, -50%) scale(1.6) !important;
+      box-shadow: 0 0 0 3px #10b981, 0 0 15px rgba(16, 185, 129, 0.8) !important;
+      z-index: 99999 !important;
     }
 
     .photo-overlay-card.inspect-marker-mode .photo-overlay-label-panel,
@@ -2530,11 +2552,11 @@
       font-weight: 700 !important;
     }
 
-    /* 저장 버튼 (파란 마커 검수 완료용) */
+    /* [방안 1] 검색결과표 저장 버튼 (저장 전: 연한 주황색 / 저장 완료: 파란색) */
     .grid-save-btn {
-      background: rgba(16, 185, 129, 0.12);
-      border: 1px solid rgba(16, 185, 129, 0.35);
-      color: #34d399;
+      background: rgba(249, 115, 22, 0.12);
+      border: 1px solid rgba(249, 115, 22, 0.35);
+      color: #fb923c;
       font-size: 11px;
       font-weight: 600;
       cursor: pointer;
@@ -2545,10 +2567,10 @@
     }
 
     .grid-save-btn:hover {
-      background: #10b981;
+      background: #f97316;
       color: #ffffff;
-      border-color: #10b981;
-      box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+      border-color: #f97316;
+      box-shadow: 0 0 8px rgba(249, 115, 22, 0.4);
     }
 
     .grid-save-btn.is-edited {
@@ -2988,7 +3010,7 @@
               💡 특수 전수검수: <strong>@미검수</strong> (미검수 전수), <strong>@일반사진</strong> (일반사진 전수), <strong>@사진메모</strong> (메모 전수), <strong>@글자만</strong> (사진없는 제원 전수)
             </span>
             <span style="font-size: 11px; color: rgba(99, 102, 241, 0.8); display: block; margin-top: 4px;">
-              ※ 검색된 시설물만 도면에 <strong>캐드 제원 문자</strong>로 자동 전개됩니다.
+              ※ 검색된 시설물은 도면에 <strong>주황색(미검수) / 파란색(완료) 마커 점</strong>으로 즉시 표시됩니다.
             </span>
           </div>
           <div id="inspect-items-container" style="width: 100%; height: 100%; flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden;"></div>
@@ -3148,7 +3170,7 @@
   <script src="libs/jszip.min.js"></script>
   <!-- 메인 웹 편집기 비즈니스 로직 -->
   <script src="photo-measure.js?v=6.7"></script>
-  <script src="map-editor_v3.js?v=7.4"></script>
+  <script src="map-editor_v3.js?v=8.2"></script>
 
   <!-- 구글 맵 동적 로딩 -->
   <script>

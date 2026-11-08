@@ -69,7 +69,7 @@
     #file-list-screen { position: relative; z-index: 1; }
     .screen-header { padding: 20px; background: white; border-bottom: 1px solid #e0e0e0; }
     .screen-header h2 { font-size: 20px; margin: 0; }
-    .file-list-actions { padding: 15px; background: white; display: flex; gap: 10px; border-bottom: 1px solid #e0e0e0; }
+    .file-list-actions { padding: 15px; background: white; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; border-bottom: 1px solid #e0e0e0; }
     .btn {
       padding: 10px 15px; border: none; border-radius: 8px; background: #007AFF; color: white;
       font-size: 14px; cursor: pointer; white-space: nowrap; touch-action: manipulation;
@@ -801,6 +801,8 @@
         <input type="file" id="local-file-input" accept=".dxf">
         <label for="folder-input" class="btn btn-secondary">폴더 선택 (DXF+이미지)</label>
         <input type="file" id="folder-input" webkitdirectory directory multiple style="display:none">
+        <label for="excel-config-input" class="btn" id="excel-config-btn">📋 조사항목 엑셀 불러오기</label>
+        <input type="file" id="excel-config-input" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" style="display:none">
       </div>
       <div id="file-list" class="file-list">
         <p class="info-text">로컬 DXF 파일을 선택하세요.</p>
@@ -1132,6 +1134,379 @@
 
   <script src="config.js"></script>
   <script src="facility-config.js?v=5.2"></script>
+  <script src="libs/jszip.min.js"></script>
+  <!-- 모바일/터치 조사항목 엑셀(.xlsx) 즉시 로더 (0.1초 인메모리 파서 & localStorage 영구 유지) -->
+  <script>
+    (function () {
+      'use strict';
+
+      var STORAGE_KEY_CONFIG = 'dmap:customFacilityConfig';
+      var STORAGE_KEY_NAME = 'dmap:customFacilityExcelName';
+
+      function applyFacilityConfigObject(newCfg) {
+        if (!newCfg || typeof newCfg !== 'object') return 0;
+        var keys = Object.keys(newCfg);
+        if (keys.length === 0) return 0;
+        if (!window.FACILITY_CONFIG || typeof window.FACILITY_CONFIG !== 'object') {
+          window.FACILITY_CONFIG = {};
+        }
+        Object.keys(window.FACILITY_CONFIG).forEach(function (k) {
+          delete window.FACILITY_CONFIG[k];
+        });
+        keys.forEach(function (k) {
+          window.FACILITY_CONFIG[k] = newCfg[k];
+        });
+        return keys.length;
+      }
+
+      // 1. 앱 시작 시 이전에 불러온 엑셀 설정이 있으면 즉시 복원 (app.js 로드 전 적용)
+      try {
+        var savedRaw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY_CONFIG) : null;
+        if (savedRaw) {
+          var parsedSaved = JSON.parse(savedRaw);
+          var restoredCount = applyFacilityConfigObject(parsedSaved);
+          if (restoredCount > 0) {
+            console.log('[ExcelConfig] 저장된 사용자 조사항목 엑셀 설정 자동 적용 완료 (' + restoredCount + '종)');
+          }
+        }
+      } catch (err) {
+        console.warn('[ExcelConfig] 저장된 엑셀 설정 복원 실패:', err);
+      }
+
+      function getXmlTags(parent, localName) {
+        if (!parent) return [];
+        var list = parent.getElementsByTagName(localName);
+        if (!list || list.length === 0) {
+          list = parent.getElementsByTagNameNS('*', localName);
+        }
+        return Array.prototype.slice.call(list || []);
+      }
+
+      function extractSiText(siEl) {
+        if (!siEl) return '';
+        var children = siEl.childNodes || [];
+        var out = '';
+        for (var i = 0; i < children.length; i++) {
+          var ch = children[i];
+          if (!ch || ch.nodeType !== 1) continue;
+          var ln = ch.localName || ch.nodeName.replace(/^.*:/, '');
+          if (ln === 't') {
+            out += ch.textContent || '';
+          } else if (ln === 'r') {
+            var tNodes = getXmlTags(ch, 't');
+            for (var j = 0; j < tNodes.length; j++) {
+              out += tNodes[j].textContent || '';
+            }
+          }
+        }
+        return out;
+      }
+
+      function colLettersToIndex(letters) {
+        var col = 0;
+        for (var i = 0; i < letters.length; i++) {
+          col = col * 26 + (letters.charCodeAt(i) - 64);
+        }
+        return col;
+      }
+
+      function parseOptionField(fieldStr, idx) {
+        fieldStr = String(fieldStr || '').trim();
+        if (!fieldStr) return null;
+
+        var m = fieldStr.match(/^([^\[]+)\[(.*)\]$/);
+        var label = '';
+        var optsRaw = '';
+        if (m) {
+          label = m[1].trim();
+          optsRaw = m[2].trim();
+        } else {
+          label = fieldStr;
+          optsRaw = '';
+        }
+
+        var fieldId = 'f_' + idx;
+        var isSupport = label.indexOf('지주') !== -1;
+        var isPhoto = label.indexOf('사진') !== -1;
+
+        if (optsRaw) {
+          if (optsRaw.indexOf('숫자:') === 0) {
+            var defVal = optsRaw.substring(optsRaw.indexOf(':') + 1).trim();
+            return {
+              id: fieldId,
+              label: label,
+              type: 'number',
+              default: defVal,
+              isSupport: isSupport,
+              isPhoto: isPhoto
+            };
+          } else if (optsRaw === '직접입력' || optsRaw === '텍스트') {
+            return {
+              id: fieldId,
+              label: label,
+              type: 'text',
+              default: '',
+              isSupport: isSupport,
+              isPhoto: isPhoto
+            };
+          } else {
+            var opts = optsRaw.split(',').map(function (o) { return o.trim(); }).filter(Boolean);
+            var defOpt = opts.length > 0 ? opts[0] : '';
+            return {
+              id: fieldId,
+              label: label,
+              type: 'select',
+              options: opts,
+              default: defOpt,
+              isSupport: isSupport,
+              isPhoto: isPhoto
+            };
+          }
+        } else {
+          return {
+            id: fieldId,
+            label: label,
+            type: 'text',
+            default: '',
+            isSupport: isSupport,
+            isPhoto: isPhoto
+          };
+        }
+      }
+
+      async function parseExcelBufferToConfig(arrayBuffer) {
+        if (typeof JSZip === 'undefined') {
+          throw new Error('JSZip 라이브러리가 로드되지 않았습니다.');
+        }
+        var zip = await JSZip.loadAsync(arrayBuffer);
+        var parser = new DOMParser();
+
+        // 1. 시트 경로 찾기 ('시설물_조사옵션' 시트 우선, 없으면 첫 번째 시트)
+        var sheetPath = 'xl/worksheets/sheet1.xml';
+        var wbFile = zip.file('xl/workbook.xml');
+        var relsFile = zip.file('xl/_rels/workbook.xml.rels');
+        if (wbFile && relsFile) {
+          var wbDoc = parser.parseFromString(await wbFile.async('string'), 'application/xml');
+          var relsDoc = parser.parseFromString(await relsFile.async('string'), 'application/xml');
+          var sheets = getXmlTags(wbDoc, 'sheet');
+          var targetRId = null;
+          for (var sIdx = 0; sIdx < sheets.length; sIdx++) {
+            var sName = sheets[sIdx].getAttribute('name') || '';
+            var rId = sheets[sIdx].getAttribute('r:id') || sheets[sIdx].getAttribute('id') || '';
+            if (sName === '시설물_조사옵션') {
+              targetRId = rId;
+              break;
+            }
+            if (!targetRId && rId) targetRId = rId;
+          }
+          if (targetRId) {
+            var rels = getXmlTags(relsDoc, 'Relationship');
+            for (var rIdx = 0; rIdx < rels.length; rIdx++) {
+              if (rels[rIdx].getAttribute('Id') === targetRId) {
+                var targetAttr = rels[rIdx].getAttribute('Target') || '';
+                if (targetAttr) {
+                  targetAttr = targetAttr.replace(/^\/+/, '');
+                  sheetPath = targetAttr.indexOf('xl/') === 0 ? targetAttr : ('xl/' + targetAttr);
+                }
+                break;
+              }
+            }
+          }
+        }
+
+        // 2. 공유 문자열(sharedStrings.xml) 파싱
+        var sharedStrings = [];
+        var sstFile = zip.file('xl/sharedStrings.xml');
+        if (sstFile) {
+          var sstDoc = parser.parseFromString(await sstFile.async('string'), 'application/xml');
+          var siNodes = getXmlTags(sstDoc, 'si');
+          for (var i = 0; i < siNodes.length; i++) {
+            sharedStrings.push(extractSiText(siNodes[i]));
+          }
+        }
+
+        // 3. 스타일(styles.xml)에서 파란색 폰트 여부 파싱 (B열 부속시설물 결합 대상 판별용)
+        var styleIsBlue = [];
+        var stylesFile = zip.file('xl/styles.xml');
+        if (stylesFile) {
+          var stylesDoc = parser.parseFromString(await stylesFile.async('string'), 'application/xml');
+          var fontsContainer = getXmlTags(stylesDoc, 'fonts')[0];
+          var fontNodes = fontsContainer ? getXmlTags(fontsContainer, 'font') : [];
+          var fontIsBlue = [];
+          var blueCodes = ['0070C0', '0000FF', '2563EB', '1E40AF', '3B82F6'];
+          for (var fIdx = 0; fIdx < fontNodes.length; fIdx++) {
+            var colorNodes = getXmlTags(fontNodes[fIdx], 'color');
+            var isBlue = false;
+            for (var cIdx = 0; cIdx < colorNodes.length; cIdx++) {
+              var rgb = String(colorNodes[cIdx].getAttribute('rgb') || '').toUpperCase();
+              if (rgb) {
+                for (var bIdx = 0; bIdx < blueCodes.length; bIdx++) {
+                  if (rgb.indexOf(blueCodes[bIdx]) !== -1) {
+                    isBlue = true;
+                    break;
+                  }
+                }
+              }
+            }
+            fontIsBlue.push(isBlue);
+          }
+
+          var cellXfsContainer = getXmlTags(stylesDoc, 'cellXfs')[0];
+          var xfNodes = cellXfsContainer ? getXmlTags(cellXfsContainer, 'xf') : [];
+          for (var xIdx = 0; xIdx < xfNodes.length; xIdx++) {
+            var fontId = parseInt(xfNodes[xIdx].getAttribute('fontId') || '0', 10);
+            styleIsBlue.push(!isNaN(fontId) && !!fontIsBlue[fontId]);
+          }
+        }
+
+        // 4. 워크시트 파싱 (5행부터 데이터 행)
+        var wsFile = zip.file(sheetPath) || zip.file('xl/worksheets/sheet1.xml');
+        if (!wsFile) {
+          throw new Error('엑셀 시트 데이터를 찾을 수 없습니다.');
+        }
+        var wsDoc = parser.parseFromString(await wsFile.async('string'), 'application/xml');
+        var rows = getXmlTags(wsDoc, 'row');
+        var facilityConfig = {};
+
+        for (var r = 0; r < rows.length; r++) {
+          var rowEl = rows[r];
+          var rowNum = parseInt(rowEl.getAttribute('r') || '0', 10);
+          if (rowNum < 5) continue;
+
+          var cells = getXmlTags(rowEl, 'c');
+          var rowMap = {};
+          var maxCol = 0;
+          var lastCol = 0;
+
+          for (var c = 0; c < cells.length; c++) {
+            var cellEl = cells[c];
+            var ref = cellEl.getAttribute('r') || '';
+            var colLetters = ref.replace(/\d+/g, '');
+            var colIdx = colLetters ? colLettersToIndex(colLetters) : (lastCol + 1);
+            lastCol = colIdx;
+            if (colIdx > maxCol) maxCol = colIdx;
+
+            var cellType = cellEl.getAttribute('t') || '';
+            var styleIdx = parseInt(cellEl.getAttribute('s') || '-1', 10);
+            var cellVal = '';
+
+            if (cellType === 'inlineStr') {
+              var isNodes = getXmlTags(cellEl, 'is');
+              if (isNodes.length > 0) {
+                cellVal = extractSiText(isNodes[0]);
+              }
+            } else {
+              var vNodes = getXmlTags(cellEl, 'v');
+              var rawV = vNodes.length > 0 ? (vNodes[0].textContent || '') : '';
+              if (cellType === 's') {
+                var sstIdx = parseInt(rawV, 10);
+                cellVal = (!isNaN(sstIdx) && sharedStrings[sstIdx] !== undefined) ? sharedStrings[sstIdx] : '';
+              } else if (cellType === 'e') {
+                cellVal = '';
+              } else {
+                cellVal = rawV;
+              }
+            }
+
+            rowMap[colIdx] = {
+              value: String(cellVal || '').trim(),
+              styleIdx: styleIdx
+            };
+          }
+
+          var name = rowMap[1] ? rowMap[1].value : '';
+          if (!name) continue;
+
+          var detLayerStr = rowMap[2] ? rowMap[2].value : '';
+          var detLayers = detLayerStr
+            ? detLayerStr.split(',').map(function (l) { return l.trim(); }).filter(Boolean)
+            : [];
+
+          var isSubAttachable = false;
+          if (rowMap[2] && rowMap[2].styleIdx >= 0 && styleIsBlue[rowMap[2].styleIdx]) {
+            isSubAttachable = true;
+          }
+
+          var cadLayer = rowMap[3] ? rowMap[3].value : '';
+          if (!cadLayer || cadLayer === 'None') {
+            cadLayer = name + '_T';
+          }
+
+          var colorVal = rowMap[4] ? rowMap[4].value : '';
+          var colorMatch = colorVal.match(/\d+/);
+          var colorNum = colorMatch ? parseInt(colorMatch[0], 10) : 7;
+
+          var prefix = (rowMap[5] && rowMap[5].value) ? rowMap[5].value : name;
+
+          var fields = [];
+          var fieldIdx = 1;
+          for (var col = 6; col <= maxCol; col++) {
+            var fCell = rowMap[col];
+            if (fCell && fCell.value) {
+              var parsedField = parseOptionField(fCell.value, fieldIdx);
+              if (parsedField) {
+                fields.push(parsedField);
+                fieldIdx++;
+              }
+            }
+          }
+
+          facilityConfig[name] = {
+            title: name,
+            layer: cadLayer,
+            color: colorNum,
+            prefix: prefix,
+            detectionLayers: detLayers,
+            isSubAttachable: isSubAttachable,
+            fields: fields
+          };
+        }
+
+        return facilityConfig;
+      }
+
+      document.addEventListener('DOMContentLoaded', function () {
+        var excelInput = document.getElementById('excel-config-input');
+        var excelBtn = document.getElementById('excel-config-btn');
+        if (!excelInput) return;
+
+        excelInput.addEventListener('change', function (e) {
+          var file = e.target && e.target.files && e.target.files[0];
+          if (!file) return;
+
+          var t0 = performance.now();
+          var reader = new FileReader();
+          reader.onload = function (ev) {
+            parseExcelBufferToConfig(ev.target.result).then(function (newCfg) {
+              var count = applyFacilityConfigObject(newCfg);
+              if (count === 0) {
+                alert('선택한 엑셀 파일에서 유효한 시설물 조사옵션을 찾지 못했습니다.\n(시트 5행부터 시설물 데이터가 있는지 확인해 주세요)');
+                return;
+              }
+              try {
+                localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(newCfg));
+                localStorage.setItem(STORAGE_KEY_NAME, file.name);
+              } catch (storageErr) {
+                console.warn('[ExcelConfig] localStorage 저장 경고:', storageErr);
+              }
+              var elapsedSec = ((performance.now() - t0) / 1000).toFixed(2);
+              var msg = '📋 [' + file.name + '] 조사항목 ' + count + '종 적용 완료! (' + elapsedSec + '초)';
+              if (typeof window.showToast === 'function') {
+                window.showToast(msg);
+              } else {
+                alert(msg);
+              }
+            }).catch(function (err) {
+              console.error('[ExcelConfig] 엑셀 파싱 오류:', err);
+              alert('엑셀 파일을 읽는 중 오류가 발생했습니다: ' + (err && err.message ? err.message : err));
+            });
+          };
+          reader.readAsArrayBuffer(file);
+          e.target.value = '';
+        });
+      });
+    })();
+  </script>
   <!-- 좌표계 변환: DXF 평면직각좌표(EPSG) → WGS84 (config.DXF_CRS 사용 시) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
   <script src="local-storage.js?v=4.0"></script>
